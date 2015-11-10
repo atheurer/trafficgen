@@ -16,7 +16,7 @@ local hist		= require "histogram"
 memory.enableCache()
 
 local REPS = 1
-local run_time = 20
+local run_time = 60
 local LATENCY_TRIM = 3000 -- time in ms to delayied start and early end to latency mseasurement, so we are certain main packet load is present
 local FRAME_SIZE = 64
 local BIDIREC = 0 --do not do bidirectional test
@@ -43,7 +43,6 @@ function master(...)
         -- The allowed frame loss (percent)
 	rate_resolution = RATE_RESOLUTION
 	latency = LATENCY
-        iteration_number = 1
 
 	-- assumes port1 and port2 are not the same
 	local devs = {}
@@ -64,7 +63,9 @@ function master(...)
 	local prevFailRate = max_line_rate_Mfps
 	local rate = max_line_rate_Mfps
 	local method = "hardware"
-	while ( math.abs(rate - prevRate) > rate_resolution ) do
+        local final_validation_ctr = 0
+
+	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
 		-- r = {frame_loss, rxMpps, total_rx_frames, total_tx_frames}
 	        r = {dev1_frame_loss, dev1_rxMpps, dev1_total_x_frames, dev1_total_rx_frames, dev2_frame_loss, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss}
 		launchTest(devs[1], devs[2], rate, bidirec, 0, frame_size, run_time, num_flows, method, r)
@@ -76,11 +77,15 @@ function master(...)
                 -- total_rx_frames = r[4]
 		prevRate = rate
 	        if avg_device_frame_loss > max_acceptable_frame_loss then --failed to have <= max_acceptable_frame_loss, lower rate
-			printf("Test Result:  FAILED - The traffic throughput loss was %.8f %%, which is higher than the maximum allowed (%.2f %%) loss\n", avg_device_frame_loss, max_acceptable_frame_loss);
+                        printf("*********************************************************************************************************************************");
+			printf("* Test Result:  FAILED - The traffic throughput loss was %.8f %%, which is higher than the maximum allowed (%.2f %%) loss", avg_device_frame_loss, max_acceptable_frame_loss);
+                        printf("*********************************************************************************************************************************");
 			prevFailRate = rate
 			rate = ( prevPassRate + rate ) / 2
 		else --acceptable packet loss, increase rate
-			printf("Test Result:  PASSED - The traffic thoughput loss was %.8f %%, was did not exceed the maximum allowed loss (%.2f %%)\n", avg_device_frame_loss, max_acceptable_frame_loss);
+                        printf("*********************************************************************************************************************************");
+			printf("* Test Result:  PASSED - The traffic thoughput loss was %.8f %%, was did not exceed the maximum allowed loss (%.2f %%)", avg_device_frame_loss, max_acceptable_frame_loss);
+                        printf("*********************************************************************************************************************************");
 			prevPassRate = rate
 			rate = (prevFailRate + rate ) / 2
 		end
@@ -90,86 +95,106 @@ function master(...)
 			break
 		end
 		printf("\n")
-                iteration_number = iteration_number + 1
+
+	        if math.abs(rate - prevRate) < rate_resolution then
+                
+	            r = {dev1_frame_loss_pct, dev1_rxMpps, dev1_total_tx_frames, dev1_total_rx_frames, dev2_frame_loss_pct, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss}
+                    printf("\n");
+                    printf("*********************************************************************************************");
+	            printf("* Starting final validation");
+                    printf("*********************************************************************************************");
+                    printf("\n\n");
+	            launchTest(devs[1], devs[2], rate, bidirec, latency, frame_size, run_time, num_flows, method, r)
+                    printf("\n\n");
+                    printf("*********************************************************************************************");
+	            printf("* Stopping final validation");
+                    printf("*********************************************************************************************");
+                    printf("\n\n");
+	            local dev1_frame_loss_pct = r[1]
+	            local dev1_rxMpps = r[2]
+                    local dev1_total_tx_frames = 0
+                    local dev1_total_rx_frames = 0
+                    local dev1_total_tx_frames = r[3]
+                    local dev1_total_rx_frames = r[4]
+	            local dev2_frame_loss_pct = r[5]
+	            local dev2_rxMpps = r[6]
+                    local dev2_total_tx_frames = 0
+                    local dev2_total_rx_frames = 0
+                    dev2_total_tx_frames = r[7]
+                    dev2_total_rx_frames = r[8]
+                    local avg_device_frame_loss = r[9]
+                    local aggregate_avg_rxMpps = r[10]
+	            local dev1_frame_loss = r[11]
+	            local dev2_frame_loss = r[12]
+                    
+                    prevRate = rate
+                    if (avg_device_frame_loss) > max_acceptable_frame_loss then
+
+                        printf("\n");
+                        printf("*********************************************************************************************");
+                        printf("* Final Validation Test Result:  FAILED\n" ..
+                               "*     The validation of %.2f Mfps failed because the traffic throughput loss was %.8f %%, \n" ..
+                               "*     which is higher than the maximum allowed (%.2f %%) loss", 
+                               aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss);
+                        printf("*********************************************************************************************");
+                        printf("\n");
+
+			prevFailRate = rate
+			rate = ( prevPassRate + rate ) / 2
+
+	            else
+                        printf("\n");
+                        printf("*********************************************************************************************");
+                        printf("* Final Validation Test Result:  PASSED\n" ..
+                               "*     The validation of %.2f Mfps passed because the traffic throughput loss was %.8f %%, \n" ..
+                               "*     which did not exceed the maximum allowed (%.2f %%) loss", 
+                               aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss);
+                        printf("*********************************************************************************************");
+                        printf("\n");
+
+                        printf("#############################################################################################\n");
+                        printf("RFC 2544 Test Results Summary From Final Validation\n\n");
+
+	                printf("Measured Aggregate Average Throughput (Mfps) ................ %.2f", aggregate_avg_rxMpps);
+	                printf("Frame Size .................................................. %d", frame_size);
+                        
+                        if (bidirec == 1) then
+	                    printf("Traffic Flow Direction ...................................... Bidirectional");
+	                    printf("Maximum Theoretical Line Rate Throughput (Mfps) ............. %.2f", 2 * max_line_rate_Mfps);
+                        else
+	                    printf("Traffic Flow Direction ...................................... Unidirectional");
+	                    printf("Maximum Theoretical Line Rate Throughput (Mfps) ............. %.2f", max_line_rate_Mfps);
+                        end
+
+	                printf("Number of Data Flows ........................................ %d", num_flows);
+	                printf("Rate Resolution (%%) ......................................... %.2f", rate_resolution);
+	                printf("Maximum Acceptable Frame Loss (%%) ........................... %.2f", max_acceptable_frame_loss);
+                        printf("\n");
+	                printf("Network Device ID ........................................... %d", port1);
+                        printf("    Average Rx Frame Count (Mfps) ........................... %.2f", dev1_rxMpps);
+                        printf("    Rx Frame Count .......................................... %d", dev1_total_rx_frames);
+                        printf("    Tx Frame Count .......................................... %d", dev1_total_tx_frames);
+                        printf("    Frame Loss .............................................. %d", dev1_frame_loss);
+                        printf("\n");
+	                printf("Network Device ID ........................................... %d", port2);
+                        printf("    Average Rx Frame Count (Mfps) ........................... %.2f", dev2_rxMpps);
+                        printf("    Rx Frame Count .......................................... %d", dev2_total_rx_frames);
+                        printf("    Tx Frame Count .......................................... %d", dev2_total_tx_frames);
+                        printf("    Frame Loss .............................................. %d", dev2_frame_loss);
+                        printf("#############################################################################################\n");
+                        printf("\n\n");
+                        final_validation_ctr = 1
+	            end
+		    printf("\n")
+		    dpdk.sleepMillis(500)
+		    if not dpdk.running() then
+		    	break
+		    end
+		    printf("\n")
+		end
 	end
 
-	local frame_loss = 0
-	run_time = run_time * 2 --use a longer runtime for final validation
-	r = {dev1_frame_loss_pct, dev1_rxMpps, dev1_total_tx_frames, dev1_total_rx_frames, dev2_frame_loss_pct, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss}
-        printf("\n\n");
-        printf("*********************************************************************************************");
-	printf("* Starting final validation");
-        printf("*********************************************************************************************");
-        printf("\n\n");
-	launchTest(devs[1], devs[2], rate, bidirec, latency, frame_size, run_time, num_flows, method, r)
-        printf("\n\n");
-        printf("*********************************************************************************************");
-	printf("* Stopping final validation");
-        printf("*********************************************************************************************");
-        printf("\n\n");
-	local dev1_frame_loss_pct = r[1]
-	local dev1_rxMpps = r[2]
-        local dev1_total_tx_frames = 0
-        local dev1_total_rx_frames = 0
-        local dev1_total_tx_frames = r[3]
-        local dev1_total_rx_frames = r[4]
-	local dev2_frame_loss_pct = r[5]
-	local dev2_rxMpps = r[6]
-        local dev2_total_tx_frames = 0
-        local dev2_total_rx_frames = 0
-        dev2_total_tx_frames = r[7]
-        dev2_total_rx_frames = r[8]
-        local avg_device_frame_loss = r[9]
-        local aggregate_avg_rxMpps = r[10]
-	local dev1_frame_loss = r[11]
-	local dev2_frame_loss = r[12]
-        
-        prevRate = rate
-        if (avg_device_frame_loss) > max_acceptable_frame_loss then
-
-            printf("Final Validation Test Result:  FAILED\n" ..
-                   "    The validation of %.2f Mfps failed because the traffic throughput loss was %.8f %%, \n" ..
-                   "    which is higher than the maximum allowed (%.2f %%) loss\n\n\n", 
-                   aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss);
-	else
-            printf("Final Validation Test Result:  PASSED\n" ..
-                   "    The validation of %.2f Mfps passed because the traffic throughput loss was %.8f %%, \n" ..
-                   "    which did not exceed the maximum allowed (%.2f %%) loss\n\n\n", 
-                   aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss);
-
-            printf("#############################################################################################\n");
-            printf("RFC 2544 Test Results Summary From Final Validation\n\n");
-
-	    printf("Measured Aggregate Average Throughput (Mfps) ................ %.2f", aggregate_avg_rxMpps);
-	    printf("Frame Size .................................................. %d", frame_size);
-            
-            if (bidirec == 1) then
-	        printf("Traffic Flow Direction ...................................... Bidirectional");
-	        printf("Maximum Theoretical Line Rate Throughput (Mfps) ............. %.2f", 2 * max_line_rate_Mfps);
-            else
-	        printf("Traffic Flow Direction ...................................... Unidirectional");
-	        printf("Maximum Theoretical Line Rate Throughput (Mfps) ............. %.2f", max_line_rate_Mfps);
-            end
-
-	    printf("Number of Data Flows ........................................ %d", num_flows);
-	    printf("Rate Resolution (%%) ......................................... %.2f", rate_resolution);
-	    printf("Maximum Acceptable Frame Loss (%%) ........................... %.2f", max_acceptable_frame_loss);
-            printf("\n");
-	    printf("Network Device ID ........................................... %d", port1);
-            printf("    Average Rx Frame Count (Mfps) ........................... %.2f", dev1_rxMpps);
-            printf("    Rx Frame Count .......................................... %d", dev1_total_rx_frames);
-            printf("    Tx Frame Count .......................................... %d", dev1_total_tx_frames);
-            printf("    Frame Loss .............................................. %d", dev1_frame_loss);
-            printf("\n");
-	    printf("Network Device ID ........................................... %d", port2);
-            printf("    Average Rx Frame Count (Mfps) ........................... %.2f", dev2_rxMpps);
-            printf("    Rx Frame Count .......................................... %d", dev2_total_rx_frames);
-            printf("    Tx Frame Count .......................................... %d", dev2_total_tx_frames);
-            printf("    Frame Loss .............................................. %d", dev2_frame_loss);
-            printf("\n");
-            printf("#############################################################################################\n");
-            printf("\n\n");
-	end
+        -- run_time = run_time * 2 --use a longer runtime for final validation
 	printf("\n")
 	dpdk.sleepMillis(500)
 end
@@ -184,7 +209,9 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
 			total_rate = rate * 2
 		end
 
-		printf("Testing frame rate (millions per second) with %s rate control: %.2f", method , total_rate)
+                printf("*********************************************************************************");
+		printf("* Testing frame rate (millions per second) with %s rate control: %.2f", method , total_rate)
+                printf("*********************************************************************************");
 		dev1:getTxQueue(qid):setRateMpps(method == "hardware" and rate or 0)
 		loadTask1a = dpdk.launchLua("loadSlave", dev1:getTxQueue(qid), dev2:getRxQueue(qid), method == "software" and rate, frame_size, run_time, num_flows)
 		qid = qid + 1
