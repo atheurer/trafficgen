@@ -68,7 +68,7 @@ function master(...)
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
 		-- r = {frame_loss, rxMpps, total_rx_frames, total_tx_frames}
 	        r = {dev1_frame_loss, dev1_rxMpps, dev1_total_x_frames, dev1_total_rx_frames, dev2_frame_loss, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss}
-                printf("TOP OF WHILE LOOP:  Testing with prevPassRate = %0.2f, prevFailRate = %.2f, prevRate = %.2f, rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
+                printf("TOP OF WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
 		launchTest(devs[1], devs[2], rate, bidirec, 0, frame_size, run_time, num_flows, method, r)
 		local avg_device_frame_loss = r[9]
 		local aggregate_avg_rxMpps = r[10]
@@ -82,14 +82,14 @@ function master(...)
                         printf("*********************************************************************************************************************************");
 			prevFailRate = rate
 			rate = ( prevPassRate + rate ) / 2
-                        printf("FAIL WHILE LOOP:  new rate = %.2f, prevFailRate = %.2f, prevRate = %.2f", rate, prevFailRate, prevRate); 
+                        printf("FAIL WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, 'new'rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
 		else --acceptable packet loss, increase rate
                         printf("*********************************************************************************************************************************");
 			printf("* Test Result:  PASSED - The traffic thoughput loss was %.8f %%, was did not exceed the maximum allowed loss (%.2f %%)", avg_device_frame_loss, max_acceptable_frame_loss);
                         printf("*********************************************************************************************************************************");
 			prevPassRate = rate
 			rate = (prevFailRate + rate ) / 2
-                        printf("PASS WHILE LOOP:  new rate = %.2f, prevPassRate = %.2f, prevRate = %.2f", rate, prevPassRate, prevRate); 
+                        printf("PASS WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, 'new'rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
 		end
 		printf("\n")
 		dpdk.sleepMillis(500)
@@ -106,8 +106,8 @@ function master(...)
 	            printf("* Starting final validation");
                     printf("*********************************************************************************************");
                     printf("\n\n");
-                    printf("VALIDATION WHILE LOOP:  Testing with prevPassRate = %0.2f, prevFailRate = %.2f, prevRate = %.2f, rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
-	            launchTest(devs[1], devs[2], prevRate, bidirec, latency, frame_size, run_time, num_flows, method, r)
+                    printf("VALIDATION WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
+	            launchTest(devs[1], devs[2], prevPassRate, bidirec, latency, frame_size, run_time, num_flows, method, r)
                     printf("\n\n");
                     printf("*********************************************************************************************");
 	            printf("* Stopping final validation");
@@ -208,6 +208,9 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
 		if (bidirec == 1) then
 			total_rate = rate * 2
 		end
+
+
+                printf("\n\nInside launchTest.  rate = %.2f, bidirec = %d, latency = %d, frame_size = %d, run_time = %d, num_flows = %d, method = %s\n\n", rate, bidirec, latency, frame_size, run_time, num_flows, method);
 
                 printf("*********************************************************************************");
 		printf("* Testing frame rate (millions per second) with %s rate control: %.2f", method , total_rate)
