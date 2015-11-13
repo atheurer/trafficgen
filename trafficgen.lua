@@ -62,7 +62,8 @@ function master(...)
 	local frame_loss = 0
 	local prevFailRate = max_line_rate_Mfps
 	local rate = max_line_rate_Mfps
-	local method = "hardware"
+        -- local method = "hardware"
+	local method = "software"
         local final_validation_ctr = 0
 
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
@@ -140,7 +141,13 @@ function master(...)
                                aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss);
                         printf("*********************************************************************************************");
                         printf("\n");
-
+			
+                        --prevFailRate = prevPassRate
+                        --prevPassRate = prevPassRate * 0.80
+			--rate = prevPassRate 
+                        prevFailRate = prevPassRate
+                        prevPassRate = 0
+			rate = ( prevPassRate + rate ) / 2
 
 	            else
                         printf("\n");
