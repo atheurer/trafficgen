@@ -20,14 +20,15 @@ local run_time = 60
 local LATENCY_TRIM = 3000 -- time in ms to delayied start and early end to latency mseasurement, so we are certain main packet load is present
 local FRAME_SIZE = 64
 local BIDIREC = 0 --do not do bidirectional test
-local LATENCY = 1 --do not get letency measurements
+local LATENCY = 0 --do not get letency measurements
 local MAX_FRAME_LOSS = 0
 local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_RESOLUTION = 0.02
 local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
-local IP_SRC    = "192.168.0.1"
+local IP_SRC    = "192.168.0.10"
 local IP_DST    = "10.0.0.1"
 local PORT_SRC  = 1234
+local PORT_DST  = 1234
 local NUM_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
 
 function master(...)
@@ -306,7 +307,7 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 			-- ipSrc will be set later as it varies
 			ip4Dst = IP_DST,
 			udpSrc = PORT_SRC,
-			udpDst = port,
+			udpDst = PORT_DST,
 			-- payload will be initialized to 0x00 as new memory pools are initially empty
 		}
 	end)
@@ -326,6 +327,7 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 			-- Later, maybe consider pre-allocating a list of random IPs
 			pkt.ip4.src:set(baseIP + count % num_flows)
 		end
+                bufs:offloadUdpChecksums()
 		if rate then
 			for _, buf in ipairs(bufs) do
 				buf:setRate(rate)
