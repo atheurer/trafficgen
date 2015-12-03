@@ -24,12 +24,16 @@ local LATENCY = 0 --do not get letency measurements
 local MAX_FRAME_LOSS = 0
 local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_RESOLUTION = 0.02
-local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
+-- local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
+local ETH_DST   = "ec:f4:bb:ce:cd:68" -- src mac is taken from the NIC
 local IP_SRC    = "192.168.0.10"
 local IP_DST    = "10.0.0.1"
 local PORT_SRC  = 1234
 local PORT_DST  = 1234
 local NUM_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
+local TX_RATE_TOLERANCE_MPPS = 0.2  -- The acceptable difference between actual and measured TX rates (in Mpps).  Abort test if greater
+
+
 
 function master(...)
 	local port1, port2, frame_size, bidirec, max_acceptable_frame_loss, num_flows, max_line_rate_Mfps = tonumberall(...)
@@ -69,12 +73,38 @@ function master(...)
 
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
 		-- r = {frame_loss, rxMpps, total_rx_frames, total_tx_frames}
-	        r = {dev1_frame_loss, dev1_rxMpps, dev1_total_x_frames, dev1_total_rx_frames, dev2_frame_loss, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss}
+	        r = {dev1_frame_loss, 
+                     dev1_rxMpps, 
+                     dev1_total_tx_frames, 
+                     dev1_total_rx_frames, 
+                     dev2_frame_loss, 
+                     dev2_rxMpps, 
+                     dev2_total_tx_frames, 
+                     dev2_total_rx_frames, 
+                     avg_device_frame_loss, 
+                     aggregate_avg_rxMpps, 
+                     dev1_frame_loss, 
+                     dev2_frame_loss, 
+                     dev1_txMpps, 
+                     dev2_txMpps}
+
                 printf("TOP OF WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
 		launchTest(devs[1], devs[2], rate, bidirec, 0, frame_size, run_time, num_flows, method, r)
 		local avg_device_frame_loss = r[9]
 		local aggregate_avg_rxMpps = r[10]
-                
+	        local dev1_txMpps = r[13]
+	        local dev2_txMpps = r[14]
+
+
+                if math.abs(rate - dev1_txMpps) > TX_RATE_TOLERANCE_MPPS then
+                    printf("\n\n");
+                    printf("ABORT TEST:  Device 1 transmit rate not correct. \n");
+                    printf("             The desired TX Rate = %.2f Mpps, the measured TX Rate = %.2f Mpps\n", rate, dev1_txMpps);
+                    printf("             The difference between rates can not exceed %.2f Mpps\n\n", TX_RATE_TOLERANCE_MPPS);
+                    return
+                end
+
+                -- printf("The Tx rates in Mpps are:  dev1 = %.2f    dev2 = %.2f **********\n", dev1_txMpps, dev2_txMpps);
                 -- total_tx_frames = r[3]
                 -- total_rx_frames = r[4]
 		prevRate = rate
@@ -102,7 +132,7 @@ function master(...)
 
 	        if math.abs(rate - prevRate) < rate_resolution then
                 
-	            r = {dev1_frame_loss_pct, dev1_rxMpps, dev1_total_tx_frames, dev1_total_rx_frames, dev2_frame_loss_pct, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss}
+	            r = {dev1_frame_loss_pct, dev1_rxMpps, dev1_total_tx_frames, dev1_total_rx_frames, dev2_frame_loss_pct, dev2_rxMpps, dev2_total_tx_frames, dev2_total_rx_frames, avg_device_frame_loss, aggregate_avg_rxMpps, dev1_frame_loss, dev2_frame_loss, dev1_txMpps, dev2_txMpps}
                     printf("\n");
                     printf("*********************************************************************************************");
 	            printf("* Starting final validation");
@@ -131,6 +161,17 @@ function master(...)
                     local aggregate_avg_rxMpps = r[10]
 	            local dev1_frame_loss = r[11]
 	            local dev2_frame_loss = r[12]
+	            local dev1_txMpps = r[13]
+	            local dev2_txMpps = r[14]
+
+                    if math.abs(rate - dev1_txMpps) > TX_RATE_TOLERANCE_MPPS then
+                        printf("\n\n");
+                        printf("ABORT TEST:  Device 1 transmit rate not correct. \n");
+                        printf("             The desired TX Rate = %.2f Mpps, the measured TX Rate = %.2f Mpps\n", rate, dev1_txMpps);
+                        printf("             The difference between rates can not exceed %.2f Mpps\n\n", TX_RATE_TOLERANCE_MPPS);
+                        return
+                    end
+                    -- printf("The Tx rates in Mpps are:  dev1 = %.2f    dev2 = %.2f **********\n", dev1_txMpps, dev2_txMpps);
                     
                     if (avg_device_frame_loss) > max_acceptable_frame_loss then
 
@@ -240,14 +281,17 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
 
 		local dev1_total_frame_loss_pct = 0 
 		local dev1_avg_rxMpps = 0
+		local dev1_avg_txMpps = 0
                 local dev1_total_tx_frames = 0
                 local dev1_total_rx_frames = 0
 		local dev2_total_frame_loss_pct = 0
 		local dev2_avg_rxMpps = 0
+		local dev2_avg_txMpps = 0
                 local dev2_total_tx_frames = 0
                 local dev2_total_rx_frames = 0
                 local avg_device_frame_loss = 0
                 local aggregate_avg_rxMpps = 0
+                local aggregate_avg_txMpps = 0
                 local dev1_total_frame_loss = 0
                 local dev2_total_frame_loss = 0
                 
@@ -259,29 +303,33 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
                 dev1_total_tx_frames = r1[3]
                 dev2_total_rx_frames = r1[4]
 		dev2_total_frame_loss = r1[5]
+		dev1_avg_txMpps = r1[6]
                 
 		if (bidirec == 1) then
-			local r2 = {}
-			r2 = loadTask1b:wait()
+		    local r2 = {}
+		    r2 = loadTask1b:wait()
 
-		        dev2_total_frame_loss_pct = r2[1]
-		        dev2_avg_rxMpps = r2[2]
-                        dev2_total_tx_frames = r2[3];
-                        dev1_total_rx_frames = r2[4];
-		        dev1_total_frame_loss = r2[5]
+		    dev2_total_frame_loss_pct = r2[1]
+		    dev2_avg_rxMpps = r2[2]
+                    dev2_total_tx_frames = r2[3];
+                    dev1_total_rx_frames = r2[4];
+		    dev1_total_frame_loss = r2[5]
+		    dev2_avg_txMpps = r2[6]
 
-			-- total_frame_loss_pct = (r1[1] +r2[1]) /2
-			-- total_rxMpps = r1[2] +r2[2]
+		    -- total_frame_loss_pct = (r1[1] +r2[1]) /2
+		    -- total_rxMpps = r1[2] +r2[2]
+                    avg_device_frame_loss = (dev1_total_frame_loss_pct + dev2_total_frame_loss_pct) / 2
+                else
+                    avg_device_frame_loss = dev1_total_frame_loss_pct 
 		end
 
 
-                avg_device_frame_loss = (dev1_total_frame_loss_pct + dev2_total_frame_loss_pct) / 2
                 aggregate_avg_rxMpps = dev1_avg_rxMpps + dev2_avg_rxMpps
                 
 		if (latency == 1) then
 			loadTask2a:wait()
 		end
-
+		
 		t[1] = dev1_total_frame_loss_pct
 		t[2] = dev1_avg_rxMpps
                 t[3] = dev1_total_tx_frames
@@ -294,6 +342,8 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
                 t[10] = aggregate_avg_rxMpps
 		t[11] = dev1_total_frame_loss
 		t[12] = dev2_total_frame_loss
+		t[13] = dev1_avg_txMpps
+		t[14] = dev2_avg_txMpps
 end
 
 function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
@@ -325,7 +375,8 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 			-- pkt.ip4.src:set(baseIP + math.random(num_flows) - 1)
 			-- For now, just increment with count and limit with num_flows
 			-- Later, maybe consider pre-allocating a list of random IPs
-			pkt.ip4.src:set(baseIP + count % num_flows)
+			-- pkt.ip4.src:set(baseIP + count % num_flows)
+		        pkt.ip4.src:set(baseIP + count % num_flows)
 		end
                 bufs:offloadUdpChecksums()
 		if rate then
@@ -355,8 +406,7 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 	end
 	local pct_loss = loss / txStats.total * 100
 	--printf("loop count: %d  frames dropped: %d (%.8f%%)", count, loss, loss / txStats.total * 100)
-	--printf("Mpps: %.2f", rxStats.mpps.avg)
-	local results = {pct_loss, rxStats.mpps.avg, txStats.total, rxStats.total, loss}
+	local results = {pct_loss, rxStats.mpps.avg, txStats.total, rxStats.total, loss, txStats.mpps.avg}
 	return results
 end
 
