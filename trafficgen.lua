@@ -29,8 +29,8 @@ local LATENCY = 0 --do not get letency measurements
 local MAX_FRAME_LOSS_PCT = 0
 local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_RESOLUTION = 0.02
--- local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
-local ETH_DST   = "ec:f4:bb:ce:cd:68" -- src mac is taken from the NIC
+local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
+-- local ETH_DST   = "ec:f4:bb:ce:cd:68" -- src mac is taken from the NIC
 local IP_SRC    = "192.168.0.10"
 local IP_DST    = "10.0.0.1"
 local PORT_SRC  = 1234
@@ -70,7 +70,6 @@ function master(...)
 	latency = LATENCY
 
 	-- assumes port1 and port2 are not the same
-	local devs = {}
 	local numQueues = 1 
 	if (bidirec == 1) then
 		numQueues = numQueues + 1 
@@ -78,10 +77,7 @@ function master(...)
 	if (latency == 1) then
 		numQueues = numQueues + 1 
 	end
-	devs[1] = device.config(port1, numQueues, numQueues)
-	devs[2] = device.config(port2, numQueues, numQueues)
 
-	device.waitForLinks()
 	local prevRate = 0
 	local prevPassRate = 0
 	local frame_loss = 0
@@ -92,6 +88,10 @@ function master(...)
         local final_validation_ctr = 0
 
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
+                local devs = {}
+                devs[1] = device.config(port1, numQueues, numQueues)
+                devs[2] = device.config(port2, numQueues, numQueues)
+                device.waitForLinks()
 		-- r = {frame_loss, rxMpps, total_rx_frames, total_tx_frames}
 	        r = {dev1_frame_loss, 
                      dev1_rxMpps, 
@@ -426,23 +426,24 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 		txStats:update()
 		count = count + 1
 	end
-	dpdk.sleepMillis(500)
-	rxStats:update()
-	txStats:update()
 	txStats:finalize()
-	rxStats:finalize()
-	--stats.name, direction,
-	--stats.mpps.avg, stats.mpps.stdDev,
-	--stats.mbit.avg, stats.mbit.stdDev,
-	--stats.wireMbit.avg, stats.wireMbit.stdDev
-	local loss = txStats.total - rxStats.total
-	if (loss < 0 ) then
-		loss = 0
-	end
-	local pct_loss = loss / txStats.total * 100
-	--printf("loop count: %d  frames dropped: %d (%.8f%%)", count, loss, loss / txStats.total * 100)
-	local results = {pct_loss, rxStats.mpps.avg, txStats.total, rxStats.total, loss, txStats.mpps.avg}
-	return results
+
+        local runtime = timer:new(5)
+        while runtime:running() and dpdk.running() do
+                rxStats:update()
+        end
+        -- note that the rx rate stats will be skewed because of the previous loop
+        rxStats:finalize()
+        local loss = txStats.total - rxStats.total
+        if (loss < 0 ) then
+                loss = 0
+        end
+        local pct_loss = loss / txStats.total * 100
+        -- because the rx rates are skewed, calculate a new rx rate with tx and % loss
+        rxStats.mpps.avg = txStats.mpps.avg * (100 - pct_loss) / 100
+
+        local results = {pct_loss, rxStats.mpps.avg, txStats.total, rxStats.total, loss, txStats.mpps.avg}
+        return results
 end
 
 function timerSlave(txQueue, rxQueue, frame_size, run_time, num_flows, bidirec)
