@@ -11,11 +11,8 @@ local filter    = require "filter"
 local timer     = require "timer"
 local stats     = require "stats"
 local hist      = require "histogram"
-
-
 -- required here because this script creates *a lot* of mempools
 memory.enableCache()
-
 
 -------------------------------------------------------------------------------
 -- "Constants"
@@ -29,6 +26,8 @@ local LATENCY = 0 --do not get letency measurements
 local MAX_FRAME_LOSS_PCT = 0
 local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_RESOLUTION = 0.02
+local HW_RATE_CALIBRATION_ACCURACY = 0.02
+local SW_RATE_CALIBRATION_ACCURACY = 0.1
 local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
 -- local ETH_DST   = "ec:f4:bb:ce:cd:68" -- src mac is taken from the NIC
 local IP_SRC    = "192.168.0.10"
@@ -83,8 +82,8 @@ function master(...)
 	local frame_loss = 0
 	local prevFailRate = max_line_rate_Mfps
 	local rate = max_line_rate_Mfps
-        -- local method = "hardware"
-	local method = "software"
+        local method = "hardware"
+	-- local method = "software"
         local final_validation_ctr = 0
 
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
@@ -285,34 +284,43 @@ end
 
 function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, num_flows, method, t)
 		-- t = {frame_loss, rxMpps}
-
 		local total_rate = rate
 		local qid = 0
-
 		if (bidirec == 1) then
 			total_rate = rate * 2
 		end
-
-
                 printf("\n\nInside launchTest.  rate = %.2f, bidirec = %d, latency = %d, frame_size = %d, run_time = %d, num_flows = %d, method = %s\n\n", rate, bidirec, latency, frame_size, run_time, num_flows, method);
+
+                printf("*********************************************************************************");
+		printf("* calibrating frame rate (millions per second) with %s rate control: %.2f", method , total_rate)
+                printf("*********************************************************************************");
+		calibrateTask1a = dpdk.launchLua("calibrateSlave", dev1:getTxQueue(qid), rate, frame_size, num_flows, method)
+		local c1 = {}
+		c1 = calibrateTask1a:wait()
+		dev1CalibratedRate = c1[1]
+		qid = qid + 1
+		if (bidirec == 1) then
+			calibrateTask2a = dpdk.launchLua("calibrateSlave", dev2:getTxQueue(qid), rate, frame_size, num_flows, method)
+			c1 = calibrateTask2a:wait()
+			dev2CalibratedRate = c1[1]
+		end
+
 
                 printf("*********************************************************************************");
 		printf("* Testing frame rate (millions per second) with %s rate control: %.2f", method , total_rate)
                 printf("*********************************************************************************");
-		dev1:getTxQueue(qid):setRateMpps(method == "hardware" and rate or 0)
-		loadTask1a = dpdk.launchLua("loadSlave", dev1:getTxQueue(qid), dev2:getRxQueue(qid), method == "software" and rate, frame_size, run_time, num_flows)
+		qid = 0
+		loadTask1a = dpdk.launchLua("loadSlave", dev1:getTxQueue(qid), dev2:getRxQueue(qid), dev1CalibratedRate, frame_size, run_time, num_flows, method)
 		qid = qid + 1
-
 		if (bidirec == 1) then
-			dev2:getTxQueue(qid):setRateMpps(method == "hardware" and rate or 0)
-			loadTask1b = dpdk.launchLua("loadSlave", dev2:getTxQueue(qid), dev1:getRxQueue(qid), method == "software" and rate, frame_size, run_time, num_flows)
+			loadTask1b = dpdk.launchLua("loadSlave", dev2:getTxQueue(qid), dev1:getRxQueue(qid), dev2CalibratedRate, frame_size, run_time, num_flows, method)
 			qid = qid + 1
 		end
-
 		if (latency == 1) then
 			loadTask2a = dpdk.launchLua("timerSlave", dev1:getTxQueue(qid), dev2:getRxQueue(qid), frame_size, run_time, num_flows)
 			qid = qid + 1
 		end
+
 
 		local dev1_total_frame_loss_pct = 0 
 		local dev1_avg_rxMpps = 0
@@ -350,21 +358,15 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
                     dev1_total_rx_frames = r2[4];
 		    dev1_total_frame_loss = r2[5]
 		    dev2_avg_txMpps = r2[6]
-
-		    -- total_frame_loss_pct = (r1[1] +r2[1]) /2
-		    -- total_rxMpps = r1[2] +r2[2]
                     avg_device_frame_loss = (dev1_total_frame_loss_pct + dev2_total_frame_loss_pct) / 2
                 else
                     avg_device_frame_loss = dev1_total_frame_loss_pct 
 		end
-
-
                 aggregate_avg_rxMpps = dev1_avg_rxMpps + dev2_avg_rxMpps
                 
 		if (latency == 1) then
 			loadTask2a:wait()
 		end
-		
 		t[1] = dev1_total_frame_loss_pct
 		t[2] = dev1_avg_rxMpps
                 t[3] = dev1_total_tx_frames
@@ -381,7 +383,7 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
 		t[14] = dev2_avg_txMpps
 end
 
-function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
+function calibrateSlave(txQueue, desiredRate, frame_size, num_flows, method)
 	local frame_size_without_crc = frame_size - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
 	local mem = memory.createMemPool(function(buf)
@@ -397,11 +399,81 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 		}
 	end)
 	local bufs = mem:bufArray()
+	local baseIP = parseIPAddress(IP_SRC)
+	local measuredRate = 0
+	local calibratedRate = desiredRate
+	local isCalibrated = false
+	repeat
+		local count = 0
+		local txStats = stats:newDevTxCounter(txQueue, "plain")
+		if ( method == "hardware" ) then
+			txQueue:setRateMpps(calibratedRate)
+			rate_accuracy = HW_RATE_CALIBRATION_ACCURACY
+			runtime = timer:new(5)
+		else
+			rate_accuracy = SW_RATE_CALIBRATION_ACCURACY
+			-- s/w rate seems to be less consistent, so test over longer time period
+			runtime = timer:new(10)
+		end
+		while runtime:running() and dpdk.running() do
+			bufs:alloc(frame_size_without_crc)
+                	for _, buf in ipairs(bufs) do
+				local pkt = buf:getUdpPacket()
+		        	pkt.ip4.src:set(baseIP + count % num_flows)
+			end
+                	bufs:offloadUdpChecksums()
+			if ( method == "hardware" ) then
+				txQueue:send(bufs)
+			else
+				for _, buf in ipairs(bufs) do
+					buf:setRate(calibratedRate)
+				end
+				txQueue:sendWithDelay(bufs)
+			end
+			txStats:update()
+			count = count +1
+		end
+		txStats:finalize()
+		measuredRate = txStats.mpps.avg
+		if ( measuredRate > desiredRate or (desiredRate - measuredRate) > rate_accuracy ) then
+			--calibratedRate = calibratedRate * (calibratedRate/measuredRate)
+			calibratedRate = calibratedRate * (desiredRate/measuredRate)
+			printf("measuredRate: %.4f  desiredRate:%.4f\n", measuredRate, desiredRate)
+		else
+			isCalibrated = true
+		end
+	until ( isCalibrated  == true )
+	printf("Rate calibration complete\n") 
+
+        local results = {calibratedRate}
+        return results
+end
+
+
+function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows, method)
+	local frame_size_without_crc = frame_size - 4
+	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
+	local mem = memory.createMemPool(function(buf)
+		buf:getUdpPacket():fill{
+			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
+			ethSrc = txQueue, -- get the src mac from the device
+			ethDst = ETH_DST,
+			-- ipSrc will be set later as it varies
+			ip4Dst = IP_DST,
+			udpSrc = PORT_SRC,
+			udpDst = PORT_DST,
+			-- payload will be initialized to 0x00 as new memory pools are initially empty
+		}
+	end)
+	local bufs = mem:bufArray()
+	local baseIP = parseIPAddress(IP_SRC)
 	local runtime = timer:new(run_time)
 	local rxStats = stats:newDevRxCounter(rxQueue, "plain")
 	local txStats = stats:newDevTxCounter(txQueue, "plain")
 	local count = 0
-	local baseIP = parseIPAddress(IP_SRC)
+	if ( method == "hardware" ) then
+		txQueue:setRateMpps(rate)
+	end
 	while runtime:running() and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
                 for _, buf in ipairs(bufs) do
@@ -414,13 +486,13 @@ function loadSlave(txQueue, rxQueue, rate, frame_size, run_time, num_flows)
 		        pkt.ip4.src:set(baseIP + count % num_flows)
 		end
                 bufs:offloadUdpChecksums()
-		if rate then
+		if ( method == "hardware" ) then
+			txQueue:send(bufs)
+		else
 			for _, buf in ipairs(bufs) do
 				buf:setRate(rate)
 			end
 			txQueue:sendWithDelay(bufs)
-		else
-			txQueue:send(bufs)
 		end
 		rxStats:update()
 		txStats:update()
