@@ -12,7 +12,7 @@ local timer     = require "timer"
 local stats     = require "stats"
 local hist      = require "histogram"
 -- required here because this script creates *a lot* of mempools
-memory.enableCache()
+-- memory.enableCache()
 
 -------------------------------------------------------------------------------
 -- "Constants"
