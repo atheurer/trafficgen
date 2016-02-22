@@ -89,8 +89,8 @@ function master(...)
 
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
                 local devs = {}
-                devs[1] = device.config(port1, numQueues, numQueues)
-                devs[2] = device.config(port2, numQueues, numQueues)
+		devs[1] = device.config{ port = port1, rxQueues = numQueues, txQueues = numQueues}
+		devs[2] = device.config{ port = port2, rxQueues = numQueues, txQueues = numQueues}
                 device.waitForLinks()
 		-- r = {frame_loss, rxMpps, total_rx_frames, total_tx_frames}
 	        r = {dev1_frame_loss, 
