@@ -25,7 +25,7 @@ local BIDIREC = 0 --do not do bidirectional test
 local LATENCY = 0 --do not get letency measurements
 local MAX_FRAME_LOSS_PCT = 0
 local LINE_RATE = 10000000000 -- 10Gbps
-local RATE_RESOLUTION = 0.02
+local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
@@ -64,7 +64,7 @@ function master(...)
 	max_line_rate_Mfps = max_line_rate_Mfps or (LINE_RATE /(frame_size*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
 	num_flows = num_flows or NUM_FLOWS
         -- The allowed frame loss (percent)
-	rate_resolution = RATE_RESOLUTION
+	rate_granularity = RATE_GRANULARITY
 	latency = LATENCY
 
 	-- assumes port1 and port2 are not the same
@@ -89,12 +89,11 @@ function master(...)
 		tx_rate_tolerance = TX_SW_RATE_TOLERANCE_MPPS
 	end
 
-	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
+	while ( math.abs(rate - prevRate) > rate_granularity or final_validation_ctr < 1 ) do
                 local devs = {}
 		devs[1] = device.config{ port = port1, rxQueues = numQueues, txQueues = numQueues}
 		devs[2] = device.config{ port = port2, rxQueues = numQueues, txQueues = numQueues}
                 device.waitForLinks()
-		-- r = {frame_loss, rxMpps, total_rx_frames, total_tx_frames}
 	        r = {dev1_frame_loss, 
                      dev1_rxMpps, 
                      dev1_total_tx_frames, 
@@ -126,9 +125,6 @@ function master(...)
                     return
                 end
 
-                -- printf("The Tx rates in Mpps are:  dev1 = %.2f    dev2 = %.2f **********\n", dev1_txMpps, dev2_txMpps);
-                -- total_tx_frames = r[3]
-                -- total_rx_frames = r[4]
 		prevRate = rate
 	        if avg_device_frame_loss > max_acceptable_frame_loss_pct then --failed to have <= max_acceptable_frame_loss_pct, lower rate
                         printf("*********************************************************************************************************************************");
@@ -152,7 +148,7 @@ function master(...)
 		end
 		printf("\n")
 
-	        if math.abs(rate - prevRate) < rate_resolution then
+	        if math.abs(rate - prevRate) < rate_granularity then
                 
 	            r = {dev1_frame_loss_pct, 
                          dev1_rxMpps, 
@@ -253,7 +249,7 @@ function master(...)
                         end
 
 	                printf("Number of Data Flows ........................................ %d", num_flows);
-	                printf("Rate Resolution (%%) ......................................... %.2f", rate_resolution);
+	                printf("Rate Granularity (Mfps) ......................................... %.2f", rate_granularity);
 	                printf("Maximum Acceptable Frame Loss (%%) ........................... %.2f", max_acceptable_frame_loss_pct);
                         printf("\n");
 	                printf("Network Device ID ........................................... %d", port1);
