@@ -26,8 +26,8 @@ local LATENCY = 0 --do not get letency measurements
 local MAX_FRAME_LOSS_PCT = 0
 local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_RESOLUTION = 0.02
-local HW_RATE_CALIBRATION_ACCURACY = 0.02
-local SW_RATE_CALIBRATION_ACCURACY = 0.1
+local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
+local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
 -- local ETH_DST   = "ec:f4:bb:ce:cd:68" -- src mac is taken from the NIC
 local IP_SRC    = "192.168.0.10"
@@ -35,7 +35,6 @@ local IP_DST    = "10.0.0.1"
 local PORT_SRC  = 1234
 local PORT_DST  = 1234
 local NUM_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
-local TX_RATE_TOLERANCE_MPPS = 0.2  -- The acceptable difference between actual and measured TX rates (in Mpps).  Abort test if greater
 
 
 function master(...)
@@ -83,8 +82,12 @@ function master(...)
 	local prevFailRate = max_line_rate_Mfps
 	local rate = max_line_rate_Mfps
         local method = "hardware"
-	-- local method = "software"
         local final_validation_ctr = 0
+	if ( method == "hwardware" ) then
+		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
+	else
+		tx_rate_tolerance = TX_SW_RATE_TOLERANCE_MPPS
+	end
 
 	while ( math.abs(rate - prevRate) > rate_resolution or final_validation_ctr < 1 ) do
                 local devs = {}
@@ -115,11 +118,11 @@ function master(...)
 	        local dev2_txMpps = r[14]
 
 
-                if math.abs(rate - dev1_txMpps) > TX_RATE_TOLERANCE_MPPS then
+                if math.abs(rate - dev1_txMpps) > tx_rate_tolerance then
                     printf("\n\n");
                     printf("ABORT TEST:  Device 1 transmit rate not correct. \n");
                     printf("             The desired TX Rate = %.2f Mpps, the measured TX Rate = %.2f Mpps\n", rate, dev1_txMpps);
-                    printf("             The difference between rates can not exceed %.2f Mpps\n\n", TX_RATE_TOLERANCE_MPPS);
+                    printf("             The difference between rates can not exceed %.2f Mpps\n\n", tx_rate_tolerance);
                     return
                 end
 
@@ -198,11 +201,11 @@ function master(...)
 	            local dev1_txMpps = r[13]
 	            local dev2_txMpps = r[14]
 
-                    if math.abs(rate - dev1_txMpps) > TX_RATE_TOLERANCE_MPPS then
+                    if math.abs(rate - dev1_txMpps) > tx_rate_tolerance then
                         printf("\n\n");
                         printf("ABORT TEST:  Device 1 transmit rate not correct. \n");
                         printf("             The desired TX Rate = %.2f Mpps, the measured TX Rate = %.2f Mpps\n", rate, dev1_txMpps);
-                        printf("             The difference between rates can not exceed %.2f Mpps\n\n", TX_RATE_TOLERANCE_MPPS);
+                        printf("             The difference between rates can not exceed %.2f Mpps\n\n", tx_rate_tolerance);
                         return
                     end
                     -- printf("The Tx rates in Mpps are:  dev1 = %.2f    dev2 = %.2f **********\n", dev1_txMpps, dev2_txMpps);
@@ -401,17 +404,20 @@ function calibrateSlave(txQueue, desiredRate, frame_size, num_flows, method)
 	local bufs = mem:bufArray()
 	local baseIP = parseIPAddress(IP_SRC)
 	local measuredRate = 0
+	local prevMeasuredRate = 0
 	local calibratedRate = desiredRate
 	local isCalibrated = false
+	local calibrationCount = 0
+	local overcorrection = 1
 	repeat
 		local count = 0
 		local txStats = stats:newDevTxCounter(txQueue, "plain")
 		if ( method == "hardware" ) then
 			txQueue:setRateMpps(calibratedRate)
-			rate_accuracy = HW_RATE_CALIBRATION_ACCURACY
+			rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
 			runtime = timer:new(5)
 		else
-			rate_accuracy = SW_RATE_CALIBRATION_ACCURACY
+			rate_accuracy = TX_SW_RATE_TOLERANCE_MPPS / 2
 			-- s/w rate seems to be less consistent, so test over longer time period
 			runtime = timer:new(10)
 		end
@@ -435,13 +441,28 @@ function calibrateSlave(txQueue, desiredRate, frame_size, num_flows, method)
 		end
 		txStats:finalize()
 		measuredRate = txStats.mpps.avg
+		-- the measured rate must be within the accuracy valuem but also not exceed the desired rate
 		if ( measuredRate > desiredRate or (desiredRate - measuredRate) > rate_accuracy ) then
-			--calibratedRate = calibratedRate * (calibratedRate/measuredRate)
-			calibratedRate = calibratedRate * (desiredRate/measuredRate)
+			local correction = (1 - desiredRate/measuredRate)
+			--local correction_ratio = 1 / (1 + correction)
+			if ( calibrationCount > 0 ) then
+				overcorrection =  (measuredRate - prevMeasuredRate) / (desiredRate - prevMeasuredRate)
+				if ( overcorrection > 1 ) then
+					printf("overcorrection ratio: %.4f\n", overcorrection)
+					correction = correction/overcorrection
+				end
+			end
+			local correction_ratio = 1 / (1 + correction)
+			calibratedRate = calibratedRate * correction_ratio
+			prevMeasuredRate = measuredRate
 			printf("measuredRate: %.4f  desiredRate:%.4f\n", measuredRate, desiredRate)
+			printf("new correction: %.4f\n", correction)
+			printf("new correction_ratio: %.4f\n", correction_ratio)
+			printf("new calibratedRate: %.4f\n", calibratedRate)
 		else
 			isCalibrated = true
 		end
+		calibrationCount = calibrationCount +1
 	until ( isCalibrated  == true )
 	printf("Rate calibration complete\n") 
 
