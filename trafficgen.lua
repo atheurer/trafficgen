@@ -128,14 +128,14 @@ function master(...)
 		prevRate = rate
 	        if avg_device_frame_loss > max_acceptable_frame_loss_pct then --failed to have <= max_acceptable_frame_loss_pct, lower rate
                         printf("*********************************************************************************************************************************");
-			printf("* Test Result:  FAILED - The traffic throughput loss was %.8f %%, which is higher than the maximum allowed (%.2f %%) loss", avg_device_frame_loss, max_acceptable_frame_loss_pct);
+			printf("* Test Result:  FAILED - The traffic throughput loss was %.8f %%, which is higher than the maximum allowed (%.8f %%) loss", avg_device_frame_loss, max_acceptable_frame_loss_pct);
                         printf("*********************************************************************************************************************************");
 			prevFailRate = rate
 			rate = ( prevPassRate + rate ) / 2
                         printf("FAIL WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, 'new'rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
 		else --acceptable packet loss, increase rate
                         printf("*********************************************************************************************************************************");
-			printf("* Test Result:  PASSED - The traffic thoughput loss was %.8f %%, was did not exceed the maximum allowed loss (%.2f %%)", avg_device_frame_loss, max_acceptable_frame_loss_pct);
+			printf("* Test Result:  PASSED - The traffic thoughput loss was %.8f %%, was did not exceed the maximum allowed loss (%.8f %%)", avg_device_frame_loss, max_acceptable_frame_loss_pct);
                         printf("*********************************************************************************************************************************");
 			prevPassRate = rate
 			rate = (prevFailRate + rate ) / 2
@@ -212,7 +212,7 @@ function master(...)
                         printf("*********************************************************************************************");
                         printf("* Final Validation Test Result:  FAILED\n" ..
                                "*     The validation of %.2f Mfps failed because the traffic throughput loss was %.8f %%, \n" ..
-                               "*     which is higher than the maximum allowed (%.2f %%) loss", 
+                               "*     which is higher than the maximum allowed (%.8f %%) loss", 
                                aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss_pct);
                         printf("*********************************************************************************************");
                         printf("\n");
@@ -229,7 +229,7 @@ function master(...)
                         printf("*********************************************************************************************");
                         printf("* Final Validation Test Result:  PASSED\n" ..
                                "*     The validation of %.2f Mfps passed because the traffic throughput loss was %.8f %%, \n" ..
-                               "*     which did not exceed the maximum allowed (%.2f %%) loss", 
+                               "*     which did not exceed the maximum allowed (%.8f %%) loss", 
                                aggregate_avg_rxMpps, avg_device_frame_loss, max_acceptable_frame_loss_pct);
                         printf("*********************************************************************************************");
                         printf("\n");
@@ -250,19 +250,19 @@ function master(...)
 
 	                printf("Number of Data Flows ........................................ %d", num_flows);
 	                printf("Rate Granularity (Mfps) ......................................... %.2f", rate_granularity);
-	                printf("Maximum Acceptable Frame Loss (%%) ........................... %.2f", max_acceptable_frame_loss_pct);
+	                printf("Maximum Acceptable Frame Loss (%%) ........................... %.8f", max_acceptable_frame_loss_pct);
                         printf("\n");
 	                printf("Network Device ID ........................................... %d", port1);
                         printf("    Average Rx Frame Count (Mfps) ........................... %.2f", dev1_rxMpps);
                         printf("    Rx Frame Count .......................................... %d", dev1_total_rx_frames);
                         printf("    Tx Frame Count .......................................... %d", dev1_total_tx_frames);
-                        printf("    Frame Loss .............................................. %d", dev1_frame_loss);
+                        printf("    Frame Loss Count......................................... %d", dev1_frame_loss);
                         printf("\n");
 	                printf("Network Device ID ........................................... %d", port2);
                         printf("    Average Rx Frame Count (Mfps) ........................... %.2f", dev2_rxMpps);
                         printf("    Rx Frame Count .......................................... %d", dev2_total_rx_frames);
                         printf("    Tx Frame Count .......................................... %d", dev2_total_tx_frames);
-                        printf("    Frame Loss .............................................. %d\n", dev2_frame_loss);
+                        printf("    Frame Loss Count......................................... %d\n", dev2_frame_loss);
                         printf("#############################################################################################\n");
                         printf("\n\n");
                         final_validation_ctr = 1
