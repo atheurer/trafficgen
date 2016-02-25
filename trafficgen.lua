@@ -238,7 +238,7 @@ function launchTest(dev1, dev2, rate, bidirec, latency, frame_size, run_time, nu
 		-- first start the tasks that count reveiced packets
 		rxTask1a = dpdk.launchLua("counterSlave", dev2:getRxQueue(qid), run_time + 6)
 		if (bidirec == 1) then
-			rxTask1b = dpdk.launchLua("counterSlave", dev1:getRxQueue(qid), run_time + 6)
+			rxTask2a = dpdk.launchLua("counterSlave", dev1:getRxQueue(qid), run_time + 6)
 		end
 		dpdk.sleepMillis(3000)
 
