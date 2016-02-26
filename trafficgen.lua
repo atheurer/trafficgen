@@ -72,24 +72,24 @@ function master(...)
 	end
 	local prevRate = 0
 	local prevPassRate = 0
-	local frame_loss = 0
 	local prevFailRate = max_line_rate_Mfps
 	local rate = max_line_rate_Mfps
         local method = "hardware"
-        local final_validation_ctr = 0
 	local rateToleranceRetry = 0
+	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
+	local runtimeMultipler = 2 -- when the test is the "final validation", the runtime is multipled by this value
 	if ( method == "hardware" ) then
 		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
 	else
 		tx_rate_tolerance = TX_SW_RATE_TOLERANCE_MPPS
 	end
 
+	devs[1] = device.config{ port = port1, rxQueues = numQueues, txQueues = numQueues}
+	devs[2] = device.config{ port = port2, rxQueues = numQueues, txQueues = numQueues}
+        device.waitForLinks()
 	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", max_acceptable_frame_loss_pct);
 	while ( math.abs(rate - prevRate) > rate_granularity or finalValidation == true ) do
                 local devs = {}
-		devs[1] = device.config{ port = port1, rxQueues = numQueues, txQueues = numQueues}
-		devs[2] = device.config{ port = port2, rxQueues = numQueues, txQueues = numQueues}
-                device.waitForLinks()
 
                 printf("TOP OF WHILE LOOP:  Testing with prevPassRate = %.2f, prevFailRate = %.2f, prevRate = %.2f, rate = %.2f", prevPassRate, prevFailRate, prevRate, rate); 
 	        if finalValidation == true then
@@ -126,10 +126,12 @@ function master(...)
 	        	if frame_loss_pct > max_acceptable_frame_loss_pct then --failed to have <= max_acceptable_frame_loss_pct, lower rate
 				if finalValidation == true then
 					finalValidation = false
+					runtimeMultipler = 1
 				end
 				printf("Test Result:  FAILED - frame loss (%d, %.8f%%), which is greater than the maximum allowed (%.8f%%)", dev1_lost_frames + dev2_lost_frames, frame_loss_pct, max_acceptable_frame_loss_pct);
 				nextRate = (prevPassRate + rate ) / 2
 				if math.abs(nextRate - rate) <= rate_granularity then
+					-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
 			    		finalValidation = true
 				end
 				prevFailRate = rate
@@ -142,6 +144,7 @@ function master(...)
 				else
 			    	nextRate = (prevFailRate + rate ) / 2
 			    	if math.abs(nextRate - rate) <= rate_granularity then
+					-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
 					finalValidation = true
 			    	else
 					prevPassRate = rate
