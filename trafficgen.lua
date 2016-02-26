@@ -300,10 +300,7 @@ function calibrateSlave(txQueue, desiredRate, frame_size, num_flows, method)
 			local correction_ratio = 1 / (1 + correction)
 			calibratedRate = calibratedRate * correction_ratio
 			prevMeasuredRate = measuredRate
-			printf("measuredRate: %.4f  desiredRate:%.4f\n", measuredRate, desiredRate)
-			printf("new correction: %.4f\n", correction)
-			printf("new correction_ratio: %.4f\n", correction_ratio)
-			printf("new calibratedRate: %.4f\n", calibratedRate)
+                        printf("measuredRate: %.4f  desiredRate:%.4f  new correction: %.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ", measuredRate, desiredRate, correction, correction_ratio, calibratedRate)
 		else
 			isCalibrated = true
 		end
