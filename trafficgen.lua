@@ -11,7 +11,7 @@ local log               = require "log"
 -- memory.enableCache()
 
 local REPS = 1
-local runTime = 15
+local RUN_TIME = 15
 local LATENCY_TRIM = 3000 -- time in ms to delayied start and early end to latency mseasurement, so we are certain main packet load is present
 local FRAME_SIZE = 64
 local TEST_BIDIREC = false --do not do bidirectional test
@@ -29,51 +29,51 @@ local PORT_DST  = 1234
 local NR_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
 
 function master(...)
-	local port1, port2, frameSize, runBidirec, acceptableLossPct, nrFlows, max_line_rate_Mfps = tonumberall(...)
-
-	if not port1 or not port2 then
-		printf("Usage:");
-		printf("         opnfv-vsperf.lua Port1 Port2 [Frame Size] [Traffic Direction] [Maximum Acceptable Frame Loss] [Number of Flows] [Maximum Frames Per Second]");
-		printf("             where:");
-		printf("                Port1 ............................ The first DPDK enabled port of interest, e.g. 0");
-		printf("                Port2 ............................ The second DPDK enabled port of interest, e.g. 1");
-		printf("                Frame Size ....................... Frame size in bytes.  This is the 'goodput' payload size in bytes.  It does not include");
-		printf("                                                   the preamble (7 octets), start of frame delimited (1 octet), and interframe gap (12 octets). ");
-		printf("                                                   The default size is 64.");
-		printf("                uni or bi-directionl test .........0 for unidirectional, 1 for bidirectional.  Default is 0");
-		printf("                Maximum Acceptable Frame Loss .... Percentage of acceptable packet loss.  Default is 0");
-		printf("                Number of Flows .................. Number of packet flows.  Default is %d", NR_FLOWS);
-		printf("                Maximum Frames Per Second ........ The maximum number of frames per second (in Mfps).  For a 10 Gbps connection, this would be 14.88 (also the default)");
-		return
+	local cfgFileLocations = {
+		"./opnfv-vsperf-cfg.lua"
+	}
+	local cfg
+	for _, f in ipairs(cfgFileLocations) do
+		if fileExists(f) then
+			cfgScript = loadfile(f)
+			setfenv(cfgScript, setmetatable({ VSPERF = function(arg) cfg = arg end }, { __index = _G }))
+			local ok, err = pcall(cfgScript)
+			if not ok then
+				log:error("Could not load DPDK config: " .. err)
+				return false
+			end
+			if not cfg then
+				log:error("Config file does not contain DPDKConfig statement")
+				return false
+			end
+			cfg.name = f
+			break
+		end
+	end
+	if not cfg then
+		log:warn("No opnfv-vsperf-cfg.lua config found, using defaults")
+		cfg = {}
 	end
 
-	local testParams = {}
-	testParams.rate = max_line_rate_Mfps
+	local testParams = cfg
+	testParams.frameSize = testParams.frameSize or FRAME_SIZE
+	local max_line_rate_Mfps = (LINE_RATE /(testParams.frameSize*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
+	testParams.rate = testParams.rate or max_line_rate_Mfps
 	testParams.txMethod = "hardware"
 	testParams.testLatency = TEST_LATENCY
-	testParams.fameSize = frameSize or FRAME_SIZE
-	printf("runBidirec: %d", runBidirec)
-	if runBidirec == 1 then
-		printf("using bidirec")
-		testParams.runBidirec = true
-	else
-		printf("not using bidirec")
-		testParams.runBidirec = false
-	end
-	testParams.nrFlows = nrFlows or NR_FLOWS
-	testParams.frameSize = frameSize or FRAME_SIZE
-	testParams.runTime = runTime or RUN_TIME
-	acceptableLossPct = acceptableLossPct or MAX_FRAME_LOSS_PCT
-	max_line_rate_Mfps = max_line_rate_Mfps or (LINE_RATE /(frame_size*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
-	rate_granularity = RATE_GRANULARITY
-	-- assumes port1 and port2 are not the same
+	testParams.runBidirec = testParams.runBidirec or false
+	testParams.nrFlows = testParams.nrFlows or NR_FLOWS
+	testParams.runTime = testParams.runTime or RUN_TIME
+	testParams.acceptableLossPct = testParams.acceptableLossPct or MAX_FRAME_LOSS_PCT
+	testParams.rate_granularity = testParams.rate_granularity or RATE_GRANULARITY
+	testParams.ports = testParams.ports or {0,1}
 	local numQueues = 1 
-	if testLatency then
+	if testParams.testLatency then
 		numQueues = numQueues + 1 
 	end
 	local prevRate = 0
 	local prevPassRate = 0
-	local prevFailRate = max_line_rate_Mfps
+	local prevFailRate = testParams.rate
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
 	local runtimeMultipler = 2 -- when the test is the "final validation", the runtime is multipled by this value
@@ -86,17 +86,23 @@ function master(...)
 	local txStats = {}
 	local rxStats = {}
         local devs = {}
-	devs[1] = device.config{ port = port1, rxQueues = numQueues, txQueues = numQueues}
-	devs[2] = device.config{ port = port2, rxQueues = numQueues, txQueues = numQueues}
+	for i, v in ipairs(testParams.ports) do
+		devs[i] = device.config{ port = testParams.ports[i], rxQueues = numQueues, txQueues = numQueues}
+	end
 	-- connections define where one device connects to another. 
 	connections = {}
-	connections[1] = 2  -- device 1 transmits to device 2
-	if testParams.runBidirec then
-		connections[2] = 1  -- device 2 transmits to device 1
+	for i, v in ipairs(testParams.ports) do
+		if ( i % 2 == 1) then
+			log:debug("port %d connects to port %d", i, i+1);
+			connections[i] = i + 1  -- device 1 transmits to device 2
+			if testParams.runBidirec then
+				connections[i + 1] = i  -- device 2 transmits to device 1
+			end
+		end
 	end
 	device.waitForLinks()
-	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", acceptableLossPct);
-	while ( math.abs(testParams.rate - prevRate) > rate_granularity or finalValidation == true ) do
+	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
+	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation == true ) do
 		if finalValidation == true then
 			log:info("Starting final validation");
 		end
@@ -107,12 +113,12 @@ function master(...)
 		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
 			prevRate = testParams.rate
-			if acceptableLoss(rxStats, txStats, acceptableLossPct)  then
+			if acceptableLoss(rxStats, txStats, testParams.acceptableLossPct)  then
 				if finalValidation == true then
 					return
 				else
 					nextRate = (prevFailRate + testParams.rate ) / 2
-					if math.abs(nextRate - testParams.rate) <= rate_granularity then
+					if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
 						-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
 						finalValidation = true
 					else
@@ -126,7 +132,7 @@ function master(...)
 					runtimeMultipler = 1
 				end
 				nextRate = (prevPassRate + testParams.rate ) / 2
-				if math.abs(nextRate - testParams.rate) <= rate_granularity then
+				if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
 					-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
 					finalValidation = true
 				end
@@ -144,6 +150,14 @@ function master(...)
 		end
 	end
 	printf("Test is complete")
+end
+
+function fileExists(f)
+	local file = io.open(f, "r")
+	if file then
+	file:close()
+	end
+	return not not file
 end
 
 function acceptableLoss(rxStats, txStats, acceptableLossPct)
