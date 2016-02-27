@@ -6,6 +6,7 @@ local filter    = require "filter"
 local timer     = require "timer"
 local stats     = require "stats"
 local hist      = require "histogram"
+local log               = require "log"
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
 
@@ -31,20 +32,18 @@ function master(...)
 	local port1, port2, frameSize, runBidirec, acceptableLossPct, nrFlows, max_line_rate_Mfps = tonumberall(...)
 
 	if not port1 or not port2 then
-		printf("\n\n");
-		printf("Usage: \n");
-		printf("         opnfv-vsperf.lua Port1 Port2 [Frame Size] [Traffic Direction] [Maximum Acceptable Frame Loss] [Number of Flows] [Maximum Frames Per Second]\n\n");
-		printf("             where:\n");
-		printf("                Port1 ............................ The first DPDK enabled port of interest, e.g. 0\n");
-		printf("                Port2 ............................ The second DPDK enabled port of interest, e.g. 1\n");
+		printf("Usage:");
+		printf("         opnfv-vsperf.lua Port1 Port2 [Frame Size] [Traffic Direction] [Maximum Acceptable Frame Loss] [Number of Flows] [Maximum Frames Per Second]");
+		printf("             where:");
+		printf("                Port1 ............................ The first DPDK enabled port of interest, e.g. 0");
+		printf("                Port2 ............................ The second DPDK enabled port of interest, e.g. 1");
 		printf("                Frame Size ....................... Frame size in bytes.  This is the 'goodput' payload size in bytes.  It does not include");
 		printf("                                                   the preamble (7 octets), start of frame delimited (1 octet), and interframe gap (12 octets). ");
-		printf("                                                   The default size is 64. \n");
-		printf("                uni or bi-directionl test .........0 for unidirectional, 1 for bidirectional.  Default is 0\n");
-		printf("                Maximum Acceptable Frame Loss .... Percentage of acceptable packet loss.  Default is 0\n");
-		printf("                Number of Flows .................. Number of packet flows.  Default is 256\n");
+		printf("                                                   The default size is 64.");
+		printf("                uni or bi-directionl test .........0 for unidirectional, 1 for bidirectional.  Default is 0");
+		printf("                Maximum Acceptable Frame Loss .... Percentage of acceptable packet loss.  Default is 0");
+		printf("                Number of Flows .................. Number of packet flows.  Default is %d", NR_FLOWS);
 		printf("                Maximum Frames Per Second ........ The maximum number of frames per second (in Mfps).  For a 10 Gbps connection, this would be 14.88 (also the default)");
-		printf("\n\n");
 		return
 	end
 
@@ -99,11 +98,11 @@ function master(...)
 	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", acceptableLossPct);
 	while ( math.abs(testParams.rate - prevRate) > rate_granularity or finalValidation == true ) do
 		if finalValidation == true then
-			printf("Starting final validation");
+			log:info("Starting final validation");
 		end
 		launchTest(devs, testParams, txStats, rxStats)
 		if finalValidation == true then
-			printf("Stopping final validation");
+			log:info("Stopping final validation");
 		end
 		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
@@ -138,7 +137,7 @@ function master(...)
 				break
 			end
 		else
-			printf("skipping results eval, rateAttempts: %d", rateAttempts[1]);
+			--log:err("Could not achieve Tx rate");
 			if rateAttempts[1] > maxRateAttempts then
 				return
 			end
@@ -154,19 +153,19 @@ function acceptableLoss(rxStats, txStats, acceptableLossPct)
 			local lostFrames = txStats[i].totalFrames - rxStats[connections[i]].totalFrames
 			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
 			if (lostFramePct > acceptableLossPct) then
-				printf("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
+				log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
 				(i-1), (connections[i]-1), lostFrames, lostFramePct, acceptableLossPct);
 				pass = false
 			else
-				printf("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
+				log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
 				(i-1), (connections[i]-1), lostFrames, lostFramePct, acceptableLossPct);
 			end
 		end
 	end
 	if pass then
-		printf("Test Result:  PASSED")
+		log:info("Test Result:  PASSED")
 	else
-		printf("Test Result:  FAILED")
+		log:warn("Test Result:  FAILED")
 	end
 	return pass
 end
@@ -174,14 +173,13 @@ end
 function acceptableRate(tx_rate_tolerance, rate, txStats, maxRateAttempts, t)
 	t[1] = t[1] + 1
 	for i, v in ipairs(txStats) do
-		if math.abs(rate - txStats[i].avgMpps) > tx_rate_tolerance then
+		local rateDiff = math.abs(rate - txStats[i].avgMpps)
+		if rateDiff > tx_rate_tolerance then
 			if t[1] > maxRateAttempts then
-				printf("ABORT TEST:  difference between actual and requested Tx rate (%.2f) is greater than allowed (%.2f)",
-				rateDiff, tx_rate_tolerance)
+				log:error("ABORT TEST:  difference between actual and requested Tx rate (%.2f) is greater than allowed (%.2f)", rateDiff, tx_rate_tolerance)
 				do return end
 			else
-				printf("RETRY TEST: difference between actual and requested Tx rate (%.2f) is greater than allowed (%.2f)",
-				rateDiff, tx_rate_tolerance)
+				log:warn("RETRY TEST: difference between actual and requested Tx rate (%.2f) is greater than allowed (%.2f)", rateDiff, tx_rate_tolerance)
 				return false
 			end
 		end
@@ -236,7 +234,7 @@ function launchTest(devs, testParams, txStats, rxStats)
 end
 
 function calibrateSlave(txQueue, desiredRate, frame_size, num_flows, method)
-	printf("Calibrating %s tx rate for %.2f Mfs",  method , desiredRate)
+	log:info("Calibrating %s tx rate for %.2f Mfs",  method , desiredRate)
 	local frame_size_without_crc = frame_size - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
 	local mem = memory.createMemPool(function(buf)
@@ -295,21 +293,21 @@ function calibrateSlave(txQueue, desiredRate, frame_size, num_flows, method)
 			if ( calibrationCount > 0 ) then
 				overcorrection =  (measuredRate - prevMeasuredRate) / (desiredRate - prevMeasuredRate)
 				if ( overcorrection > 1 ) then
-					printf("overcorrection ratio: %.4f\n", overcorrection)
+					log:debug("overcorrection ratio: %.4f", overcorrection)
 					correction = correction/overcorrection
 				end
 			end
 			local correction_ratio = 1 / (1 + correction)
 			calibratedRate = calibratedRate * correction_ratio
 			prevMeasuredRate = measuredRate
-                        printf("measuredRate: %.4f  desiredRate:%.4f  new correction: %.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
+                        log:debug("measuredRate: %.4f  desiredRate:%.4f  new correction: %.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
 			measuredRate, desiredRate, correction, correction_ratio, calibratedRate)
 		else
 			calibrated = true
 		end
 		calibrationCount = calibrationCount +1
 	until ( calibrated  == true )
-	printf("Rate calibration complete\n") 
+	log:info("Rate calibration complete") 
 
         local results = {}
 	results.calibratedRate = calibratedRate
