@@ -71,6 +71,7 @@ function master(...)
 	if testParams.testLatency then
 		numQueues = numQueues + 1 
 	end
+	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
 	local prevFailRate = testParams.rate
@@ -103,13 +104,7 @@ function master(...)
 	device.waitForLinks()
 	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
 	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation == true ) do
-		if finalValidation == true then
-			log:info("Starting final validation");
-		end
-		launchTest(devs, testParams, txStats, rxStats)
-		if finalValidation == true then
-			log:info("Stopping final validation");
-		end
+		launchTest(finalValidation, devs, testParams, txStats, rxStats)
 		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
 			prevRate = testParams.rate
@@ -203,7 +198,7 @@ function acceptableRate(tx_rate_tolerance, rate, txStats, maxRateAttempts, t)
 	return true
 end
 			
-function launchTest(devs, testParams, txStats, rxStats)
+function launchTest(final, devs, testParams, txStats, rxStats)
 	local qid = 0
 	local calTasks = {}
 	local calStats = {}
@@ -225,6 +220,9 @@ function launchTest(devs, testParams, txStats, rxStats)
 		end
 	end
 	dpdk.sleepMillis(3000)
+	if final == true then
+		log:info("Starting final validation");
+	end
 	-- start devices which transmit
 	for i, v in ipairs(devs) do
 		if connections[i] then
@@ -237,6 +235,9 @@ function launchTest(devs, testParams, txStats, rxStats)
 		if connections[i] then
 			txStats[i] = txTasks[i]:wait()
 		end
+	end
+	if final == true then
+		log:info("Stopping final validation");
 	end
 	dpdk.sleepMillis(3000)
 	-- wait for receive devices to finish
