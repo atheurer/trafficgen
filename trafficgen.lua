@@ -31,6 +31,91 @@ local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
 
 function master(...)
+	local testParams = getTestParams()
+	local finalValidation = false
+	local prevRate = 0
+	local prevPassRate = 0
+	local prevFailRate = testParams.rate
+	local rateAttempts = {0}
+	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
+	local runtimeMultipler = 2 -- when the test is the "final validation", the runtime is multipled by this value
+	if ( method == "hardware" ) then
+		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
+	else
+		tx_rate_tolerance = TX_SW_RATE_TOLERANCE_MPPS
+	end
+	local txStats = {}
+	local rxStats = {}
+        local devs = prepareDevs(testParams)
+	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
+	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation == true ) do
+		launchTest(finalValidation, devs, testParams, txStats, rxStats)
+		if or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
+			prevRate = testParams.rate
+			if acceptableLoss(testParams, rxStats, txStats) then
+				if finalValidation == true then
+					return
+				else
+					nextRate = (prevFailRate + testParams.rate ) / 2
+					if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
+						-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
+						finalValidation = true
+					else
+						prevPassRate = testParams.rate
+						testParams.rate = nextRate
+					end
+				end
+			else
+				if finalValidation == true then
+					finalValidation = false
+					runtimeMultipler = 1
+				end
+				nextRate = (prevPassRate + testParams.rate ) / 2
+				if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
+					-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
+					finalValidation = true
+				end
+				prevFailRate = testParams.rate
+				testParams.rate = nextRate
+			end
+			if not dpdk.running() then
+				break
+			end
+		else
+			if rateAttempts[1] > maxRateAttempts then
+				return
+			end
+		end
+	end
+	printf("Test is complete")
+end
+
+function prepareDevs(testParams)
+	local devs = {}
+	for i, v in ipairs(testParams.ports) do
+		devs[i] = device.config{ port = testParams.ports[i],
+					 rxQueues = testParams.rxQueuesPerDev,
+					 txQueues = testParams.txQueuesPerDev }
+	end
+	-- connections define where one device connects to another 
+	-- currently this follows a pattter of 1->2, 3->4, and so on
+	-- if bidirectional traffic is enabled, the reverse is also true
+	testParams.connections = {}
+	for i, v in ipairs(testParams.ports) do
+		if ( i % 2 == 1) then
+			log:info("port %d connects to port %d", i, i+1);
+			testParams.connections[i] = i + 1  -- device 1 transmits to device 2
+			if testParams.runBidirec then
+				testParams.connections[i + 1] = i  -- device 2 transmits to device 1
+			end
+		end
+	end
+	device.waitForLinks()
+	return devs
+end
+
+function getTestParams(testParams)
 	local cfgFileLocations = {
 		"./opnfv-vsperf-cfg.lua"
 	}
@@ -75,80 +160,7 @@ function master(...)
 		testParams.txQueuesPerDev = testParams.txQueuesPerDev + 1
 		testParams.rxQueuesPerDev = testParams.rxQueuesPerDev + 1
 	end
-	local finalValidation = false
-	local prevRate = 0
-	local prevPassRate = 0
-	local prevFailRate = testParams.rate
-	local rateAttempts = {0}
-	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
-	local runtimeMultipler = 2 -- when the test is the "final validation", the runtime is multipled by this value
-	if ( method == "hardware" ) then
-		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
-	else
-		tx_rate_tolerance = TX_SW_RATE_TOLERANCE_MPPS
-	end
-
-	local txStats = {}
-	local rxStats = {}
-        local devs = {}
-	for i, v in ipairs(testParams.ports) do
-		devs[i] = device.config{ port = testParams.ports[i], rxQueues = testParams.rxQueuesPerDev, txQueues = testParams.txQueuesPerDev}
-	end
-	-- connections define where one device connects to another. 
-	connections = {}
-	for i, v in ipairs(testParams.ports) do
-		if ( i % 2 == 1) then
-			log:debug("port %d connects to port %d", i, i+1);
-			connections[i] = i + 1  -- device 1 transmits to device 2
-			if testParams.runBidirec then
-				connections[i + 1] = i  -- device 2 transmits to device 1
-			end
-		end
-	end
-	device.waitForLinks()
-	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
-	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation == true ) do
-		launchTest(finalValidation, devs, testParams, txStats, rxStats)
-		if true or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
-			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
-			prevRate = testParams.rate
-			if acceptableLoss(rxStats, txStats, testParams.acceptableLossPct) then
-				if finalValidation == true then
-					return
-				else
-					nextRate = (prevFailRate + testParams.rate ) / 2
-					if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
-						-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
-						finalValidation = true
-					else
-						prevPassRate = testParams.rate
-						testParams.rate = nextRate
-					end
-				end
-			else
-				if finalValidation == true then
-					finalValidation = false
-					runtimeMultipler = 1
-				end
-				nextRate = (prevPassRate + testParams.rate ) / 2
-				if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
-					-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
-					finalValidation = true
-				end
-				prevFailRate = testParams.rate
-				testParams.rate = nextRate
-			end
-			if not dpdk.running() then
-				break
-			end
-		else
-			--log:err("Could not achieve Tx rate");
-			if rateAttempts[1] > maxRateAttempts then
-				return
-			end
-		end
-	end
-	printf("Test is complete")
+	return testParams
 end
 
 function fileExists(f)
@@ -159,19 +171,19 @@ function fileExists(f)
 	return not not file
 end
 
-function acceptableLoss(rxStats, txStats, acceptableLossPct)
+function acceptableLoss(testParams, rxStats, txStats)
 	local pass = true
 	for i, v in ipairs(txStats) do
-		if connections[i] then
-			local lostFrames = txStats[i].totalFrames - rxStats[connections[i]].totalFrames
+		if testParams.connections[i] then
+			local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
 			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
-			if (lostFramePct > acceptableLossPct) then
+			if (lostFramePct > testParams.acceptableLossPct) then
 				log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
-				(i-1), (connections[i]-1), lostFrames, lostFramePct, acceptableLossPct);
+				(i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
 				pass = false
 			else
 				log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
-				(i-1), (connections[i]-1), lostFrames, lostFramePct, acceptableLossPct);
+				(i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
 			end
 		end
 	end
@@ -212,7 +224,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- calibrate transmit rate
 	local calibratedStartRate = testParams.rate
 	for i, v in ipairs(devs) do
-		if connections[i] then
+		if testParams.connections[i] then
 			calTasks[i] = dpdk.launchLua("calibrateSlave", devs[i], testParams.txQueuesPerDev,
 			testParams.rate, calibratedStartRate, testParams.frameSize, testParams.nrFlows, testParams.txMethod)
 			calStats[i] = calTasks[i]:wait()
@@ -221,9 +233,9 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	end
 	-- start devices which receive
 	for i, v in ipairs(devs) do
-		if connections[i] then
+		if testParams.connections[i] then
 			--rxTasks[i] = dpdk.launchLua("counterSlave", devs[i]:getRxQueue(qid), testParams.runTime + 6)
-			rxTasks[i] = dpdk.launchLua("counterSlave", devs[connections[i]]:getRxQueue(0), testParams.runTime + 6)
+			rxTasks[i] = dpdk.launchLua("counterSlave", devs[testParams.connections[i]]:getRxQueue(0), testParams.runTime + 6)
 		end
 	end
 	dpdk.sleepMillis(3000)
@@ -233,14 +245,14 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- start devices which transmit
 	idx = 1
 	for i, v in ipairs(devs) do
-		if connections[i] then
+		if testParams.connections[i] then
 			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], testParams.txQueuesPerDev, testParams.rate,
 			calStats[idx].calibratedRate, testParams.frameSize, testParams.runTime, testParams.nrFlows, testParams.txMethod)
 		end
 	end
 	-- wait for transmit devices to finish
 	for i, v in ipairs(devs) do
-		if connections[i] then
+		if testParams.connections[i] then
 			txStats[i] = txTasks[i]:wait()
 		end
 	end
@@ -250,8 +262,8 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	dpdk.sleepMillis(3000)
 	-- wait for receive devices to finish
 	for i, v in ipairs(devs) do
-		if connections[i] then
-			rxStats[connections[i]] = rxTasks[i]:wait()
+		if testParams.connections[i] then
+			rxStats[testParams.connections[i]] = rxTasks[i]:wait()
 		end
 	end
 end
