@@ -50,7 +50,7 @@ function master(...)
 	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
 	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation == true ) do
 		launchTest(finalValidation, devs, testParams, txStats, rxStats)
-		if or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
 			prevRate = testParams.rate
 			if acceptableLoss(testParams, rxStats, txStats) then
