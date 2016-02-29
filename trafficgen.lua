@@ -48,13 +48,14 @@ function master(...)
 	local rxStats = {}
         local devs = prepareDevs(testParams)
 	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
-	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation == true ) do
+	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation ) do
 		launchTest(finalValidation, devs, testParams, txStats, rxStats)
 		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
 			prevRate = testParams.rate
 			if acceptableLoss(testParams, rxStats, txStats) then
 				if finalValidation == true then
+					showReport(rxStats, txStats, testParams)
 					return
 				else
 					nextRate = (prevFailRate + testParams.rate ) / 2
@@ -69,7 +70,7 @@ function master(...)
 			else
 				if finalValidation == true then
 					finalValidation = false
-					runtimeMultipler = 1
+					runtimeMultipler = 8
 				end
 				nextRate = (prevPassRate + testParams.rate ) / 2
 				if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
@@ -88,7 +89,33 @@ function master(...)
 			end
 		end
 	end
-	printf("Test is complete")
+end
+
+function showReport(rxStats, txStats, testParams)
+	local totalRxMpps = 0
+	local totalTxMpps = 0
+	local totalRxFrames = 0
+	local totalTxFrames = 0
+	local totalLostFrames = 0
+	local totalLostFramePct 
+	for i, v in ipairs(txStats) do
+		if testParams.connections[i] then
+			local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
+			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
+			local rxMpps = txStats[i].avgMpps * (100 - lostFramePct) / 100
+			totalRxMpps = totalRxMpps + rxMpps
+			totalTxMpps = totalTxMpps + txStats[i].avgMpps
+			totalRxFrames = totalRxFrames + rxStats[testParams.connections[i]].totalFrames
+			totalTxFrames = totalTxFrames + txStats[i].totalFrames
+			totalLostFrames = totalLostFrames + lostFrames
+			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
+			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %.8f%% Rx Mpps: %.2f",
+			 (i-1), (testParams.connections[i]-1), txStats[i].totalFrames,
+			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
+		end
+	end
+	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %.8f%% Rx Mpps: %.2f",
+	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalRxMpps)
 end
 
 function prepareDevs(testParams)
