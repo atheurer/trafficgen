@@ -26,10 +26,12 @@
 -- txMethod     	"hardware" or "software": The method to transmit packets (hardware recommended when adapter support is available).
 -- testLatency 		true or false: If true, collect timestamps for some packets for round-trip latency.
 -- nrFlows      	Integer: The number of unique network flows to generate.
--- runTime 		Integer: The number of seconds to run a test.
+-- searchRunTime 	Integer: The number of seconds to run a test when doing binary search.
+-- validationRunTime 	Integer: The number of seconds to run a test when doing final validation.
 -- acceptableLossPct	Float: The maximum percentage of packet loss allowed to consider a test as passing.
 -- rate_granularity	testParams.rate_granularity or RATE_GRANULARITY
 -- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
+-- frameSize		Integer: the size of the Ethernet frame (including CRC)
 
 local dpdk	= require "dpdk"
 local memory	= require "memory"
@@ -44,7 +46,8 @@ local log	= require "log"
 -- memory.enableCache()
 
 local REPS = 1
-local RUN_TIME = 15
+local VALIDATION_RUN_TIME = 30
+local SEARCH_RUN_TIME = 60
 local LATENCY_TRIM = 3000 -- time in ms to delayied start and early end to latency mseasurement, so we are certain main packet load is present
 local FRAME_SIZE = 64
 local TEST_BIDIREC = false --do not do bidirectional test
@@ -208,7 +211,8 @@ function getTestParams(testParams)
 	testParams.testLatency = TEST_LATENCY
 	testParams.runBidirec = testParams.runBidirec or false
 	testParams.nrFlows = testParams.nrFlows or NR_FLOWS
-	testParams.runTime = testParams.runTime or RUN_TIME
+	testParams.searchRunTime = testParams.searchRunTime or SEARCH_RUN_TIME
+	testParams.validationRunTime = testParams.validationRunTime or VALIDATION_RUN_TIME
 	testParams.acceptableLossPct = testParams.acceptableLossPct or MAX_FRAME_LOSS_PCT
 	testParams.rate_granularity = testParams.rate_granularity or RATE_GRANULARITY
 	testParams.ports = testParams.ports or {0,1}
@@ -279,6 +283,12 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	local calStats = {}
 	local rxTasks = {}
 	local txTasks = {}
+	local runTime
+	if final then
+		runTime = testParams.validationRunTime
+	else
+		runTime = testParams.searchRunTime
+	end
 	-- calibrate transmit rate
 	local calibratedStartRate = testParams.rate
 	for i, v in ipairs(devs) do
@@ -292,8 +302,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- start devices which receive
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			--rxTasks[i] = dpdk.launchLua("counterSlave", devs[i]:getRxQueue(qid), testParams.runTime + 6)
-			rxTasks[i] = dpdk.launchLua("counterSlave", devs[testParams.connections[i]]:getRxQueue(0), testParams.runTime + 6)
+			rxTasks[i] = dpdk.launchLua("counterSlave", devs[testParams.connections[i]]:getRxQueue(0), runTime + 6)
 		end
 	end
 	dpdk.sleepMillis(3000)
@@ -305,7 +314,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
 			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], testParams.txQueuesPerDev, testParams.rate,
-			calStats[idx].calibratedRate, testParams.frameSize, testParams.runTime, testParams.nrFlows, testParams.txMethod)
+			calStats[idx].calibratedRate, testParams.frameSize, runTime, testParams.nrFlows, testParams.txMethod)
 		end
 	end
 	-- wait for transmit devices to finish
