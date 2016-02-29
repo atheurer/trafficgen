@@ -1,3 +1,36 @@
+-- This program provides a RFC2544-like testing of network devices, using
+-- libaries from the MoonGen packet generator and DPDK.  This program
+-- is typically from within a MoonGen source tree, for example:
+--
+-- cd MoonGen
+-- build/MoonGen examples/opnfv-vsperf.lua
+--
+-- The test will run a binary search to find the maximum packet rate while
+-- not exceeding a defined percentage packet loss.
+--
+-- The test parameters can be altered by created a file, opnfv-vsperf-cfg.lua
+-- in the current working directory.  The file is lua syntax and describes the
+-- test paramters.  For example:
+--
+-- VSPERF {
+--	rate = 5,
+--	runBidirec = true,
+--	ports = {0,1,2,3}
+-- }
+--
+-- paramters that may be used:
+-- ports        	A list of DPDK ports to use, for example {0,1}.  Minimum is 1 pair, and more than 1 pair can be used.
+-- 			It is assumed that for each pair, packets transmitted out the first port will arrive on the second port (and the reverse)
+-- rate         	Float: The packet rate in millions/sec to start testing (default is 14.88).
+-- runBidirec   	true or false: If true all ports transmit packets (and receive).  If false, only every other port transmits packets.
+-- txMethod     	"hardware" or "software": The method to transmit packets (hardware recommended when adapter support is available).
+-- testLatency 		true or false: If true, collect timestamps for some packets for round-trip latency.
+-- nrFlows      	Integer: The number of unique network flows to generate.
+-- runTime 		Integer: The number of seconds to run a test.
+-- acceptableLossPct	Float: The maximum percentage of packet loss allowed to consider a test as passing.
+-- rate_granularity	testParams.rate_granularity or RATE_GRANULARITY
+-- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
+
 local dpdk      = require "dpdk"
 local memory    = require "memory"
 local ts        = require "timestamping"
