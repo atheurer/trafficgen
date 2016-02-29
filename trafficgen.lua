@@ -31,15 +31,15 @@
 -- rate_granularity	testParams.rate_granularity or RATE_GRANULARITY
 -- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
 
-local dpdk      = require "dpdk"
-local memory    = require "memory"
-local ts        = require "timestamping"
-local device    = require "device"
-local filter    = require "filter"
-local timer     = require "timer"
-local stats     = require "stats"
-local hist      = require "histogram"
-local log               = require "log"
+local dpdk	= require "dpdk"
+local memory	= require "memory"
+local ts	= require "timestamping"
+local device	= require "device"
+local filter	= require "filter"
+local timer	= require "timer"
+local stats	= require "stats"
+local hist	= require "histogram"
+local log	= require "log"
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
 
@@ -71,7 +71,6 @@ function master(...)
 	local prevFailRate = testParams.rate
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
-	local runtimeMultipler = 2 -- when the test is the "final validation", the runtime is multipled by this value
 	if ( method == "hardware" ) then
 		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
 	else
@@ -87,7 +86,7 @@ function master(...)
 			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
 			prevRate = testParams.rate
 			if acceptableLoss(testParams, rxStats, txStats) then
-				if finalValidation == true then
+				if finalValidation then
 					showReport(rxStats, txStats, testParams)
 					return
 				else
@@ -101,9 +100,8 @@ function master(...)
 					end
 				end
 			else
-				if finalValidation == true then
+				if finalValidation then
 					finalValidation = false
-					runtimeMultipler = 8
 				end
 				nextRate = (prevPassRate + testParams.rate ) / 2
 				if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
@@ -165,7 +163,7 @@ function prepareDevs(testParams)
 	for i, v in ipairs(testParams.ports) do
 		if ( i % 2 == 1) then
 			log:info("port %d connects to port %d", i, i+1);
-			testParams.connections[i] = i + 1  -- device 1 transmits to device 2
+			 testParams.connections[i] = i + 1  -- device 1 transmits to device 2
 			if testParams.runBidirec then
 				testParams.connections[i + 1] = i  -- device 2 transmits to device 1
 			end
@@ -239,11 +237,11 @@ function acceptableLoss(testParams, rxStats, txStats)
 			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
 			if (lostFramePct > testParams.acceptableLossPct) then
 				log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
-				(i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
+				 (i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
 				pass = false
 			else
 				log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
-				(i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
+				 (i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
 			end
 		end
 	end
@@ -299,7 +297,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 		end
 	end
 	dpdk.sleepMillis(3000)
-	if final == true then
+	if final then
 		log:info("Starting final validation");
 	end
 	-- start devices which transmit
@@ -316,7 +314,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 			txStats[i] = txTasks[i]:wait()
 		end
 	end
-	if final == true then
+	if final then
 		log:info("Stopping final validation");
 	end
 	dpdk.sleepMillis(3000)
@@ -407,12 +405,12 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 			calibratedRate = calibratedRate * correction_ratio
 			prevMeasuredRate = measuredRate
                         log:info("measuredRate: %.4f  desiredRate:%.4f  new correction: %.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
-			measuredRate, desiredRate, correction, correction_ratio, calibratedRate)
+			 measuredRate, desiredRate, correction, correction_ratio, calibratedRate)
 		else
 			calibrated = true
 		end
 		calibrationCount = calibrationCount +1
-	until ( calibrated  == true )
+	until ( calibrated )
 	log:info("Rate calibration complete") 
 
         local results = {}
