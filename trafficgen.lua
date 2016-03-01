@@ -105,9 +105,11 @@ function master(...)
 			else
 				if finalValidation then
 					finalValidation = false
+					nextRate = testParams.rate - testParams.rate_granularity
+				else
+					nextRate = (prevPassRate + testParams.rate ) / 2
 				end
-				nextRate = (prevPassRate + testParams.rate ) / 2
-				if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
+				if math.abs(nextRate - testParams.rate) < testParams.rate_granularity then
 					-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
 					finalValidation = true
 				end
