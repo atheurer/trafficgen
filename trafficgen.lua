@@ -152,6 +152,18 @@ function showReport(rxStats, txStats, testParams)
 	end
 	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %.8f%% Rx Mpps: %.2f",
 	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalRxMpps)
+	local portList = ""
+	local count = 0
+	for i, v in ipairs(testParams.ports) do
+		if count == 0 then
+			portList = portList..i
+		else
+			portList = portList..","..i
+		end
+		count = count + 1
+	end
+	printf("[PARAMETERS] rate: %.f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %.f ports: %s",
+	 testParams.rate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 end
 
 function prepareDevs(testParams)
