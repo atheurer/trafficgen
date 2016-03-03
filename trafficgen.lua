@@ -416,19 +416,11 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		measuredRate = txStats.mpps.avg
 		-- the measured rate must be within the tolerance window but also not exceed the desired rate
 		if ( measuredRate > desiredRate or (desiredRate - measuredRate) > rate_accuracy ) then
-			local correction = (1 - desiredRate/measuredRate)
-			if ( calibrationCount > 0 ) then
-				overcorrection =  (measuredRate - prevMeasuredRate) / (desiredRate - prevMeasuredRate)
-				if ( overcorrection > 1 ) then
-					log:info("overcorrection ratio: %.4f", overcorrection)
-					correction = correction/overcorrection
-				end
-			end
-			local correction_ratio = 1 / (1 + correction)
+			local correction_ratio = desiredRate/measuredRate
 			calibratedRate = calibratedRate * correction_ratio
 			prevMeasuredRate = measuredRate
-                        log:info("measuredRate: %.4f  desiredRate:%.4f  new correction: %.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
-			 measuredRate, desiredRate, correction, correction_ratio, calibratedRate)
+                        log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
+			 measuredRate, desiredRate, correction_ratio, calibratedRate)
 		else
 			calibrated = true
 		end
