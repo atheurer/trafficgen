@@ -71,7 +71,8 @@ function master(...)
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
-	local prevFailRate = testParams.rate
+	local testParams.rate = testParams.startRate
+	local prevFailRate = testParams.startRate
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
 	if ( method == "hardware" ) then
@@ -162,8 +163,8 @@ function showReport(rxStats, txStats, testParams)
 		end
 		count = count + 1
 	end
-	printf("[PARAMETERS] rate: %.f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %.f ports: %s",
-	 testParams.rate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
+	printf("[PARAMETERS] startRate: %.f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %.f ports: %s",
+	 testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 end
 
 function prepareDevs(testParams)
@@ -220,7 +221,7 @@ function getTestParams(testParams)
 	local testParams = cfg
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
 	local max_line_rate_Mfps = (LINE_RATE /(testParams.frameSize*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
-	testParams.rate = testParams.rate or max_line_rate_Mfps
+	testParams.startRate = testParams.startRate or max_line_rate_Mfps
 	testParams.txMethod = "hardware"
 	testParams.testLatency = TEST_LATENCY
 	testParams.runBidirec = testParams.runBidirec or false
