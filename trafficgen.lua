@@ -71,7 +71,6 @@ function master(...)
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
-	local testParams.rate = testParams.startRate
 	local prevFailRate = testParams.startRate
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
@@ -84,6 +83,7 @@ function master(...)
 	local rxStats = {}
         local devs = prepareDevs(testParams)
 	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
+	testParams.rate = testParams.startRate
 	while ( math.abs(testParams.rate - prevRate) > testParams.rate_granularity or finalValidation ) do
 		launchTest(finalValidation, devs, testParams, txStats, rxStats)
 		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
