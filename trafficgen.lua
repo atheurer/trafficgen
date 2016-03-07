@@ -146,12 +146,12 @@ function showReport(rxStats, txStats, testParams)
 			totalTxFrames = totalTxFrames + txStats[i].totalFrames
 			totalLostFrames = totalLostFrames + lostFrames
 			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
-			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %.8f%% Rx Mpps: %.2f",
+			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
 			 (i-1), (testParams.connections[i]-1), txStats[i].totalFrames,
 			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
 		end
 	end
-	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %.8f%% Rx Mpps: %.2f",
+	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
 	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalRxMpps)
 	local portList = ""
 	local count = 0
