@@ -163,7 +163,7 @@ function showReport(rxStats, txStats, testParams)
 		end
 		count = count + 1
 	end
-	printf("[PARAMETERS] startRate: %.f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %.f ports: %s",
+	printf("[PARAMETERS] startRate: %f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
 	 testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 end
 
