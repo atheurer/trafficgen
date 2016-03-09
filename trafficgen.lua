@@ -104,6 +104,10 @@ function master(...)
 					end
 				end
 			else
+				if testParams.rate <= testParams.rate_granularity then
+					log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
+					return
+				end
 				if finalValidation then
 					finalValidation = false
 					nextRate = testParams.rate - testParams.rate_granularity
