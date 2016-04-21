@@ -19,15 +19,16 @@
 -- }
 --
 -- paramters that may be used:
+-- testType		Either "throughput" or "latency"
 -- ports        	A list of DPDK ports to use, for example {0,1}.  Minimum is 1 pair, and more than 1 pair can be used.
 -- 			It is assumed that for each pair, packets transmitted out the first port will arrive on the second port (and the reverse)
--- rate         	Float: The packet rate in millions/sec to start testing (default is 14.88).
+-- startRate         	Float: The packet rate in millions/sec to start testing (default is 14.88).
 -- runBidirec   	true or false: If true all ports transmit packets (and receive).  If false, only every other port transmits packets.
 -- txMethod     	"hardware" or "software": The method to transmit packets (hardware recommended when adapter support is available).
--- testLatency 		true or false: If true, collect timestamps for some packets for round-trip latency.
 -- nrFlows      	Integer: The number of unique network flows to generate.
--- searchRunTime 	Integer: The number of seconds to run a test when doing binary search.
--- validationRunTime 	Integer: The number of seconds to run a test when doing final validation.
+-- latencyRunTime 	Integer: The number of seconds to run when doing a latency test.
+-- searchRunTime 	Integer: The number of seconds to run when doing binary search for a throughput test.
+-- validationRunTime 	Integer: The number of seconds to run when doing final validation for a throughput test.
 -- acceptableLossPct	Float: The maximum percentage of packet loss allowed to consider a test as passing.
 -- rate_granularity	testParams.rate_granularity or RATE_GRANULARITY
 -- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
@@ -47,11 +48,13 @@ local log	= require "log"
 
 local REPS = 1
 local VALIDATION_RUN_TIME = 30
+local LATENCY_RUN_TIME = 1800
 local SEARCH_RUN_TIME = 60
 local LATENCY_TRIM = 3000 -- time in ms to delayied start and early end to latency mseasurement, so we are certain main packet load is present
 local FRAME_SIZE = 64
+local TEST_TYPE = "throughput" -- "throughput" is for finding max packets/sec while not exceeding MAX_FRAME_LOSS_PCT
+			       -- "latency" is for measuring round-trip packet latency while handling testParams.startRate packets/sec
 local TEST_BIDIREC = false --do not do bidirectional test
-local TEST_LATENCY = false --do not get letency measurements
 local MAX_FRAME_LOSS_PCT = 0
 local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_GRANULARITY = 0.1
@@ -82,51 +85,58 @@ function master(...)
 	local txStats = {}
 	local rxStats = {}
         local devs = prepareDevs(testParams)
-	printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
 	testParams.rate = testParams.startRate
-	while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
+	if testParams.testType == "latency" then 
+		printf("Starting latency test", testParams.acceptableLossPct);
 		launchTest(finalValidation, devs, testParams, txStats, rxStats)
-		if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
-			--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
-			prevRate = testParams.rate
-			if acceptableLoss(testParams, rxStats, txStats) then
-				if finalValidation then
-					showReport(rxStats, txStats, testParams)
-					return
-				else
-					nextRate = (prevFailRate + testParams.rate ) / 2
-					if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
-						-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
-						finalValidation = true
+	else
+		if testParams.testType == "throughput" then
+			printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
+			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
+				launchTest(finalValidation, devs, testParams, txStats, rxStats)
+				if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+					--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
+					prevRate = testParams.rate
+					if acceptableLoss(testParams, rxStats, txStats) then
+						if finalValidation then
+							showReport(rxStats, txStats, testParams)
+							return
+						else
+							nextRate = (prevFailRate + testParams.rate ) / 2
+							if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
+								-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
+								finalValidation = true
+							else
+								prevPassRate = testParams.rate
+								testParams.rate = nextRate
+							end
+						end
 					else
-						prevPassRate = testParams.rate
+						if testParams.rate <= testParams.rate_granularity then
+							log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
+							return
+						end
+						if finalValidation then
+							finalValidation = false
+							nextRate = testParams.rate - testParams.rate_granularity
+						else
+							nextRate = (prevPassRate + testParams.rate ) / 2
+						end
+						if math.abs(nextRate - testParams.rate) < testParams.rate_granularity then
+							-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
+							finalValidation = true
+						end
+						prevFailRate = testParams.rate
 						testParams.rate = nextRate
 					end
-				end
-			else
-				if testParams.rate <= testParams.rate_granularity then
-					log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
-					return
-				end
-				if finalValidation then
-					finalValidation = false
-					nextRate = testParams.rate - testParams.rate_granularity
+					if not dpdk.running() then
+						break
+					end
 				else
-					nextRate = (prevPassRate + testParams.rate ) / 2
+					if rateAttempts[1] > maxRateAttempts then
+						return
+					end
 				end
-				if math.abs(nextRate - testParams.rate) < testParams.rate_granularity then
-					-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
-					finalValidation = true
-				end
-				prevFailRate = testParams.rate
-				testParams.rate = nextRate
-			end
-			if not dpdk.running() then
-				break
-			end
-		else
-			if rateAttempts[1] > maxRateAttempts then
-				return
 			end
 		end
 	end
@@ -173,10 +183,19 @@ end
 
 function prepareDevs(testParams)
 	local devs = {}
+	local rxQueues = testParams.rxQueuesPerDev
+	local txQueues = testParams.txQueuesPerDev
+	if testParams.testType == "latency" then
+		log:info("increasing queue count to accomodate latency testing"); 
+		rxQueues = rxQueues + 1
+		txQueues = txQueues + 1
+	end
+	log:info("number of rx queues: %d", rxQueues);
+	log:info("number of tx queues: %d", txQueues);
 	for i, v in ipairs(testParams.ports) do
 		devs[i] = device.config{ port = testParams.ports[i],
-					 rxQueues = testParams.rxQueuesPerDev,
-					 txQueues = testParams.txQueuesPerDev }
+				 	rxQueues = rxQueues,
+				 	txQueues = txQueues}
 	end
 	-- connections define where one device connects to another 
 	-- currently this follows a pattter of 1->2, 3->4, and so on
@@ -225,11 +244,12 @@ function getTestParams(testParams)
 	local testParams = cfg
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
 	local max_line_rate_Mfps = (LINE_RATE /(testParams.frameSize*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
+	testParams.testType = testParams.testType or TEST_TYPE
 	testParams.startRate = testParams.startRate or max_line_rate_Mfps
 	testParams.txMethod = "hardware"
-	testParams.testLatency = TEST_LATENCY
 	testParams.runBidirec = testParams.runBidirec or false
 	testParams.nrFlows = testParams.nrFlows or NR_FLOWS
+	testParams.latencyRunTime = testParams.latencyRunTime or LATENCY_RUN_TIME
 	testParams.searchRunTime = testParams.searchRunTime or SEARCH_RUN_TIME
 	testParams.validationRunTime = testParams.validationRunTime or VALIDATION_RUN_TIME
 	testParams.acceptableLossPct = testParams.acceptableLossPct or MAX_FRAME_LOSS_PCT
@@ -237,10 +257,6 @@ function getTestParams(testParams)
 	testParams.ports = testParams.ports or {0,1}
 	testParams.txQueuesPerDev = testParams.txQueuesPerDev or TX_QUEUES_PER_DEV
 	testParams.rxQueuesPerDev = testParams.rxQueuesPerDev or RX_QUEUES_PER_DEV
-	if testParams.testLatency then
-		testParams.txQueuesPerDev = testParams.txQueuesPerDev + 1
-		testParams.rxQueuesPerDev = testParams.rxQueuesPerDev + 1
-	end
 	return testParams
 end
 
@@ -302,11 +318,19 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	local calStats = {}
 	local rxTasks = {}
 	local txTasks = {}
+	local timerTasks = {}
 	local runTime
-	if final then
-		runTime = testParams.validationRunTime
+
+	if testParams.testType == "throughput" then
+		if final then
+			runTime = testParams.validationRunTime
+		else
+			runTime = testParams.searchRunTime
+		end
 	else
-		runTime = testParams.searchRunTime
+		if testParams.testType == "latency" then
+			runTime = testParams.latencyRunTime
+		end
 	end
 	-- calibrate transmit rate
 	local calibratedStartRate = testParams.rate
@@ -334,6 +358,12 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 		if testParams.connections[i] then
 			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], testParams.txQueuesPerDev, testParams.rate,
 			calStats[idx].calibratedRate, testParams.frameSize, runTime, testParams.nrFlows, testParams.txMethod)
+			if testParams.testType == "latency" then
+				-- latency measurements do not involve a dedicated task for each direction of traffic
+				if not timerTasks[testParams.connections[i]] then
+					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], testParams.rxQueuesPerDev, testParams.txQueuesPerDev, testParams.frameSize, runTime)
+				end
+			end
 		end
 	end
 	-- wait for transmit devices to finish
@@ -350,6 +380,11 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
 			rxStats[testParams.connections[i]] = rxTasks[i]:wait()
+		end
+		if testParams.testType == "latency" then
+			if timerTasks[i] then
+				timerTasks[i]:wait()
+			end
 		end
 	end
 end
@@ -504,10 +539,13 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
         return results
 end
 
-function timerSlave(txQueue, rxQueue, frame_size, run_time, num_flows, bidirec)
-	local frame_size_without_crc = frame_size - 4
-	local rxDev = rxQueue.dev
-	rxDev:filterTimestamps(rxQueue)
+function timerSlave(dev1, dev2, rxQid, txQid, frameSize, runTime)
+	printf("rxQid: %d\n", rxQid)
+	printf("txQid: %d\n", txQid)
+	local txQueue = dev1:getTxQueue(txQid)
+	local rxQueue = dev2:getRxQueue(rxQid)
+	dev2:filterTimestamps(rxQueue)
+	local frameSizeWithoutCrc = frameSize - 4
 	local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
 	local hist = hist()
 	-- timestamping starts after and finishes before the main packet load starts/finishes
