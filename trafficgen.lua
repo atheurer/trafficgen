@@ -89,6 +89,7 @@ function master(...)
 	if testParams.testType == "latency" then 
 		printf("Starting latency test", testParams.acceptableLossPct);
 		launchTest(finalValidation, devs, testParams, txStats, rxStats)
+		showReport(rxStats, txStats, testParams)
 	else
 		if testParams.testType == "throughput" then
 			printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
@@ -177,8 +178,13 @@ function showReport(rxStats, txStats, testParams)
 		end
 		count = count + 1
 	end
-	printf("[PARAMETERS] startRate: %f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
-	 testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
+	if testParams.testType == "throughput" then
+		printf("[PARAMETERS] startRate: %f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
+			testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
+	else
+		printf("[PARAMETERS] startRate: %f frameSize: %d runBidirec: %s latencyRunTime: %d ports: %s",
+			testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, portList) 
+	end
 end
 
 function prepareDevs(testParams)
@@ -361,7 +367,8 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 			if testParams.testType == "latency" then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[i]] then
-					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], testParams.rxQueuesPerDev, testParams.txQueuesPerDev, testParams.frameSize, runTime)
+					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], testParams.rxQueuesPerDev,
+								       testParams.txQueuesPerDev, testParams.runBidirec, testParams.frameSize, runTime)
 				end
 			end
 		end
@@ -520,7 +527,7 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
 		if ( method == "hardware" ) then
 			for qid = 0, numQueues - 1 do
 				dev:getTxQueue(qid):send(bufs)
-			end
+		end
 		else
 			for _, buf in ipairs(bufs) do
 				buf:setRate(calibratedRate)
@@ -539,29 +546,47 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
         return results
 end
 
-function timerSlave(dev1, dev2, rxQid, txQid, frameSize, runTime)
-	printf("rxQid: %d\n", rxQid)
-	printf("txQid: %d\n", txQid)
-	local txQueue = dev1:getTxQueue(txQid)
-	local rxQueue = dev2:getRxQueue(rxQid)
-	dev2:filterTimestamps(rxQueue)
+function timerSlave(dev1, dev2, rxQid, txQid, runBidirec, frameSize, runTime)
+	local rxQueues = {}
+	local txQueues = {}
+	local transactionsPerDirection = 1 -- the number of transactions before switching direction
+
+	dev2:filterTimestamps(dev2:getRxQueue(rxQid))
+	local timestamper1 = ts:newUdpTimestamper(dev1:getTxQueue(txQid), dev2:getRxQueue(rxQid))
+	if runBidirec then
+		dev1:filterTimestamps(dev1:getRxQueue(rxQid))
+		timestamper2 = ts:newUdpTimestamper(dev2:getTxQueue(txQid), dev1:getRxQueue(rxQid))
+	end
 	local frameSizeWithoutCrc = frameSize - 4
-	local timestamper = ts:newUdpTimestamper(txQueue, rxQueue)
 	local hist = hist()
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	dpdk.sleepMillis(LATENCY_TRIM)
-	local runtime = timer:new(run_time - LATENCY_TRIM/1000*2)
+	local runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
 	local baseIP = parseIPAddress(IP_SRC)
-	local rateLimit = timer:new(0.01)
-	while runtime:running() and dpdk.running() do
-		rateLimit:wait()
-		local lat = timestamper:measureLatency();
-		if (lat) then
-                	hist:update(lat)
+	local rateLimit = timer:new(0.1)
+	local timstamper2
+	local timestamper = timestamper1
+	while runTimer:running() and dpdk.running() do
+		if runBidirec then -- outer loop flips devices for Tx and Rx
+			if timestamper == timestamper2 then
+				timestamper = timestamper1
+			else
+				timestamper = timestamper2
+			end
 		end
-		rateLimit:reset()
+		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
+			rateLimit:wait()
+			local lat = timestamper:measureLatency();
+			if (lat) then
+				haveHisto = true;
+                		hist:update(lat)
+			end
+			rateLimit:reset()
+		end
 	end
 	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
-	hist:save("hist.csv")
-	hist:print("Histogram")
+	if haveHisto then
+		hist:save("hist.csv")
+		hist:print("Histogram")
+	end
 end
