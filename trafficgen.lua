@@ -68,6 +68,7 @@ local PORT_DST  = 1234
 local NR_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
 local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
+local MAX_CALIBRATION_ATTEMPTS = 20
 
 function master(...)
 	local testParams = getTestParams()
@@ -88,55 +89,63 @@ function master(...)
 	testParams.rate = testParams.startRate
 	if testParams.testType == "latency" then 
 		printf("Starting latency test", testParams.acceptableLossPct);
-		launchTest(finalValidation, devs, testParams, txStats, rxStats)
-		showReport(rxStats, txStats, testParams)
+		if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
+			showReport(rxStats, txStats, testParams)
+		else
+			log:error("Test failed");
+			return
+		end
 	else
 		if testParams.testType == "throughput" then
 			printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
-				launchTest(finalValidation, devs, testParams, txStats, rxStats)
-				if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
-					--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
-					prevRate = testParams.rate
-					if acceptableLoss(testParams, rxStats, txStats) then
-						if finalValidation then
-							showReport(rxStats, txStats, testParams)
-							return
-						else
-							nextRate = (prevFailRate + testParams.rate ) / 2
-							if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
-								-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
-								finalValidation = true
+				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
+					if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+						--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
+						prevRate = testParams.rate
+						if acceptableLoss(testParams, rxStats, txStats) then
+							if finalValidation then
+								showReport(rxStats, txStats, testParams)
+								return
 							else
-								prevPassRate = testParams.rate
-								testParams.rate = nextRate
+								nextRate = (prevFailRate + testParams.rate ) / 2
+								if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
+									-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
+									finalValidation = true
+								else
+									prevPassRate = testParams.rate
+									testParams.rate = nextRate
+								end
 							end
+						else
+							if testParams.rate <= testParams.rate_granularity then
+								log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
+								return
+							end
+							if finalValidation then
+								finalValidation = false
+								nextRate = testParams.rate - testParams.rate_granularity
+							else
+								nextRate = (prevPassRate + testParams.rate ) / 2
+							end
+							if math.abs(nextRate - testParams.rate) < testParams.rate_granularity then
+								-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
+								finalValidation = true
+							end
+							prevFailRate = testParams.rate
+							testParams.rate = nextRate
+						end
+						if not dpdk.running() then
+							break
 						end
 					else
-						if testParams.rate <= testParams.rate_granularity then
-							log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
+						if rateAttempts[1] > maxRateAttempts then
 							return
 						end
-						if finalValidation then
-							finalValidation = false
-							nextRate = testParams.rate - testParams.rate_granularity
-						else
-							nextRate = (prevPassRate + testParams.rate ) / 2
-						end
-						if math.abs(nextRate - testParams.rate) < testParams.rate_granularity then
-							-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
-							finalValidation = true
-						end
-						prevFailRate = testParams.rate
-						testParams.rate = nextRate
-					end
-					if not dpdk.running() then
-						break
 					end
 				else
-					if rateAttempts[1] > maxRateAttempts then
-						return
-					end
+					log:error("Test failed");
+					return
 				end
 			end
 		end
@@ -348,7 +357,11 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 			calTasks[i] = dpdk.launchLua("calibrateSlave", devs[i], testParams.txQueuesPerDev,
 			testParams.rate, calibratedStartRate, testParams.frameSize, testParams.nrFlows, testParams.txMethod)
 			calStats[i] = calTasks[i]:wait()
-			calibratedStartRate = calStats[i].calibratedRate
+			if calStats[i].calibrated then
+				calibratedStartRate = calStats[i].calibratedRate
+			else
+				return false
+			end
 		end
 	end
 	-- start devices which receive
@@ -397,6 +410,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 			end
 		end
 	end
+	return true
 end
 
 function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_size, num_flows, method)
@@ -474,12 +488,17 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		else
 			calibrated = true
 		end
-		calibrationCount = calibrationCount +1
-	until ( calibrated )
-	log:info("Rate calibration complete") 
-
+		calibrationCount = calibrationCount + 1
+	until ( calibrated or calibrationCount > MAX_CALIBRATION_ATTEMPTS )
         local results = {}
-	results.calibratedRate = calibratedRate * numQueues
+	if calibrated then
+		log:info("Rate calibration complete") 
+		results.calibratedRate = calibratedRate * numQueues
+		results.calibrated = true
+	else
+		log:error("Could not achive Tx packet rate") 
+		results.calibrated = false
+	end
         return results
 end
 
