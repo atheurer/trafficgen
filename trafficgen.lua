@@ -188,11 +188,11 @@ function showReport(rxStats, txStats, testParams)
 		count = count + 1
 	end
 	if testParams.testType == "throughput" then
-		printf("[PARAMETERS] startRate: %f frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
-			testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
+		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
+			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 	else
-		printf("[PARAMETERS] startRate: %f frameSize: %d runBidirec: %s latencyRunTime: %d ports: %s",
-			testParams.startRate, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, portList) 
+		printf("[PARAMETERS] startRate: %f nrFlows; %d frameSize: %d runBidirec: %s latencyRunTime: %d ports: %s",
+			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, portList) 
 	end
 end
 
