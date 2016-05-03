@@ -428,7 +428,7 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		local txStats = stats:newDevTxCounter(dev, "plain")
 		if ( method == "hardware" ) then
 			for qid = 0, numQueues - 1 do
-				dev:getTxQueue(qid):setRateMpps(calibratedRate)
+				dev:getTxQueue(qid):setRateMpps(calibratedRate, frame_size)
 			end
 			rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
 			runtime = timer:new(5)
@@ -514,7 +514,7 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
 	local count = 0
 	if ( method == "hardware" ) then
 		for qid = 0, numQueues - 1 do
-			dev:getTxQueue(qid):setRateMpps(calibratedRate)
+			dev:getTxQueue(qid):setRateMpps(calibratedRate, frame_size)
 		end
 	end
 	while runtime:running() and dpdk.running() do
