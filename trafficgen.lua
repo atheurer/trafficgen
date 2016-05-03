@@ -252,6 +252,9 @@ function getTestParams(testParams)
 	local max_line_rate_Mfps = (LINE_RATE /(testParams.frameSize*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
 	testParams.testType = testParams.testType or TEST_TYPE
 	testParams.startRate = testParams.startRate or max_line_rate_Mfps
+	if testParams.startRate > max_line_rate_Mfps then
+		log:warn("You have specified a packet rate that is greater than line rate.  This will probably not work");
+	end
 	testParams.txMethod = "hardware"
 	testParams.runBidirec = testParams.runBidirec or false
 	testParams.nrFlows = testParams.nrFlows or NR_FLOWS
