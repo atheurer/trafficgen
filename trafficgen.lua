@@ -585,7 +585,7 @@ function timerSlave(dev1, dev2, rxQid, txQid, runBidirec, frameSize, runTime)
 	dpdk.sleepMillis(LATENCY_TRIM)
 	local runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
 	local baseIP = parseIPAddress(IP_SRC)
-	local rateLimit = timer:new(0.1)
+	local rateLimit = timer:new(0.001)
 	local timstamper2
 	local timestamper = timestamper1
 	while runTimer:running() and dpdk.running() do
