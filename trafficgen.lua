@@ -203,8 +203,8 @@ function showReport(rxStats, txStats, testParams)
 			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
 		end
 	end
-	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
-	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalRxMpps)
+	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
+	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, testParams.rate, totalRxMpps)
 	local portList = ""
 	local count = 0
 	for i, v in ipairs(testParams.ports) do
