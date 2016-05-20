@@ -54,6 +54,7 @@ local LATENCY_TRIM = 3000 -- time in ms to delayied start and early end to laten
 local FRAME_SIZE = 64
 local TEST_TYPE = "throughput" -- "throughput" is for finding max packets/sec while not exceeding MAX_FRAME_LOSS_PCT
 			       -- "latency" is for measuring round-trip packet latency while handling testParams.startRate packets/sec
+			       -- "throughput-latency" will run a throughput test but also measure latency in the final validation
 local TEST_BIDIREC = false --do not do bidirectional test
 local MAX_FRAME_LOSS_PCT = 0
 local LINE_RATE = 10000000000 -- 10Gbps
@@ -124,7 +125,7 @@ function master(...)
 			return
 		end
 	else
-		if testParams.testType == "throughput" then
+		if testParams.testType == "throughput" or testParams.testType == "throughput-latency" then
 			printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
 				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
@@ -215,10 +216,11 @@ function showReport(rxStats, txStats, testParams)
 		end
 		count = count + 1
 	end
-	if testParams.testType == "throughput" then
+	if testParams.testType == "throughput" or testParams.testType == "throghput-latency" then
 		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
 			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
-	else
+	end
+	if testParams.testType == "latency" or testParams.testType == "throghput-latency" then
 		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s latencyRunTime: %d ports: %s",
 			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, portList) 
 	end
@@ -228,7 +230,7 @@ function prepareDevs(testParams)
 	local devs = {}
 	local rxQueues = testParams.rxQueuesPerDev
 	local txQueues = testParams.txQueuesPerDev
-	if testParams.testType == "latency" then
+	if testParams.testType == "latency" or testParams.testType == "throughput-latency" then
 		log:info("increasing queue count to accomodate latency testing"); 
 		rxQueues = rxQueues + 1
 		txQueues = txQueues + 1
@@ -370,7 +372,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	local macs = {}
 	local runTime
 
-	if testParams.testType == "throughput" then
+	if testParams.testType == "throughput" or testParams.testType == "throughput-latency" then
 		if final then
 			runTime = testParams.validationRunTime
 		else
@@ -415,7 +417,8 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 							calStats[idx].calibratedRate, testParams.frameSize, runTime,
 							testParams.nrFlows, testParams.txMethod, testParams.adjustSrcIp,
 							testParams.adjustDstMac)
-			if testParams.testType == "latency" then
+			if testParams.testType == "latency" or
+				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[i]] then
 					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], testParams.rxQueuesPerDev,
@@ -439,7 +442,8 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 		if testParams.connections[i] then
 			rxStats[testParams.connections[i]] = rxTasks[i]:wait()
 		end
-		if testParams.testType == "latency" then
+		if testParams.testType == "latency" or
+			( testParams.testType == "throughput-latency" and final ) then
 			if timerTasks[i] then
 				timerTasks[i]:wait()
 			end
@@ -635,7 +639,7 @@ function timerSlave(dev1, dev2, rxQid, txQid, runBidirec, frameSize, runTime)
 	dpdk.sleepMillis(LATENCY_TRIM)
 	local runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
 	local baseIP = parseIPAddress(IP_SRC)
-	local rateLimit = timer:new(0.001)
+	local rateLimit = timer:new(0.01) -- less than 100 samples per second
 	local timstamper2
 	local timestamper = timestamper1
 	while runTimer:running() and dpdk.running() do
