@@ -387,10 +387,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	local calibratedStartRate = testParams.rate
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			calTasks[i] = dpdk.launchLua("calibrateSlave", devs[i], testParams.txQueuesPerDev,
-							testParams.rate, calibratedStartRate, testParams.frameSize,
-							testParams.nrFlows, testParams.txMethod, testParams.adjustSrcIp,
-							testParams.adjustDstMac)
+			calTasks[i] = dpdk.launchLua("calibrateSlave", devs[i], calibratedStartRate, testParams)
 			calStats[i] = calTasks[i]:wait()
 			if calStats[i].calibrated then
 				calibratedStartRate = calStats[i].calibratedRate
@@ -413,16 +410,12 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	idx = 1
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], testParams.txQueuesPerDev, testParams.rate,
-							calStats[idx].calibratedRate, testParams.frameSize, runTime,
-							testParams.nrFlows, testParams.txMethod, testParams.adjustSrcIp,
-							testParams.adjustDstMac)
+			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], calStats[i].calibratedRate, runTime, testParams)
 			if testParams.testType == "latency" or
 				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[i]] then
-					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], testParams.rxQueuesPerDev,
-								       testParams.txQueuesPerDev, testParams.runBidirec, testParams.frameSize, runTime)
+					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], runTime, testParams)
 				end
 			end
 		end
@@ -452,23 +445,24 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	return true
 end
 
-function adjustHeaders(bufs, baseIP, packetCount, num_flows, adjustSrcIp, adjustDstMac, macTable)
+function adjustHeaders(bufs, baseIP, packetCount, macTable, testParams)
 	for _, buf in ipairs(bufs) do
-		if adjustSrcIp then
+		if testParams.adjustSrcIp then
 			local pkt = buf:getUdpPacket()
-			pkt.ip4.src:set(baseIP + packetCount % num_flows)
+			pkt.ip4.src:set(baseIP + packetCount % testParams.nrFlows)
 		end
-		if adjustDstMac then
-			buf:getEthernetPacket().eth.dst:set(macTable[packetCount % num_flows])
+		if testParams.adjustDstMac then
+			buf:getEthernetPacket().eth.dst:set(macTable[packetCount % testParams.nrFlows])
 		end
 		packetCount = packetCount + 1
 	end
 	return packetCount
 end
 
-function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_size, num_flows, method, adjustSrcIp, adjustDstMac)
-	log:info("Calibrating %s tx rate for %.2f Mfs",  method , desiredRate)
-	local frame_size_without_crc = frame_size - 4
+function calibrateSlave(dev, calibratedStartRate, testParams)
+	log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
+	log:info("num flows: %d",  testParams.nrFlows)
+	local frame_size_without_crc = testParams.frameSize - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
 	local mem = memory.createMemPool(function(buf)
 		buf:getUdpPacket():fill{
@@ -482,7 +476,7 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 	end)
 	local macs = {}
 	if adjustDstMac then
-		buildMacTable(macs, num_flows)
+		buildMacTable(macs, testParams.nrFlows)
 	end
 	local bufs = mem:bufArray()
 	local baseIP = parseIPAddress(IP_SRC)
@@ -493,16 +487,16 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 	local calibrationCount = 0
 	local overcorrection = 1
 	local calibratedRate
-	if desiredRate == calibratedStartRate then
-		calibratedRate = desiredRate / numQueues
+	if testParams.rate == calibratedStartRate then
+		calibratedRate = testParams.rate / testParams.txQueuesPerDev
 	else
-		calibratedRate = calibratedStartRate / numQueues
+		calibratedRate = calibratedStartRate / testParams.txQueuesPerDev
 	end
 	repeat
 		local txStats = stats:newDevTxCounter(dev, "plain")
-		if ( method == "hardware" ) then
-			for qid = 0, numQueues - 1 do
-				dev:getTxQueue(qid):setRateMpps(calibratedRate, frame_size)
+		if ( testParams.txMethod == "hardware" ) then
+			for qid = 0, testParams.txQueuesPerDev - 1 do
+				dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
 			end
 			rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
 			runtime = timer:new(5)
@@ -514,16 +508,16 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		while runtime:running() and dpdk.running() do
 			bufs:alloc(frame_size_without_crc)
                 	bufs:offloadUdpChecksums()
-			packetCount = adjustHeaders(bufs, baseIP, packetCount, num_flows, adjustSrcIp, adjustDstMac, macs)
-			if ( method == "hardware" ) then
-				for qid = 0, numQueues - 1 do
+			packetCount = adjustHeaders(bufs, baseIP, packetCount, macs, testParams)
+			if ( testParams.txMethod == "hardware" ) then
+				for qid = 0, testParams.txQueuesPerDev - 1 do
 					dev:getTxQueue(qid):send(bufs)
 				end
 			else
 				for _, buf in ipairs(bufs) do
 					buf:setRate(calibratedRate)
 				end
-				for qid = 0, numQueues - 1 do
+				for qid = 0, testParams.txQueuesPerDev - 1 do
 					dev:getTxQueue(qid):sendWithDelay(bufs)
 				end
 			end
@@ -532,12 +526,12 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		txStats:finalize()
 		measuredRate = txStats.mpps.avg
 		-- the measured rate must be within the tolerance window but also not exceed the desired rate
-		if ( measuredRate > desiredRate or (desiredRate - measuredRate) > rate_accuracy ) then
-			local correction_ratio = desiredRate/measuredRate
+		if ( measuredRate > testParams.rate or (testParams.rate - measuredRate) > rate_accuracy ) then
+			local correction_ratio = testParams.rate/measuredRate
 			calibratedRate = calibratedRate * correction_ratio
 			prevMeasuredRate = measuredRate
                         log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
-			 measuredRate, desiredRate, correction_ratio, calibratedRate)
+			 measuredRate, testParams.rate, correction_ratio, calibratedRate)
 		else
 			calibrated = true
 		end
@@ -546,7 +540,7 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
         local results = {}
 	if calibrated then
 		log:info("Rate calibration complete") 
-		results.calibratedRate = calibratedRate * numQueues
+		results.calibratedRate = calibratedRate * testParams.txQueuesPerDev
 		results.calibrated = true
 	else
 		log:error("Could not achive Tx packet rate") 
@@ -555,9 +549,9 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
         return results
 end
 
-function counterSlave(rxQueue, run_time)
+function counterSlave(rxQueue, runTime)
 	local rxStats = stats:newDevRxCounter(rxQueue, "plain")
-	local runtime = timer:new(run_time)
+	local runtime = timer:new(runTime)
 	while runtime:running() and dpdk.running() do
 		rxStats:update()
 	end
@@ -567,9 +561,9 @@ function counterSlave(rxQueue, run_time)
         return results
 end
 
-function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, num_flows, method, adjustSrcIp, adjustDstMac)
-	printf("Testing %.2f Mfps", rate)
-	local frame_size_without_crc = frame_size - 4
+function loadSlave(dev, calibratedRate, runTime, testParams)
+	printf("Testing %.2f Mfps", testParams.rate)
+	local frame_size_without_crc = testParams.frameSize - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
 	local mem = memory.createMemPool(function(buf)
 		buf:getUdpPacket():fill{
@@ -583,33 +577,33 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
 	end)
 	local macs = {}
 	if adjustDstMac then
-		buildMacTable(macs, num_flows)
+		buildMacTable(macs, testParams.nrFlows)
 	end
 	local bufs = mem:bufArray()
 	local baseIP = parseIPAddress(IP_SRC)
-	local runtime = timer:new(run_time)
+	local runtime = timer:new(runTime)
 	local txStats = stats:newDevTxCounter(dev, "plain")
-	calibratedRate = calibratedRate / numQueues
+	calibratedRate = calibratedRate / testParams.txQueuesPerDev
 	local count = 0
-	if ( method == "hardware" ) then
-		for qid = 0, numQueues - 1 do
-			dev:getTxQueue(qid):setRateMpps(calibratedRate, frame_size)
+	if ( testParams.txMethod == "hardware" ) then
+		for qid = 0, testParams.txQueuesPerDev - 1 do
+			dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
 		end
 	end
 	local packetCount = 0
 	while runtime:running() and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
                 bufs:offloadUdpChecksums()
-		packetCount = adjustHeaders(bufs, baseIP, packetCount, num_flows, adjustSrcIp, adjustDstMac, macs)
-		if ( method == "hardware" ) then
-			for qid = 0, numQueues - 1 do
+		packetCount = adjustHeaders(bufs, baseIP, packetCount, macs, testParams)
+		if ( testParams.txMethod == "hardware" ) then
+			for qid = 0, testParams.txQueuesPerDev - 1 do
 				dev:getTxQueue(qid):send(bufs)
 		end
 		else
 			for _, buf in ipairs(bufs) do
 				buf:setRate(calibratedRate)
 			end
-			for qid = 0, numQueues - 1 do
+			for qid = 0, testParams.txQueuesPerDev - 1 do
 				dev:getTxQueue(qid):sendWithDelay(bufs)
 			end
 		end
@@ -622,18 +616,20 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
         return results
 end
 
-function timerSlave(dev1, dev2, rxQid, txQid, runBidirec, frameSize, runTime)
+function timerSlave(dev1, dev2, runTime, testParams)
+	local rxQid = testParams.rxQueuesPerDev
+	local txQid = testParams.txQueuesPerDev
 	local rxQueues = {}
 	local txQueues = {}
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
 
 	dev2:filterTimestamps(dev2:getRxQueue(rxQid))
 	local timestamper1 = ts:newUdpTimestamper(dev1:getTxQueue(txQid), dev2:getRxQueue(rxQid))
-	if runBidirec then
+	if testParams.runBidirec then
 		dev1:filterTimestamps(dev1:getRxQueue(rxQid))
 		timestamper2 = ts:newUdpTimestamper(dev2:getTxQueue(txQid), dev1:getRxQueue(rxQid))
 	end
-	local frameSizeWithoutCrc = frameSize - 4
+	local frameSizeWithoutCrc = testParams.frameSize - 4
 	local hist = hist()
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	dpdk.sleepMillis(LATENCY_TRIM)
@@ -643,7 +639,7 @@ function timerSlave(dev1, dev2, rxQid, txQid, runBidirec, frameSize, runTime)
 	local timstamper2
 	local timestamper = timestamper1
 	while runTimer:running() and dpdk.running() do
-		if runBidirec then -- outer loop flips devices for Tx and Rx
+		if testParams.runBidirec then -- outer loop flips devices for Tx and Rx
 			if timestamper == timestamper2 then
 				timestamper = timestamper1
 			else
