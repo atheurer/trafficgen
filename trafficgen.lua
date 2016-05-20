@@ -61,24 +61,24 @@ local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
-local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
-local IP_SRC    = "10.0.0.1"
-local IP_DST    = "192.168.0.10"
-local PORT_SRC  = 1234
-local PORT_DST  = 1234
-local NR_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
+local DST_MAC   = "10:11:12:13:14:15" -- src mac is taken from the NIC
+local SRC_IP    = "10.0.0.1"
+local DST_IP    = "192.168.0.10"
+local SRC_PORT  = 1234
+local DST_PORT  = 1234
+local NR_FLOWS = 256
 local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
 local MAX_CALIBRATION_ATTEMPTS = 20
 local ADJUST_SRC_IP = true
 local ADJUST_DST_MAC = false
 
-function buildMacTable(macTable, num_flows)
-	log:info("building mac table for %d flows", num_flows);
+function buildMacTable(macTable, testParams)
+	log:info("building mac table for %d flows", testParams.nrFlows);
 	local i
-	for i = 0, num_flows - 1 do
+	for i = 0, testParams.nrFlows - 1 do
 		-- build array of macs to use if flows are implemented with different macs
-		local addr = 0x110000000000 + i
+		local addr = parseMacAddress(testParams.dstMac, true) + i
 		local lshiftVal = 40ULL
 		local rshiftVal = 0ULL
 		local mac = 0
@@ -307,6 +307,11 @@ function getTestParams(testParams)
 	testParams.rxQueuesPerDev = testParams.rxQueuesPerDev or RX_QUEUES_PER_DEV
 	testParams.adjustSrcIp = testParams.adjustSrcIp or ADJUST_SRC_IP
 	testParams.adjustDstMac = ADJUST_DST_MAC -- mac based flows disabled until better method is developed
+	testParams.srcIp = testParams.srcIp or SRC_IP
+	testParams.dstIp = testParams.dstIp or DST_IP
+	testParams.srcPort = testParams.srcPort or SRC_PORT
+	testParams.dstPort = testParams.dstPort or DST_PORT
+	testParams.dstMac = testParams.dstMac or DST_MAC
 	return testParams
 end
 
@@ -468,10 +473,10 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 		buf:getUdpPacket():fill{
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
 			ethSrc = dev:getTxQueue(0), -- get the src mac from the device
-			ethDst = ETH_DST,
-			ip4Dst = IP_DST,
-			udpSrc = PORT_SRC,
-			udpDst = PORT_DST,
+			ethDst = testParams.dstMac,
+			ip4Dst = testParams.dstIp,
+			udpSrc = testParams.srcPort,
+			udpDst = testParams.dstPort
 		}
 	end)
 	local macs = {}
@@ -479,7 +484,7 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 		buildMacTable(macs, testParams.nrFlows)
 	end
 	local bufs = mem:bufArray()
-	local baseIP = parseIPAddress(IP_SRC)
+	local baseIP = parseIPAddress(testParams.srcIp)
 	local packetCount = 0
 	local measuredRate = 0
 	local prevMeasuredRate = 0
@@ -569,10 +574,10 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 		buf:getUdpPacket():fill{
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
 			ethSrc = dev:getTxQueue(0), -- get the src mac from the device
-			ethDst = ETH_DST,
-			ip4Dst = IP_DST,
-			udpSrc = PORT_SRC,
-			udpDst = PORT_DST,
+			ethDst = testParams.dstMac,
+			ip4Dst = testParams.dstIp,
+			udpSrc = testParams.srcPort,
+			udpDst = testParams.dstPort
 		}
 	end)
 	local macs = {}
@@ -580,7 +585,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 		buildMacTable(macs, testParams.nrFlows)
 	end
 	local bufs = mem:bufArray()
-	local baseIP = parseIPAddress(IP_SRC)
+	local baseIP = parseIPAddress(testParams.srcIp)
 	local runtime = timer:new(runTime)
 	local txStats = stats:newDevTxCounter(dev, "plain")
 	calibratedRate = calibratedRate / testParams.txQueuesPerDev
@@ -634,7 +639,7 @@ function timerSlave(dev1, dev2, runTime, testParams)
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	dpdk.sleepMillis(LATENCY_TRIM)
 	local runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
-	local baseIP = parseIPAddress(IP_SRC)
+	local baseIP = parseIPAddress(testParams.srcIp)
 	local rateLimit = timer:new(0.01) -- less than 100 samples per second
 	local timstamper2
 	local timestamper = timestamper1
