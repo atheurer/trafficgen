@@ -8,7 +8,7 @@
 -- The test will run a binary search to find the maximum packet rate while
 -- not exceeding a defined percentage packet loss.
 --
--- The test parameters can be altered by created a file, opnfv-vsperf-cfg.lua
+-- The test parameters can be adjusted by created a file, opnfv-vsperf-cfg.lua
 -- in the current working directory.  The file is lua syntax and describes the
 -- test paramters.  For example:
 --
@@ -61,14 +61,42 @@ local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local ETH_DST   = "10:11:12:13:14:15" -- src mac is taken from the NIC
-local IP_SRC    = "192.168.0.10"
-local IP_DST    = "10.0.0.1"
+local IP_SRC    = "10.0.0.1"
+local IP_DST    = "192.168.0.10"
 local PORT_SRC  = 1234
 local PORT_DST  = 1234
 local NR_FLOWS = 256 -- src ip will be IP_SRC + (0..NUM_FLOWS-1)
 local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
 local MAX_CALIBRATION_ATTEMPTS = 20
+local ADJUST_SRC_IP = true
+local ADJUST_DST_MAC = false
+
+function buildMacTable(macTable, num_flows)
+	log:info("building mac table for %d flows", num_flows);
+	local i
+	for i = 0, num_flows - 1 do
+		-- build array of macs to use if flows are implemented with different macs
+		local addr = 0x110000000000 + i
+		local lshiftVal = 40ULL
+		local rshiftVal = 0ULL
+		local mac = 0
+		for octet = 0, 5 do
+			mac = mac + bit.lshift( bit.band(bit.rshift(addr + 0ULL, rshiftVal), 0xFF) + 0ULL, lshiftVal)
+			lshiftVal = lshiftVal - 8ULL
+			rshiftVal = rshiftVal + 8ULL
+		end
+		macTable[i] = mac
+		--log:info("mac for flow %d is %s", i, tostring(macTable[i]));
+	end
+end
+
+function dumpMacTable(macTable, num_flows)
+	local i
+	for i = 0, num_flows - 1 do
+		--log:info("mac for flow number %d: %s", i, tostring(macTable[i]));
+	end
+end
 
 function master(...)
 	local testParams = getTestParams()
@@ -275,6 +303,8 @@ function getTestParams(testParams)
 	testParams.ports = testParams.ports or {0,1}
 	testParams.txQueuesPerDev = testParams.txQueuesPerDev or TX_QUEUES_PER_DEV
 	testParams.rxQueuesPerDev = testParams.rxQueuesPerDev or RX_QUEUES_PER_DEV
+	testParams.adjustSrcIp = testParams.adjustSrcIp or ADJUST_SRC_IP
+	testParams.adjustDstMac = ADJUST_DST_MAC -- mac based flows disabled until better method is developed
 	return testParams
 end
 
@@ -337,6 +367,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	local rxTasks = {}
 	local txTasks = {}
 	local timerTasks = {}
+	local macs = {}
 	local runTime
 
 	if testParams.testType == "throughput" then
@@ -355,7 +386,9 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
 			calTasks[i] = dpdk.launchLua("calibrateSlave", devs[i], testParams.txQueuesPerDev,
-			testParams.rate, calibratedStartRate, testParams.frameSize, testParams.nrFlows, testParams.txMethod)
+							testParams.rate, calibratedStartRate, testParams.frameSize,
+							testParams.nrFlows, testParams.txMethod, testParams.adjustSrcIp,
+							testParams.adjustDstMac)
 			calStats[i] = calTasks[i]:wait()
 			if calStats[i].calibrated then
 				calibratedStartRate = calStats[i].calibratedRate
@@ -379,7 +412,9 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
 			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], testParams.txQueuesPerDev, testParams.rate,
-			calStats[idx].calibratedRate, testParams.frameSize, runTime, testParams.nrFlows, testParams.txMethod)
+							calStats[idx].calibratedRate, testParams.frameSize, runTime,
+							testParams.nrFlows, testParams.txMethod, testParams.adjustSrcIp,
+							testParams.adjustDstMac)
 			if testParams.testType == "latency" then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[i]] then
@@ -413,7 +448,21 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	return true
 end
 
-function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_size, num_flows, method)
+function adjustHeaders(bufs, baseIP, packetCount, num_flows, adjustSrcIp, adjustDstMac, macTable)
+	for _, buf in ipairs(bufs) do
+		if adjustSrcIp then
+			local pkt = buf:getUdpPacket()
+			pkt.ip4.src:set(baseIP + packetCount % num_flows)
+		end
+		if adjustDstMac then
+			buf:getEthernetPacket().eth.dst:set(macTable[packetCount % num_flows])
+		end
+		packetCount = packetCount + 1
+	end
+	return packetCount
+end
+
+function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_size, num_flows, method, adjustSrcIp, adjustDstMac)
 	log:info("Calibrating %s tx rate for %.2f Mfs",  method , desiredRate)
 	local frame_size_without_crc = frame_size - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
@@ -427,8 +476,13 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 			udpDst = PORT_DST,
 		}
 	end)
+	local macs = {}
+	if adjustDstMac then
+		buildMacTable(macs, num_flows)
+	end
 	local bufs = mem:bufArray()
 	local baseIP = parseIPAddress(IP_SRC)
+	local packetCount = 0
 	local measuredRate = 0
 	local prevMeasuredRate = 0
 	local calibrated = false
@@ -441,7 +495,6 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		calibratedRate = calibratedStartRate / numQueues
 	end
 	repeat
-		local count = 0
 		local txStats = stats:newDevTxCounter(dev, "plain")
 		if ( method == "hardware" ) then
 			for qid = 0, numQueues - 1 do
@@ -456,11 +509,8 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 		end
 		while runtime:running() and dpdk.running() do
 			bufs:alloc(frame_size_without_crc)
-                	for _, buf in ipairs(bufs) do
-				local pkt = buf:getUdpPacket()
-		        	pkt.ip4.src:set(baseIP + count % num_flows)
-			end
                 	bufs:offloadUdpChecksums()
+			packetCount = adjustHeaders(bufs, baseIP, packetCount, num_flows, adjustSrcIp, adjustDstMac, macs)
 			if ( method == "hardware" ) then
 				for qid = 0, numQueues - 1 do
 					dev:getTxQueue(qid):send(bufs)
@@ -474,7 +524,6 @@ function calibrateSlave(dev, numQueues, desiredRate, calibratedStartRate, frame_
 				end
 			end
 			txStats:update()
-			count = count + 1
 		end
 		txStats:finalize()
 		measuredRate = txStats.mpps.avg
@@ -514,7 +563,7 @@ function counterSlave(rxQueue, run_time)
         return results
 end
 
-function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, num_flows, method)
+function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, num_flows, method, adjustSrcIp, adjustDstMac)
 	printf("Testing %.2f Mfps", rate)
 	local frame_size_without_crc = frame_size - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
@@ -528,6 +577,10 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
 			udpDst = PORT_DST,
 		}
 	end)
+	local macs = {}
+	if adjustDstMac then
+		buildMacTable(macs, num_flows)
+	end
 	local bufs = mem:bufArray()
 	local baseIP = parseIPAddress(IP_SRC)
 	local runtime = timer:new(run_time)
@@ -539,13 +592,11 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
 			dev:getTxQueue(qid):setRateMpps(calibratedRate, frame_size)
 		end
 	end
+	local packetCount = 0
 	while runtime:running() and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
-                for _, buf in ipairs(bufs) do
-			local pkt = buf:getUdpPacket()
-		        pkt.ip4.src:set(baseIP + count % num_flows)
-		end
                 bufs:offloadUdpChecksums()
+		packetCount = adjustHeaders(bufs, baseIP, packetCount, num_flows, adjustSrcIp, adjustDstMac, macs)
 		if ( method == "hardware" ) then
 			for qid = 0, numQueues - 1 do
 				dev:getTxQueue(qid):send(bufs)
@@ -559,7 +610,6 @@ function loadSlave(dev, numQueues, rate, calibratedRate, frame_size, run_time, n
 			end
 		end
 		txStats:update()
-		count = count + 1
 	end
 	txStats:finalize()
         local results = {}
