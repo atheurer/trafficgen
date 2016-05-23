@@ -61,6 +61,7 @@ local LINE_RATE = 10000000000 -- 10Gbps
 local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
+local SRC_MAC   = "20:11:12:13:14:15" -- src mac is taken from the NIC
 local DST_MAC   = "10:11:12:13:14:15" -- src mac is taken from the NIC
 local SRC_IP    = "10.0.0.1"
 local DST_IP    = "192.168.0.10"
@@ -312,6 +313,7 @@ function getTestParams(testParams)
 	testParams.dstIp = testParams.dstIp or DST_IP
 	testParams.srcPort = testParams.srcPort or SRC_PORT
 	testParams.dstPort = testParams.dstPort or DST_PORT
+	testParams.srcMac = testParams.srcMac or SRC_MAC
 	testParams.dstMac = testParams.dstMac or DST_MAC
 	testParams.vlanId = testParams.vlanId or VLAN_ID
 	return testParams
@@ -474,7 +476,7 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 	local mem = memory.createMemPool(function(buf)
 		buf:getUdpPacket():fill{
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
-			ethSrc = dev:getTxQueue(0), -- get the src mac from the device
+			ethSrc = testParams.srcMac,
 			ethDst = testParams.dstMac,
 			ip4Dst = testParams.dstIp,
 			udpSrc = testParams.srcPort,
@@ -576,7 +578,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 	local mem = memory.createMemPool(function(buf)
 		buf:getUdpPacket():fill{
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
-			ethSrc = dev:getTxQueue(0), -- get the src mac from the device
+			ethSrc = testParams.srcMac,
 			ethDst = testParams.dstMac,
 			ip4Dst = testParams.dstIp,
 			udpSrc = testParams.srcPort,
