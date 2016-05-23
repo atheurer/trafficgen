@@ -72,6 +72,7 @@ local RX_QUEUES_PER_DEV = 1
 local MAX_CALIBRATION_ATTEMPTS = 20
 local ADJUST_SRC_IP = true
 local ADJUST_DST_MAC = false
+local VLAN_ID = 0
 
 function buildMacTable(macTable, testParams)
 	log:info("building mac table for %d flows", testParams.nrFlows);
@@ -312,6 +313,7 @@ function getTestParams(testParams)
 	testParams.srcPort = testParams.srcPort or SRC_PORT
 	testParams.dstPort = testParams.dstPort or DST_PORT
 	testParams.dstMac = testParams.dstMac or DST_MAC
+	testParams.vlanId = testParams.vlanId or VLAN_ID
 	return testParams
 end
 
@@ -512,6 +514,7 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 		end
 		while runtime:running() and dpdk.running() do
 			bufs:alloc(frame_size_without_crc)
+			bufs:setVlans(testParams.vlanId)
                 	bufs:offloadUdpChecksums()
 			packetCount = adjustHeaders(bufs, baseIP, packetCount, macs, testParams)
 			if ( testParams.txMethod == "hardware" ) then
@@ -598,6 +601,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 	local packetCount = 0
 	while runtime:running() and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
+		bufs:setVlans(testParams.vlanId)
                 bufs:offloadUdpChecksums()
 		packetCount = adjustHeaders(bufs, baseIP, packetCount, macs, testParams)
 		if ( testParams.txMethod == "hardware" ) then
