@@ -71,34 +71,29 @@ local NR_FLOWS = 256
 local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
 local MAX_CALIBRATION_ATTEMPTS = 20
-local ADJUST_SRC_IP = true
-local ADJUST_DST_MAC = false
 local VLAN_ID = 0
 
-function buildMacTable(macTable, testParams)
-	log:info("building mac table for %d flows", testParams.nrFlows);
-	local i
-	for i = 0, testParams.nrFlows - 1 do
-		-- build array of macs to use if flows are implemented with different macs
-		local addr = parseMacAddress(testParams.dstMac, true) + i
-		local lshiftVal = 40ULL
-		local rshiftVal = 0ULL
-		local mac = 0
-		for octet = 0, 5 do
-			mac = mac + bit.lshift( bit.band(bit.rshift(addr + 0ULL, rshiftVal), 0xFF) + 0ULL, lshiftVal)
-			lshiftVal = lshiftVal - 8ULL
-			rshiftVal = rshiftVal + 8ULL
+function macToU48(mac)
+	-- this is similar to parseMac, but maintains ordering as represented in the input string
+	local bytes = {string.match(mac, '(%x+)[-:](%x+)[-:](%x+)[-:](%x+)[-:](%x+)[-:](%x+)')}
+	if bytes == nil then
+	return
+	end
+	for i = 1, 6 do
+	if bytes[i] == nil then
+			return
 		end
-		macTable[i] = mac
-		--log:info("mac for flow %d is %s", i, tostring(macTable[i]));
+		bytes[i] = tonumber(bytes[i], 16)
+		if  bytes[i] < 0 or bytes[i] > 0xFF then
+			return
+		end
 	end
-end
 
-function dumpMacTable(macTable, num_flows)
-	local i
-	for i = 0, num_flows - 1 do
-		--log:info("mac for flow number %d: %s", i, tostring(macTable[i]));
+	local acc = 0
+	for i = 1, 6 do
+		acc = acc + bytes[i] * 256 ^ (6 - i)
 	end
+	return acc
 end
 
 function master(...)
@@ -305,17 +300,22 @@ function getTestParams(testParams)
 	testParams.acceptableLossPct = testParams.acceptableLossPct or MAX_FRAME_LOSS_PCT
 	testParams.rate_granularity = testParams.rate_granularity or RATE_GRANULARITY
 	testParams.ports = testParams.ports or {0,1}
+	testParams.flowMods = testParams.flowMods or {"srcIp", "dstIp"}
 	testParams.txQueuesPerDev = testParams.txQueuesPerDev or TX_QUEUES_PER_DEV
 	testParams.rxQueuesPerDev = testParams.rxQueuesPerDev or RX_QUEUES_PER_DEV
-	testParams.adjustSrcIp = testParams.adjustSrcIp or ADJUST_SRC_IP
-	testParams.adjustDstMac = ADJUST_DST_MAC -- mac based flows disabled until better method is developed
 	testParams.srcIp = testParams.srcIp or SRC_IP
 	testParams.dstIp = testParams.dstIp or DST_IP
 	testParams.srcPort = testParams.srcPort or SRC_PORT
 	testParams.dstPort = testParams.dstPort or DST_PORT
 	testParams.srcMac = testParams.srcMac or SRC_MAC
 	testParams.dstMac = testParams.dstMac or DST_MAC
-	testParams.vlanId = testParams.vlanId or VLAN_ID
+	testParams.vlanId = testParams.vlanId
+
+	testParams.baseDstMacUnsigned = macToU48(testParams.dstMac)
+	testParams.baseSrcMacUnsigned = macToU48(testParams.srcMac)
+	testParams.srcIp = parseIPAddress(testParams.srcIp)
+	testParams.dstIp = parseIPAddress(testParams.dstIp)
+
 	return testParams
 end
 
@@ -454,15 +454,53 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	return true
 end
 
-function adjustHeaders(bufs, baseIP, packetCount, macTable, testParams)
+function adjustHeaders(bufs, packetCount, testParams)
 	for _, buf in ipairs(bufs) do
-		if testParams.adjustSrcIp then
-			local pkt = buf:getUdpPacket()
-			pkt.ip4.src:set(baseIP + packetCount % testParams.nrFlows)
+		local pkt = buf:getUdpPacket()
+		local ethernetPacket = buf:getEthernetPacket()
+		local flowId = packetCount % testParams.nrFlows
+
+		for _,v in ipairs(testParams.flowMods) do
+
+			if ( v == "srcPort" ) then
+				pkt.udp:setSrcPort((testParams.srcPort + flowId) % 65536)
+			end
+	
+			if ( v == "dstPort" ) then
+				pkt.udp:setDstPort((testParams.srcPort + flowId) % 65536)
+			end
+	
+			if ( v == "srcIp" ) then
+				pkt.ip4.src:set(testParams.srcIp + flowId)
+			end
+	
+			if ( v == "dstIp" ) then
+				pkt.ip4.dst:set(testParams.dstIp + flowId)
+			end
+	
+			if ( v == "srcMac" ) then
+				addr = testParams.baseSrcMacUnsigned + flowId
+				local octet = 5
+				repeat
+					octetValue = (addr/(256^(5-octet))) % 256
+					ethernetPacket.eth.src.uint8[octet] = octetValue
+					octet = octet - 1
+				until ( octet < 0 )
+				ethernetPacket.eth.src.uint8[octet] = octetValue
+			end
+	
+			if ( v == "dstMac" ) then
+				addr = testParams.baseDstMacUnsigned + flowId
+				local octet = 5
+				repeat
+					octetValue = (addr/(256^(5-octet))) % 256
+					ethernetPacket.eth.dst.uint8[octet] = octetValue
+					octet = octet - 1
+				until ( octet < 0 )
+				ethernetPacket.eth.dst.uint8[octet] = octetValue
+			end
 		end
-		if testParams.adjustDstMac then
-			buf:getEthernetPacket().eth.dst:set(macTable[packetCount % testParams.nrFlows])
-		end
+
 		packetCount = packetCount + 1
 	end
 	return packetCount
@@ -483,12 +521,7 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 			udpDst = testParams.dstPort
 		}
 	end)
-	local macs = {}
-	if adjustDstMac then
-		buildMacTable(macs, testParams.nrFlows)
-	end
 	local bufs = mem:bufArray()
-	local baseIP = parseIPAddress(testParams.srcIp)
 	local packetCount = 0
 	local measuredRate = 0
 	local prevMeasuredRate = 0
@@ -516,9 +549,11 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 		end
 		while runtime:running() and dpdk.running() do
 			bufs:alloc(frame_size_without_crc)
-			bufs:setVlans(testParams.vlanId)
+			packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
+			if (testParams.vlanId) then
+				bufs:setVlans(testParams.vlanId)
+			end
                 	bufs:offloadUdpChecksums()
-			packetCount = adjustHeaders(bufs, baseIP, packetCount, macs, testParams)
 			if ( testParams.txMethod == "hardware" ) then
 				for qid = 0, testParams.txQueuesPerDev - 1 do
 					dev:getTxQueue(qid):send(bufs)
@@ -585,12 +620,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 			udpDst = testParams.dstPort
 		}
 	end)
-	local macs = {}
-	if adjustDstMac then
-		buildMacTable(macs, testParams.nrFlows)
-	end
 	local bufs = mem:bufArray()
-	local baseIP = parseIPAddress(testParams.srcIp)
 	local runtime = timer:new(runTime)
 	local txStats = stats:newDevTxCounter(dev, "plain")
 	calibratedRate = calibratedRate / testParams.txQueuesPerDev
@@ -603,9 +633,11 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 	local packetCount = 0
 	while runtime:running() and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
-		bufs:setVlans(testParams.vlanId)
+		packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
+		if (testParams.vlanId) then
+			bufs:setVlans(testParams.vlanId)
+		end
                 bufs:offloadUdpChecksums()
-		packetCount = adjustHeaders(bufs, baseIP, packetCount, macs, testParams)
 		if ( testParams.txMethod == "hardware" ) then
 			for qid = 0, testParams.txQueuesPerDev - 1 do
 				dev:getTxQueue(qid):send(bufs)
@@ -645,7 +677,6 @@ function timerSlave(dev1, dev2, runTime, testParams)
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	dpdk.sleepMillis(LATENCY_TRIM)
 	local runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
-	local baseIP = parseIPAddress(testParams.srcIp)
 	local rateLimit = timer:new(0.01) -- less than 100 samples per second
 	local timstamper2
 	local timestamper = timestamper1
