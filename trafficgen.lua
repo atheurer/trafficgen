@@ -480,24 +480,22 @@ function adjustHeaders(bufs, packetCount, testParams)
 	
 			if ( v == "srcMac" ) then
 				addr = testParams.baseSrcMacUnsigned + flowId
-				local octet = 5
-				repeat
-					octetValue = (addr/(256^(5-octet))) % 256
-					ethernetPacket.eth.src.uint8[octet] = octetValue
-					octet = octet - 1
-				until ( octet < 0 )
-				ethernetPacket.eth.src.uint8[octet] = octetValue
+				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
+				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
+				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
+				ethernetPacket.eth.src.uint8[2] = bit.band(bit.rshift(addr, 24), 0xFF)
+				ethernetPacket.eth.src.uint8[1] = bit.band(bit.rshift(addr + 0ULL, 32ULL), 0xFF)
+				ethernetPacket.eth.src.uint8[0] = bit.band(bit.rshift(addr + 0ULL, 40ULL), 0xFF)
 			end
 	
 			if ( v == "dstMac" ) then
 				addr = testParams.baseDstMacUnsigned + flowId
-				local octet = 5
-				repeat
-					octetValue = (addr/(256^(5-octet))) % 256
-					ethernetPacket.eth.dst.uint8[octet] = octetValue
-					octet = octet - 1
-				until ( octet < 0 )
-				ethernetPacket.eth.dst.uint8[octet] = octetValue
+				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
+				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
+				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
+				ethernetPacket.eth.dst.uint8[2] = bit.band(bit.rshift(addr, 24), 0xFF)
+				ethernetPacket.eth.dst.uint8[1] = bit.band(bit.rshift(addr + 0ULL, 32ULL), 0xFF)
+				ethernetPacket.eth.dst.uint8[0] = bit.band(bit.rshift(addr + 0ULL, 40ULL), 0xFF)
 			end
 		end
 
