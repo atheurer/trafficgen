@@ -269,14 +269,14 @@ function getTestParams(testParams)
 			return false
 		end
 		if not cfg then
-			log:error("Config file does not contain DPDKConfig statement")
+			log:error("Config file does not contain VSPERF statement")
 			return false
 		end
 	else
 		log:warn("No %s file found, using defaults", filename)
 	end
 
-	local testParams = cfg
+	local testParams = cfg or {}
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
 	local max_line_rate_Mfps = (LINE_RATE /(testParams.frameSize*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
 	testParams.testType = testParams.testType or TEST_TYPE
