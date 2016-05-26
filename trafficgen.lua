@@ -257,30 +257,23 @@ function prepareDevs(testParams)
 end
 
 function getTestParams(testParams)
-	local cfgFileLocations = {
-		"./opnfv-vsperf-cfg.lua"
-	}
+	filename = "opnfv-vsperf-cfg.lua"
 	local cfg
-	for _, f in ipairs(cfgFileLocations) do
-		if fileExists(f) then
-			cfgScript = loadfile(f)
-			setfenv(cfgScript, setmetatable({ VSPERF = function(arg) cfg = arg end }, { __index = _G }))
-			local ok, err = pcall(cfgScript)
-			if not ok then
-				log:error("Could not load DPDK config: " .. err)
-				return false
-			end
-			if not cfg then
-				log:error("Config file does not contain DPDKConfig statement")
-				return false
-			end
-			cfg.name = f
-			break
+	if fileExists(filename) then
+		log:info("reading [%s]", filename)
+		cfgScript = loadfile(filename)
+		setfenv(cfgScript, setmetatable({ VSPERF = function(arg) cfg = arg end }, { __index = _G }))
+		local ok, err = pcall(cfgScript)
+		if not ok then
+			log:error("Could not load DPDK config: " .. err)
+			return false
 		end
-	end
-	if not cfg then
-		log:warn("No opnfv-vsperf-cfg.lua config found, using defaults")
-		cfg = {}
+		if not cfg then
+			log:error("Config file does not contain DPDKConfig statement")
+			return false
+		end
+	else
+		log:warn("No %s file found, using defaults", filename)
 	end
 
 	local testParams = cfg
@@ -654,6 +647,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
         local results = {}
 	results.totalFrames = txStats.total
 	results.avgMpps = txStats.mpps.avg
+	log:info("Average Tx Mpps: %f", txStats.mpps.avg)
         return results
 end
 
@@ -700,5 +694,7 @@ function timerSlave(dev1, dev2, runTime, testParams)
 	if haveHisto then
 		hist:save("hist.csv")
 		hist:print("Histogram")
+	else
+		log:warn("no latency samples found")
 	end
 end
