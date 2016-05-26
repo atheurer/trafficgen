@@ -564,6 +564,13 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 		-- the measured rate must be within the tolerance window but also not exceed the desired rate
 		if ( measuredRate > testParams.rate or (testParams.rate - measuredRate) > rate_accuracy ) then
 			local correction_ratio = testParams.rate/measuredRate
+			-- ensure a minimum amount of change in rate
+			if (correction_ratio < 1 and correction_ratio > 0.999 ) then
+				correction_ratio = 0.999
+			end
+			if (correction_ratio > 1 and correction_ratio < 1.001 ) then
+				correction_ratio = 1.001
+			end
 			calibratedRate = calibratedRate * correction_ratio
 			prevMeasuredRate = measuredRate
                         log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
