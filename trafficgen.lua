@@ -647,7 +647,6 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
         local results = {}
 	results.totalFrames = txStats.total
 	results.avgMpps = txStats.mpps.avg
-	log:info("Average Tx Mpps: %f", txStats.mpps.avg)
         return results
 end
 
