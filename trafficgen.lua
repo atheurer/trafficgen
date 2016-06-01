@@ -557,7 +557,7 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 					dev:getTxQueue(qid):sendWithDelay(bufs)
 				end
 			end
-			txStats:update()
+			txStats:update(0.5)
 		end
 		txStats:finalize()
 		measuredRate = txStats.mpps.avg
@@ -596,7 +596,7 @@ function counterSlave(rxQueue, runTime)
 	local rxStats = stats:newDevRxCounter(rxQueue, "plain")
 	local runtime = timer:new(runTime)
 	while runtime:running() and dpdk.running() do
-		rxStats:update()
+		rxStats:update(0.5)
 	end
         rxStats:finalize()
 	local results = {}
@@ -648,7 +648,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 				dev:getTxQueue(qid):sendWithDelay(bufs)
 			end
 		end
-		txStats:update()
+		txStats:update(0.5)
 	end
 	txStats:finalize()
         local results = {}
