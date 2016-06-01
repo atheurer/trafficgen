@@ -293,7 +293,7 @@ function getTestParams(testParams)
 	testParams.acceptableLossPct = testParams.acceptableLossPct or MAX_FRAME_LOSS_PCT
 	testParams.rate_granularity = testParams.rate_granularity or RATE_GRANULARITY
 	testParams.ports = testParams.ports or {0,1}
-	testParams.flowMods = testParams.flowMods or {"srcIp", "dstIp"}
+	testParams.flowMods = testParams.flowMods or {"srcIp"}
 	testParams.txQueuesPerDev = testParams.txQueuesPerDev or TX_QUEUES_PER_DEV
 	testParams.rxQueuesPerDev = testParams.rxQueuesPerDev or RX_QUEUES_PER_DEV
 	testParams.srcIp = testParams.srcIp or SRC_IP
