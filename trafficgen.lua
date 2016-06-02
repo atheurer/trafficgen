@@ -33,6 +33,7 @@
 -- rate_granularity	testParams.rate_granularity or RATE_GRANULARITY
 -- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
 -- frameSize		Integer: the size of the Ethernet frame (including CRC)
+-- oneShot		true or false: set to true only if you don't want a binary search for maximum packet rate
 
 local dpdk	= require "dpdk"
 local memory	= require "memory"
@@ -123,13 +124,17 @@ function master(...)
 		end
 	else
 		if testParams.testType == "throughput" or testParams.testType == "throughput-latency" then
-			printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
+			if testParams.oneShot then
+				printf("Running single throughput test");
+				finalValidation = true
+			else
+				printf("Starting binary search for maximum throughput with no more than %.8f%% packet loss", testParams.acceptableLossPct);
+			end
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
 				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
 					if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
-						--rate = dev1_avg_txMpps -- the actual rate may be lower, so correct "rate"
 						prevRate = testParams.rate
-						if acceptableLoss(testParams, rxStats, txStats) then
+						if testParams.oneShot or acceptableLoss(testParams, rxStats, txStats) then
 							if finalValidation then
 								showReport(rxStats, txStats, testParams)
 								return
@@ -307,11 +312,11 @@ function getTestParams(testParams)
 	testParams.srcMac = testParams.srcMac or SRC_MAC
 	testParams.dstMac = testParams.dstMac or DST_MAC
 	testParams.vlanId = testParams.vlanId
-
 	testParams.baseDstMacUnsigned = macToU48(testParams.dstMac)
 	testParams.baseSrcMacUnsigned = macToU48(testParams.srcMac)
 	testParams.srcIp = parseIPAddress(testParams.srcIp)
 	testParams.dstIp = parseIPAddress(testParams.dstIp)
+	testParams.oneShot = testParams.oneShot or false
 
 	return testParams
 end
