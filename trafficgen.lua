@@ -410,7 +410,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- start devices which receive
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			rxTasks[i] = dpdk.launchLua("counterSlave", devs[testParams.connections[i]]:getRxQueue(0), runTime + 6)
+			rxTasks[i] = dpdk.launchLua("counterSlave", devs[testParams.connections[i]]:getRxQueue(0), runTime)
 		end
 	end
 	dpdk.sleepMillis(3000)
@@ -603,8 +603,11 @@ end
 
 function counterSlave(rxQueue, runTime)
 	local rxStats = stats:newDevRxCounter(rxQueue, "plain")
-	local runtime = timer:new(runTime)
-	while runtime:running() and dpdk.running() do
+	if runTime > 0 then
+		-- Rx runs a bit longer than Tx to ensure all packets are received
+		runTimer = timer:new(runTime + 6)
+	end
+	while (runTime == 0 or runTimer:running()) and dpdk.running() do
 		rxStats:update(0.5)
 	end
         rxStats:finalize()
@@ -628,7 +631,10 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 		}
 	end)
 	local bufs = mem:bufArray()
-	local runtime = timer:new(runTime)
+	if runTime > 0 then
+		runtime = timer:new(runTime)
+	end
+	
 	local txStats = stats:newDevTxCounter(dev, "plain")
 	calibratedRate = calibratedRate / testParams.txQueuesPerDev
 	local count = 0
@@ -638,7 +644,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 		end
 	end
 	local packetCount = 0
-	while runtime:running() and dpdk.running() do
+	while (runTime == 0 or runtime:running()) and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
 		packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
 		if (testParams.vlanId) then
@@ -683,11 +689,13 @@ function timerSlave(dev1, dev2, runTime, testParams)
 	local hist = hist()
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	dpdk.sleepMillis(LATENCY_TRIM)
-	local runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
+	if runTime > 0 then
+		runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
+	end
 	local rateLimit = timer:new(0.01) -- less than 100 samples per second
 	local timstamper2
 	local timestamper = timestamper1
-	while runTimer:running() and dpdk.running() do
+	while (runTime == 0 or runTimer:running()) and dpdk.running() do
 		if testParams.runBidirec then -- outer loop flips devices for Tx and Rx
 			if timestamper == timestamper2 then
 				timestamper = timestamper1
