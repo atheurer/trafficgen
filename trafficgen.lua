@@ -213,13 +213,17 @@ function showReport(rxStats, txStats, testParams)
 		end
 		count = count + 1
 	end
-	if testParams.testType == "throughput" or testParams.testType == "throghput-latency" then
+	if testParams.testType == "throughput" then
 		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
 			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 	end
-	if testParams.testType == "latency" or testParams.testType == "throghput-latency" then
+	if testParams.testType == "latency" then
 		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s latencyRunTime: %d ports: %s",
 			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, portList) 
+	end
+	if testParams.testType == "throughput-latency" then
+		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s latencyRunTime: %d searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
+			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 	end
 end
 
