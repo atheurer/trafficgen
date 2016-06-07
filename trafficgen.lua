@@ -190,24 +190,6 @@ function showReport(rxStats, txStats, testParams)
 	local totalTxFrames = 0
 	local totalLostFrames = 0
 	local totalLostFramePct 
-	for i, v in ipairs(txStats) do
-		if testParams.connections[i] then
-			local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
-			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
-			local rxMpps = txStats[i].avgMpps * (100 - lostFramePct) / 100
-			totalRxMpps = totalRxMpps + rxMpps
-			totalTxMpps = totalTxMpps + txStats[i].avgMpps
-			totalRxFrames = totalRxFrames + rxStats[testParams.connections[i]].totalFrames
-			totalTxFrames = totalTxFrames + txStats[i].totalFrames
-			totalLostFrames = totalLostFrames + lostFrames
-			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
-			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
-			 (i-1), (testParams.connections[i]-1), txStats[i].totalFrames,
-			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
-		end
-	end
-	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
-	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
 	local portList = ""
 	local count = 0
 	for i, v in ipairs(testParams.ports) do
@@ -230,6 +212,24 @@ function showReport(rxStats, txStats, testParams)
 		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s latencyRunTime: %d searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
 			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 	end
+	for i, v in ipairs(txStats) do
+		if testParams.connections[i] then
+			local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
+			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
+			local rxMpps = txStats[i].avgMpps * (100 - lostFramePct) / 100
+			totalRxMpps = totalRxMpps + rxMpps
+			totalTxMpps = totalTxMpps + txStats[i].avgMpps
+			totalRxFrames = totalRxFrames + rxStats[testParams.connections[i]].totalFrames
+			totalTxFrames = totalTxFrames + txStats[i].totalFrames
+			totalLostFrames = totalLostFrames + lostFrames
+			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
+			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
+			 (i-1), (testParams.connections[i]-1), txStats[i].totalFrames,
+			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
+		end
+	end
+	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
+	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
 end
 
 function prepareDevs(testParams)
@@ -704,12 +704,10 @@ function timerSlave(dev1, dev2, port1, runTime, testParams)
 	while (runTime == 0 or runTimer:running()) and dpdk.running() do
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
-			if ( timestamper == timestamper1 ) then
 			local lat = timestamper:measureLatency();
 			if (lat) then
 				haveHisto = true;
                 		hist:update(lat)
-			end
 			end
 			rateLimit:reset()
 		end
