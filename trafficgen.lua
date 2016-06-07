@@ -675,34 +675,30 @@ end
 function timerSlave(dev1, dev2, runTime, testParams)
 	local rxQid = testParams.rxQueuesPerDev
 	local txQid = testParams.txQueuesPerDev
+	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
 	local rxQueues = {}
 	local txQueues = {}
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
+	local frameSizeWithoutCrc = testParams.frameSize - 4
+	local rateLimit = timer:new(0.001) -- less than 100 samples per second
 
+	hist1 = hist()
 	dev2:filterTimestamps(dev2:getRxQueue(rxQid))
-	local timestamper1 = ts:newUdpTimestamper(dev1:getTxQueue(txQid), dev2:getRxQueue(rxQid))
+	timestamper1 = ts:newUdpTimestamper(dev1:getTxQueue(txQid), dev2:getRxQueue(rxQid))
 	if testParams.runBidirec then
 		dev1:filterTimestamps(dev1:getRxQueue(rxQid))
 		timestamper2 = ts:newUdpTimestamper(dev2:getTxQueue(txQid), dev1:getRxQueue(rxQid))
+		hist2 = hist()
 	end
-	local frameSizeWithoutCrc = testParams.frameSize - 4
-	local hist = hist()
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	dpdk.sleepMillis(LATENCY_TRIM)
 	if runTime > 0 then
 		runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
 	end
-	local rateLimit = timer:new(0.01) -- less than 100 samples per second
-	local timstamper2
 	local timestamper = timestamper1
+	local hist = hist1
+	local haveHisto = false
 	while (runTime == 0 or runTimer:running()) and dpdk.running() do
-		if testParams.runBidirec then -- outer loop flips devices for Tx and Rx
-			if timestamper == timestamper2 then
-				timestamper = timestamper1
-			else
-				timestamper = timestamper2
-			end
-		end
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
 			local lat = timestamper:measureLatency();
@@ -712,12 +708,29 @@ function timerSlave(dev1, dev2, runTime, testParams)
 			end
 			rateLimit:reset()
 		end
+		if testParams.runBidirec then
+			if timestamper == timestamper2 then
+				timestamper = timestamper1
+				hist = hist1
+				haveHisto2 = haveHisto
+			else
+				timestamper = timestamper2
+				hist = hist2
+				haveHisto1 = haveHisto
+			end
+		end
 	end
 	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
-	if haveHisto then
-		hist:save("hist.csv")
-		hist:print("Histogram")
+	if haveHisto1 then
+		hist1:save("hist1.csv")
+		hist1:print("Histogram")
 	else
-		log:warn("no latency samples found")
+		log:warn("no hist1 latency samples found")
+	end
+	if haveHisto2 then
+		hist2:save("hist2.csv")
+		hist2:print("Histogram")
+	else
+		log:warn("no hist2 latency samples found")
 	end
 end
