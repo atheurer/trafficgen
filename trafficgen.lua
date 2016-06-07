@@ -207,7 +207,7 @@ function showReport(rxStats, txStats, testParams)
 		end
 	end
 	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
-	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, testParams.rate, totalRxMpps)
+	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
 	local portList = ""
 	local count = 0
 	for i, v in ipairs(testParams.ports) do
@@ -427,7 +427,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[i]] then
-					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], runTime, testParams)
+					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], i, runTime, testParams)
 				end
 			end
 		end
@@ -673,7 +673,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
         return results
 end
 
-function timerSlave(dev1, dev2, runTime, testParams)
+function timerSlave(dev1, dev2, port1, runTime, testParams)
 	local rxQid = testParams.rxQueuesPerDev
 	local txQid = testParams.txQueuesPerDev
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
@@ -699,13 +699,17 @@ function timerSlave(dev1, dev2, runTime, testParams)
 	local timestamper = timestamper1
 	local hist = hist1
 	local haveHisto = false
+	local haveHisto1 = false
+	local haveHisto2 = false
 	while (runTime == 0 or runTimer:running()) and dpdk.running() do
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
+			if ( timestamper == timestamper1 ) then
 			local lat = timestamper:measureLatency();
 			if (lat) then
 				haveHisto = true;
                 		hist:update(lat)
+			end
 			end
 			rateLimit:reset()
 		end
@@ -714,28 +718,34 @@ function timerSlave(dev1, dev2, runTime, testParams)
 				timestamper = timestamper1
 				hist = hist1
 				haveHisto2 = haveHisto
+				haveHisto = haveHisto1
 			else
 				timestamper = timestamper2
 				hist = hist2
 				haveHisto1 = haveHisto
+				haveHisto = haveHisto2
 			end
+		else
+			haveHisto1 = haveHisto
 		end
 	end
 	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
+	local histDesc = "Histogram port " .. testParams.ports[port1] .. " to port " .. testParams.ports[testParams.connections[port1]]
+	local histFile = "hist:" .. testParams.ports[port1] .. "-" .. testParams.ports[testParams.connections[port1]] .. ".csv"
 	if haveHisto1 then
-		local histDesc = "Histogram port " .. testParams.ports[1] .. " to port " .. testParams.ports[testParams.connections[1]]
-		local histFile = "hist:" .. testParams.ports[1] .. "-" .. testParams.ports[testParams.connections[1]] .. ".csv"
 		hist1:print(histDesc)
 		hist1:save(histFile)
 	else
-		log:warn("no hist1 latency samples found")
+		log:warn("no latency samples found for %s", histDesc)
 	end
-	if haveHisto2 then
-		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[1]] .. " to port " .. testParams.ports[1]
-		local histFile = "hist:" .. testParams.ports[testParams.connections[1]] .. "-" .. testParams.ports[1] .. ".csv"
-		hist2:print(histDesc)
-		hist2:save(histFile)
-	else
-		log:warn("no hist2 latency samples found")
+	if testParams.runBidirec then
+		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[port1]] .. " to port " .. testParams.ports[port1]
+		local histFile = "hist:" .. testParams.ports[testParams.connections[port1]] .. "-" .. testParams.ports[port1] .. ".csv"
+		if haveHisto2 then
+			hist2:print(histDesc)
+			hist2:save(histFile)
+		else
+			log:warn("no latency samples found for %s", histDesc)
+		end
 	end
 end
