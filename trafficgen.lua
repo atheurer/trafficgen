@@ -254,10 +254,11 @@ function prepareDevs(testParams)
 	testParams.connections = {}
 	for i, v in ipairs(testParams.ports) do
 		if ( i % 2 == 1) then
-			log:info("port %d connects to port %d", i, i+1);
-			 testParams.connections[i] = i + 1  -- device 1 transmits to device 2
+			testParams.connections[i] = i + 1  -- device 1 transmits to device 2
+			log:info("port %d transmits to port %d", testParams.ports[i], testParams.ports[testParams.connections[i]]);
 			if testParams.runBidirec then
 				testParams.connections[i + 1] = i  -- device 2 transmits to device 1
+				log:info("port %d transmits to port %d", testParams.ports[testParams.connections[i]], testParams.ports[i]);
 			end
 		end
 	end
@@ -722,14 +723,18 @@ function timerSlave(dev1, dev2, runTime, testParams)
 	end
 	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
 	if haveHisto1 then
-		hist1:save("hist1.csv")
-		hist1:print("Histogram")
+		local histDesc = "Histogram port " .. testParams.ports[1] .. " to port " .. testParams.ports[testParams.connections[1]]
+		local histFile = "hist:" .. testParams.ports[1] .. "-" .. testParams.ports[testParams.connections[1]] .. ".csv"
+		hist1:print(histDesc)
+		hist1:save(histFile)
 	else
 		log:warn("no hist1 latency samples found")
 	end
 	if haveHisto2 then
-		hist2:save("hist2.csv")
-		hist2:print("Histogram")
+		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[1]] .. " to port " .. testParams.ports[1]
+		local histFile = "hist:" .. testParams.ports[testParams.connections[1]] .. "-" .. testParams.ports[1] .. ".csv"
+		hist2:print(histDesc)
+		hist2:save(histFile)
 	else
 		log:warn("no hist2 latency samples found")
 	end
