@@ -224,7 +224,7 @@ function showReport(rxStats, txStats, testParams)
 			totalLostFrames = totalLostFrames + lostFrames
 			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
 			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
-			 (i-1), (testParams.connections[i]-1), txStats[i].totalFrames,
+			 testParams.ports[i], testParams.ports[testParams.connections[i]], txStats[i].totalFrames,
 			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
 		end
 	end
