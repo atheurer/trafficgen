@@ -112,7 +112,7 @@ function master(...)
 	end
 	local txStats = {}
 	local rxStats = {}
-        local devs = prepareDevs(testParams)
+        local devs = {}
 	testParams.rate = testParams.startRate
 	if testParams.testType == "latency" then 
 		printf("Starting latency test", testParams.acceptableLossPct);
@@ -395,16 +395,58 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 			runTime = testParams.latencyRunTime
 		end
 	end
+	-- set the number of transmit queues based on the transmit rate
+	testParams.txQueuesPerDev = math.floor(testParams.rate / 3)
+        devs = prepareDevs(testParams)
 	-- calibrate transmit rate
-	local calibratedStartRate = testParams.rate
+	local calibratedRate = testParams.rate
+	local perDevCalibratedRate = {}
+	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			calTasks[i] = dpdk.launchLua("calibrateSlave", devs[i], calibratedStartRate, testParams)
-			calStats[i] = calTasks[i]:wait()
-			if calStats[i].calibrated then
-				calibratedStartRate = calStats[i].calibratedRate
+			local packetCount = 0
+			local measuredRate = 0
+			local prevMeasuredRate = 0
+			local calibrated = false
+			local calibrationCount = 0
+			local overcorrection = 1
+			repeat
+				log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
+				log:info("num flows: %d",  testParams.nrFlows)
+				-- launch a process to transmit packets per queue
+				for q = 0, testParams.txQueuesPerDev - 1 do
+					calTasks[q] = dpdk.launchLua("calibrateSlave", devs[i], calibratedRate, testParams, q)
+				end
+				-- wait for all jobs to complete
+				for q = 0, testParams.txQueuesPerDev - 1 do
+					calStats[q] = calTasks[q]:wait()
+				end
+				local measuredRate = calStats[0].avgMpps -- only the first queue provides the measured rate [for all queues]
+				-- the measured rate must be within the tolerance window but also not exceed the desired rate
+				if ( measuredRate > testParams.rate or (testParams.rate - measuredRate) > rate_accuracy ) then
+					local correction_ratio = testParams.rate/measuredRate
+					-- ensure a minimum amount of change in rate
+					if (correction_ratio < 1 and correction_ratio > 0.999 ) then
+						correction_ratio = 0.999
+					end
+					if (correction_ratio > 1 and correction_ratio < 1.001 ) then
+						correction_ratio = 1.001
+					end
+					calibratedRate = calibratedRate * correction_ratio
+						prevMeasuredRate = measuredRate
+                        		log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
+			 		measuredRate, testParams.rate, correction_ratio, calibratedRate)
+				else
+					calibrated = true
+					end
+				calibrationCount = calibrationCount + 1
+			until ( calibrated or calibrationCount > MAX_CALIBRATION_ATTEMPTS )
+			if calibrated then
+				perDevCalibratedRate[i] = calibratedRate
+				log:info("Rate calibration complete") 
 			else
-				return false
+				log:error("Could not achive Tx packet rate") 
+				return
 			end
 		end
 	end
@@ -422,7 +464,10 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	idx = 1
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			txTasks[i] = dpdk.launchLua("loadSlave", devs[i], calStats[i].calibratedRate, runTime, testParams)
+			printf("Testing %.2f Mfps", testParams.rate)
+			for q = 0, testParams.txQueuesPerDev - 1 do
+				txTasks[i*q+q] = dpdk.launchLua("loadSlave", devs[i], perDevCalibratedRate[i], runTime, testParams, q)
+			end
 			if testParams.testType == "latency" or
 				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
@@ -435,7 +480,13 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- wait for transmit devices to finish
 	for i, v in ipairs(devs) do
 		if testParams.connections[i] then
-			txStats[i] = txTasks[i]:wait()
+			for q = 0, testParams.txQueuesPerDev - 1 do
+				if q == 0 then
+					txStats[i] = txTasks[i*q+q]:wait()
+				else
+					txTasks[i*q+q]:wait()
+				end
+			end
 		end
 	end
 	if final then
@@ -507,9 +558,7 @@ function adjustHeaders(bufs, packetCount, testParams)
 	return packetCount
 end
 
-function calibrateSlave(dev, calibratedStartRate, testParams)
-	log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
-	log:info("num flows: %d",  testParams.nrFlows)
+function calibrateSlave(dev, calibratedRate, testParams, qid)
 	local frame_size_without_crc = testParams.frameSize - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
 	local mem = memory.createMemPool(function(buf)
@@ -524,80 +573,43 @@ function calibrateSlave(dev, calibratedStartRate, testParams)
 	end)
 	local bufs = mem:bufArray()
 	local packetCount = 0
-	local measuredRate = 0
-	local prevMeasuredRate = 0
-	local calibrated = false
-	local calibrationCount = 0
 	local overcorrection = 1
-	local calibratedRate
-	if testParams.rate == calibratedStartRate then
-		calibratedRate = testParams.rate / testParams.txQueuesPerDev
-	else
-		calibratedRate = calibratedStartRate / testParams.txQueuesPerDev
+	-- each queue/process does a fraction of the rate
+	calibratedRate = calibratedRate / testParams.txQueuesPerDev
+	-- only the first process tracks stats for the device
+	if qid == 0 then
+		txStats = stats:newDevTxCounter(dev, "plain")
 	end
-	repeat
-		local txStats = stats:newDevTxCounter(dev, "plain")
-		if ( testParams.txMethod == "hardware" ) then
-			for qid = 0, testParams.txQueuesPerDev - 1 do
-				dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
-			end
-			rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
-			runtime = timer:new(5)
-		else
-			rate_accuracy = TX_SW_RATE_TOLERANCE_MPPS / 2
-			-- s/w rate seems to be less consistent, so test over longer time period
-			runtime = timer:new(10)
+	if ( testParams.txMethod == "hardware" ) then
+		dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
+		runtime = timer:new(5)
+	else
+		-- s/w rate seems to be less consistent, so test over longer time period
+		runtime = timer:new(10)
+	end
+	while runtime:running() and dpdk.running() do
+		bufs:alloc(frame_size_without_crc)
+		packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
+		if (testParams.vlanId) then
+			bufs:setVlans(testParams.vlanId)
 		end
-		while runtime:running() and dpdk.running() do
-			bufs:alloc(frame_size_without_crc)
-			packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
-			if (testParams.vlanId) then
-				bufs:setVlans(testParams.vlanId)
+               	bufs:offloadUdpChecksums()
+		if ( testParams.txMethod == "hardware" ) then
+			dev:getTxQueue(qid):send(bufs)
+		else
+			for _, buf in ipairs(bufs) do
+				buf:setRate(calibratedRate)
 			end
-                	bufs:offloadUdpChecksums()
-			if ( testParams.txMethod == "hardware" ) then
-				for qid = 0, testParams.txQueuesPerDev - 1 do
-					dev:getTxQueue(qid):send(bufs)
-				end
-			else
-				for _, buf in ipairs(bufs) do
-					buf:setRate(calibratedRate)
-				end
-				for qid = 0, testParams.txQueuesPerDev - 1 do
-					dev:getTxQueue(qid):sendWithDelay(bufs)
-				end
-			end
+			dev:getTxQueue(qid):sendWithDelay(bufs)
+		end
+		if qid == 0 then
 			txStats:update(0.5)
 		end
+	end
+	local results = {}
+	if qid == 0 then
 		txStats:finalize()
-		measuredRate = txStats.mpps.avg
-		-- the measured rate must be within the tolerance window but also not exceed the desired rate
-		if ( measuredRate > testParams.rate or (testParams.rate - measuredRate) > rate_accuracy ) then
-			local correction_ratio = testParams.rate/measuredRate
-			-- ensure a minimum amount of change in rate
-			if (correction_ratio < 1 and correction_ratio > 0.999 ) then
-				correction_ratio = 0.999
-			end
-			if (correction_ratio > 1 and correction_ratio < 1.001 ) then
-				correction_ratio = 1.001
-			end
-			calibratedRate = calibratedRate * correction_ratio
-			prevMeasuredRate = measuredRate
-                        log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
-			 measuredRate, testParams.rate, correction_ratio, calibratedRate)
-		else
-			calibrated = true
-		end
-		calibrationCount = calibrationCount + 1
-	until ( calibrated or calibrationCount > MAX_CALIBRATION_ATTEMPTS )
-        local results = {}
-	if calibrated then
-		log:info("Rate calibration complete") 
-		results.calibratedRate = calibratedRate * testParams.txQueuesPerDev
-		results.calibrated = true
-	else
-		log:error("Could not achive Tx packet rate") 
-		results.calibrated = false
+		results.avgMpps = txStats.mpps.avg
 	end
         return results
 end
@@ -617,8 +629,7 @@ function counterSlave(rxQueue, runTime)
         return results
 end
 
-function loadSlave(dev, calibratedRate, runTime, testParams)
-	printf("Testing %.2f Mfps", testParams.rate)
+function loadSlave(dev, calibratedRate, runTime, testParams, qid)
 	local frame_size_without_crc = testParams.frameSize - 4
 	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
 	local mem = memory.createMemPool(function(buf)
@@ -640,9 +651,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 	calibratedRate = calibratedRate / testParams.txQueuesPerDev
 	local count = 0
 	if ( testParams.txMethod == "hardware" ) then
-		for qid = 0, testParams.txQueuesPerDev - 1 do
-			dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
-		end
+		dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
 	end
 	local packetCount = 0
 	while (runTime == 0 or runtime:running()) and dpdk.running() do
@@ -653,23 +662,23 @@ function loadSlave(dev, calibratedRate, runTime, testParams)
 		end
                 bufs:offloadUdpChecksums()
 		if ( testParams.txMethod == "hardware" ) then
-			for qid = 0, testParams.txQueuesPerDev - 1 do
-				dev:getTxQueue(qid):send(bufs)
-		end
+			dev:getTxQueue(qid):send(bufs)
 		else
 			for _, buf in ipairs(bufs) do
 				buf:setRate(calibratedRate)
 			end
-			for qid = 0, testParams.txQueuesPerDev - 1 do
-				dev:getTxQueue(qid):sendWithDelay(bufs)
-			end
+			dev:getTxQueue(qid):sendWithDelay(bufs)
 		end
-		txStats:update(0.5)
+		if qid == 0 then
+			txStats:update(0.5)
+		end
 	end
-	txStats:finalize()
         local results = {}
-	results.totalFrames = txStats.total
-	results.avgMpps = txStats.mpps.avg
+	if qid == 0 then
+		txStats:finalize()
+		results.totalFrames = txStats.total
+		results.avgMpps = txStats.mpps.avg
+	end
         return results
 end
 
