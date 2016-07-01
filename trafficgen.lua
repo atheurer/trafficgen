@@ -58,7 +58,7 @@ local TEST_TYPE = "throughput" -- "throughput" is for finding max packets/sec wh
 			       -- "throughput-latency" will run a throughput test but also measure latency in the final validation
 local TEST_BIDIREC = false --do not do bidirectional test
 local MAX_FRAME_LOSS_PCT = 0
-local LINE_RATE = 10000000000 -- 10Gbps
+local LINK_SPEED = 10000000000 -- 10Gbps
 local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
@@ -102,7 +102,6 @@ function master(...)
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
-	local prevFailRate = testParams.startRate
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
 	if ( method == "hardware" ) then
@@ -113,7 +112,13 @@ function master(...)
 	local txStats = {}
 	local rxStats = {}
         local devs = {}
-	testParams.rate = testParams.startRate
+	testParams.startRate = testParams.startRate or getLineRateMpps(devs, testParams)
+	testParams.rate = getMaxRateMpps(devs, testParams, testParams.startRate)
+	if testParams.rate < testParams.startRate then
+		log:warn("Start rate has been reduced from %.2f to %.2f because the original start rate could not be achieved.", testParams.startRate, testParams.rate)
+	end
+	local prevFailRate = testParams.rate
+
 	if testParams.testType == "latency" then 
 		printf("Starting latency test", testParams.acceptableLossPct);
 		if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
@@ -189,7 +194,7 @@ function showReport(rxStats, txStats, testParams)
 	local totalRxFrames = 0
 	local totalTxFrames = 0
 	local totalLostFrames = 0
-	local totalLostFramePct 
+	local totalLostFramePct = 0
 	local portList = ""
 	local count = 0
 	for i, v in ipairs(testParams.ports) do
@@ -288,12 +293,8 @@ function getTestParams(testParams)
 
 	local testParams = cfg or {}
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
-	local max_line_rate_Mfps = (LINE_RATE /(testParams.frameSize*8 +64 +96) /1000000) --max_line_rate_Mfps is in millions per second
 	testParams.testType = testParams.testType or TEST_TYPE
-	testParams.startRate = testParams.startRate or max_line_rate_Mfps
-	if testParams.startRate > max_line_rate_Mfps then
-		log:warn("You have specified a packet rate that is greater than line rate.  This will probably not work");
-	end
+	testParams.startRate = testParams.startRate
 	testParams.txMethod = "hardware"
 	testParams.runBidirec = testParams.runBidirec or false
 	testParams.nrFlows = testParams.nrFlows or NR_FLOWS
@@ -372,6 +373,58 @@ function acceptableRate(tx_rate_tolerance, rate, txStats, maxRateAttempts, t)
 	t[1] = 0
 	return true
 end
+
+function getLineRateMpps(devs, testParams)
+	-- TODO: check actual link rate instead of using LINK_SPEED
+	return  (LINE_SPEED /(testParams.frameSize*8 +64 +96) /1000000)
+end
+
+
+function getMaxRateMpps(devs, testParams, rate)
+	local qid
+	local idx
+	local calTasks = {}
+	local calStats = {}
+	local rxTasks = {}
+	local txTasks = {}
+	local timerTasks = {}
+	local macs = {}
+	local runTime = 10
+
+	-- set the number of transmit queues based on the transmit rate
+	testParams.txQueuesPerDev = 1 + math.floor(rate / 4)
+        devs = prepareDevs(testParams)
+	-- find the maximum transmit rate
+	local calibratedRate = 0
+	local perDevCalibratedRate = {}
+	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
+	for i, v in ipairs(devs) do
+		if testParams.connections[i] then
+			local packetCount = 0
+			local measuredRate = 0
+			local prevMeasuredRate = 0
+			local calibrated = false
+			local calibrationCount = 0
+			local overcorrection = 1
+			log:info("Finding maximum Tx Rate",  testParams.txMethod, rate)
+			log:info("num flows: %d",  testParams.nrFlows)
+			-- launch a process to transmit packets per queue
+			for q = 0, testParams.txQueuesPerDev - 1 do
+				calTasks[q] = dpdk.launchLua("calibrateSlave", devs[i], calibratedRate, testParams, q)
+			end
+			-- wait for all jobs to complete
+			for q = 0, testParams.txQueuesPerDev - 1 do
+				calStats[q] = calTasks[q]:wait()
+			end
+			local measuredRate = calStats[0].avgMpps -- only the first queue provides the measured rate [for all queues]
+			log:info("Max Tx rate: %.2f",  measuredRate)
+			if measuredRate < rate then
+				rate = measuredRate
+			end
+		end
+	end
+	return rate
+end
 			
 function launchTest(final, devs, testParams, txStats, rxStats)
 	local qid
@@ -396,7 +449,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 		end
 	end
 	-- set the number of transmit queues based on the transmit rate
-	testParams.txQueuesPerDev = math.floor(testParams.rate / 3)
+	testParams.txQueuesPerDev = 1 + math.floor(testParams.rate / 4)
         devs = prepareDevs(testParams)
 	-- calibrate transmit rate
 	local calibratedRate = testParams.rate
@@ -580,7 +633,7 @@ function calibrateSlave(dev, calibratedRate, testParams, qid)
 	if qid == 0 then
 		txStats = stats:newDevTxCounter(dev, "plain")
 	end
-	if ( testParams.txMethod == "hardware" ) then
+	if ( testParams.txMethod == "hardware"  and calibratedRate > 0 ) then
 		dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
 		runtime = timer:new(5)
 	else
@@ -597,8 +650,10 @@ function calibrateSlave(dev, calibratedRate, testParams, qid)
 		if ( testParams.txMethod == "hardware" ) then
 			dev:getTxQueue(qid):send(bufs)
 		else
-			for _, buf in ipairs(bufs) do
-				buf:setRate(calibratedRate)
+			if calibratedRate > 0 then
+				for _, buf in ipairs(bufs) do
+					buf:setRate(calibratedRate)
+				end
 			end
 			dev:getTxQueue(qid):sendWithDelay(bufs)
 		end
