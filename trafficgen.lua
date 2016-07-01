@@ -58,7 +58,7 @@ local TEST_TYPE = "throughput" -- "throughput" is for finding max packets/sec wh
 			       -- "throughput-latency" will run a throughput test but also measure latency in the final validation
 local TEST_BIDIREC = false --do not do bidirectional test
 local MAX_FRAME_LOSS_PCT = 0
-local LINK_SPEED = 10000000000 -- 10Gbps
+local LINK_SPEED = 40000000000 -- 40Gbps
 local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
@@ -73,6 +73,7 @@ local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
 local MAX_CALIBRATION_ATTEMPTS = 20
 local VLAN_ID = 0
+local MPPS_PER_QUEUE = 4 
 
 function macToU48(mac)
 	-- this is similar to parseMac, but maintains ordering as represented in the input string
@@ -319,6 +320,7 @@ function getTestParams(testParams)
 	testParams.srcIp = parseIPAddress(testParams.srcIp)
 	testParams.dstIp = parseIPAddress(testParams.dstIp)
 	testParams.oneShot = testParams.oneShot or false
+	testParams.mppsPerQueue = testParams.mppsPerQueue or MPPS_PER_QUEUE
 
 	return testParams
 end
@@ -376,9 +378,12 @@ end
 
 function getLineRateMpps(devs, testParams)
 	-- TODO: check actual link rate instead of using LINK_SPEED
-	return  (LINE_SPEED /(testParams.frameSize*8 +64 +96) /1000000)
+	return  (LINK_SPEED /(testParams.frameSize*8 +64 +96) /1000000)
 end
 
+function calcTxQueues(rate, testParams)
+	return 1 + math.floor(rate / testParams.mppsPerQueue)
+end
 
 function getMaxRateMpps(devs, testParams, rate)
 	local qid
@@ -392,7 +397,7 @@ function getMaxRateMpps(devs, testParams, rate)
 	local runTime = 10
 
 	-- set the number of transmit queues based on the transmit rate
-	testParams.txQueuesPerDev = 1 + math.floor(rate / 4)
+	testParams.txQueuesPerDev = calcTxQueues(rate, testParams)
         devs = prepareDevs(testParams)
 	-- find the maximum transmit rate
 	local calibratedRate = 0
@@ -449,7 +454,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 		end
 	end
 	-- set the number of transmit queues based on the transmit rate
-	testParams.txQueuesPerDev = 1 + math.floor(testParams.rate / 4)
+	testParams.txQueuesPerDev = calcTxQueues(testParams.rate, testParams)
         devs = prepareDevs(testParams)
 	-- calibrate transmit rate
 	local calibratedRate = testParams.rate
