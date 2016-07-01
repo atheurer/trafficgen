@@ -138,7 +138,7 @@ function master(...)
 			end
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
 				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
-					if acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+					if not acceptableLoss(testParams, rxStats, txStats) or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 						prevRate = testParams.rate
 						if testParams.oneShot or acceptableLoss(testParams, rxStats, txStats) then
 							if finalValidation then
@@ -484,11 +484,11 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 				if ( measuredRate > testParams.rate or (testParams.rate - measuredRate) > rate_accuracy ) then
 					local correction_ratio = testParams.rate/measuredRate
 					-- ensure a minimum amount of change in rate
-					if (correction_ratio < 1 and correction_ratio > 0.999 ) then
-						correction_ratio = 0.999
+					if (correction_ratio < 1 and correction_ratio > 0.99 ) then
+						correction_ratio = 0.99
 					end
-					if (correction_ratio > 1 and correction_ratio < 1.001 ) then
-						correction_ratio = 1.001
+					if (correction_ratio > 1 and correction_ratio < 1.01 ) then
+						correction_ratio = 1.01
 					end
 					calibratedRate = calibratedRate * correction_ratio
 						prevMeasuredRate = measuredRate
