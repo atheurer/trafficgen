@@ -400,7 +400,6 @@ function getMaxRateMpps(devs, testParams, rate)
 	testParams.txQueuesPerDev = calcTxQueues(rate, testParams)
         devs = prepareDevs(testParams)
 	-- find the maximum transmit rate
-	local calibratedRate = 0
 	local perDevCalibratedRate = {}
 	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
 	for i, v in ipairs(devs) do
@@ -411,6 +410,9 @@ function getMaxRateMpps(devs, testParams, rate)
 			local calibrated = false
 			local calibrationCount = 0
 			local overcorrection = 1
+
+			-- first find the maximum rate without setting the rate value (which should be absolute fastest rate possible)
+			local calibratedRate = 0 -- using 0 will force calibrateSlave to not set a rate
 			log:info("Finding maximum Tx Rate",  testParams.txMethod, rate)
 			log:info("num flows: %d",  testParams.nrFlows)
 			-- launch a process to transmit packets per queue
@@ -426,9 +428,49 @@ function getMaxRateMpps(devs, testParams, rate)
 			if measuredRate < rate then
 				rate = measuredRate
 			end
+
+			-- next try to achieve the maximum rate by using a calibrated rate value
+			testParams.rate = rate
+			calibratedRate = rate
+			repeat
+				log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
+				log:info("num flows: %d",  testParams.nrFlows)
+				-- launch 1 process per Tx queue to transmit packets
+				for q = 0, testParams.txQueuesPerDev - 1 do
+					calTasks[q] = dpdk.launchLua("calibrateSlave", devs[i], calibratedRate, testParams, q)
+				end
+				-- wait for all jobs to complete
+				for q = 0, testParams.txQueuesPerDev - 1 do
+					calStats[q] = calTasks[q]:wait()
+				end
+				local measuredRate = calStats[0].avgMpps -- only the first queue provides the measured rate [for all queues]
+				-- the measured rate must be within the tolerance window but also not exceed the desired rate
+				if ( measuredRate > testParams.rate or (testParams.rate - measuredRate) > rate_accuracy ) then
+					local correction_ratio = testParams.rate/measuredRate
+					-- ensure a minimum amount of change in rate
+					if (correction_ratio < 1 and correction_ratio > 0.99 ) then
+						correction_ratio = 0.99
+					end
+					if (correction_ratio > 1 and correction_ratio < 1.01 ) then
+						correction_ratio = 1.01
+					end
+					calibratedRate = calibratedRate * correction_ratio
+						prevMeasuredRate = measuredRate
+                        		log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
+			 		measuredRate, testParams.rate, correction_ratio, calibratedRate)
+				else
+					calibrated = true
+					end
+				calibrationCount = calibrationCount + 1
+			until ( calibrated or calibrationCount > MAX_CALIBRATION_ATTEMPTS )
+			if calibrated then
+				return rate
+			else
+				log:error("Maximum tx rate reduced to %.2f", measuredRate) 
+				return measuredRate
+			end
 		end
 	end
-	return rate
 end
 			
 function launchTest(final, devs, testParams, txStats, rxStats)
