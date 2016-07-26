@@ -906,7 +906,7 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 	end
 	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
 	local histDesc = "Histogram port " .. testParams.ports[dev1Id] .. " to port " .. testParams.ports[testParams.connections[dev1Id]]
-	local histFile = "hist:" .. testParams.ports[deb1Id] .. "-" .. testParams.ports[testParams.connections[dev1Id]] .. ".csv"
+	local histFile = "hist:" .. testParams.ports[dev1Id] .. "-" .. testParams.ports[testParams.connections[dev1Id]] .. ".csv"
 	if haveHisto1 then
 		hist1:print(histDesc)
 		hist1:save(histFile)
@@ -914,7 +914,7 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
-		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[dev1Id]] .. " to port " .. testParams.ports[deb1Id]
+		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[dev1Id]] .. " to port " .. testParams.ports[dev1Id]
 		local histFile = "hist:" .. testParams.ports[testParams.connections[dev1Id]] .. "-" .. testParams.ports[dev1Id] .. ".csv"
 		if haveHisto2 then
 			hist2:print(histDesc)
