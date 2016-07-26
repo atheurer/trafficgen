@@ -56,14 +56,12 @@ local FRAME_SIZE = 64
 local TEST_TYPE = "throughput" -- "throughput" is for finding max packets/sec while not exceeding MAX_FRAME_LOSS_PCT
 			       -- "latency" is for measuring round-trip packet latency while handling testParams.startRate packets/sec
 			       -- "throughput-latency" will run a throughput test but also measure latency in the final validation
-local TEST_BIDIREC = false --do not do bidirectional test
+local TEST_BIDIREC = false -- do not do bidirectional test
 local MAX_FRAME_LOSS_PCT = 0
-local LINK_SPEED = 40000000000 -- 40Gbps
+local LINK_SPEED = 10000000000 -- 10Gbps
 local RATE_GRANULARITY = 0.1
 local TX_HW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
 local TX_SW_RATE_TOLERANCE_MPPS = 0.250  -- The acceptable difference between actual and measured TX rates (in Mpps)
-local SRC_MAC   = "20:11:12:13:14:15" -- src mac is taken from the NIC
-local DST_MAC   = "10:11:12:13:14:15" -- src mac is taken from the NIC
 local SRC_IP    = "10.0.0.1"
 local DST_IP    = "192.168.0.10"
 local SRC_PORT  = 1234
@@ -73,7 +71,9 @@ local TX_QUEUES_PER_DEV = 3
 local RX_QUEUES_PER_DEV = 1
 local MAX_CALIBRATION_ATTEMPTS = 20
 local VLAN_ID = 0
-local MPPS_PER_QUEUE = 4 
+local MPPS_PER_QUEUE = 10
+local PCI_ID_X710 = 0x80861572
+local PCI_ID_XL710 = 0x80861583
 
 function macToU48(mac)
 	-- this is similar to parseMac, but maintains ordering as represented in the input string
@@ -113,11 +113,11 @@ function master(...)
 	local txStats = {}
 	local rxStats = {}
         local devs = {}
-	testParams.startRate = testParams.startRate or getLineRateMpps(devs, testParams)
-	testParams.rate = getMaxRateMpps(devs, testParams, testParams.startRate)
-	if testParams.rate < testParams.startRate then
+	testParams.rate = getMaxRateMpps(devs, testParams, getLineRateMpps(testParams), testParams.startRate)
+	if testParams.startRate and testParams.rate < testParams.startRate then
 		log:warn("Start rate has been reduced from %.2f to %.2f because the original start rate could not be achieved.", testParams.startRate, testParams.rate)
 	end
+	testParams.startRate = testParams.startRate or testParams.rate
 	local prevFailRate = testParams.rate
 
 	if testParams.testType == "latency" then 
@@ -138,9 +138,10 @@ function master(...)
 			end
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
 				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
-					if not acceptableLoss(testParams, rxStats, txStats) or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+					local acceptableLossResult = acceptableLoss(testParams, rxStats, txStats)
+					if not acceptableLossResult or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
 						prevRate = testParams.rate
-						if testParams.oneShot or acceptableLoss(testParams, rxStats, txStats) then
+						if testParams.oneShot or acceptableLossResult then
 							if finalValidation then
 								showReport(rxStats, txStats, testParams)
 								return
@@ -218,7 +219,7 @@ function showReport(rxStats, txStats, testParams)
 		printf("[PARAMETERS] startRate: %f nrFlows: %d frameSize: %d runBidirec: %s latencyRunTime: %d searchRunTime: %d validationRunTime: %d acceptableLossPct: %f ports: %s",
 			testParams.startRate, testParams.nrFlows, testParams.frameSize, testParams.runBidirec, testParams.latencyRunTime, testParams.searchRunTime, testParams.validationRunTime, testParams.acceptableLossPct, portList) 
 	end
-	for i, v in ipairs(txStats) do
+	for i, v in pairs(txStats) do
 		if testParams.connections[i] then
 			local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
 			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
@@ -249,23 +250,58 @@ function prepareDevs(testParams)
 	end
 	log:info("number of rx queues: %d", rxQueues);
 	log:info("number of tx queues: %d", txQueues);
+
+	-- The connections[] table defines a relationship between te device which transmits and a device which receives the same packets.
+	-- This relationship is derived via the ports[] table, where if ports contained {a, b, c, d}, device a transmits to device b,
+	-- and device c transmits to device d.  
+	-- If bidirectional traffic is enabled, the reverse is also true, and device b transmits to device a and d to c.
+	testParams.connections = {}
+	for i, v in ipairs(testParams.ports) do -- ports = {a, b, c, d}
+		if ( i % 2 == 1) then -- for ports a, c
+			testParams.connections[i] = i + 1  -- device a transmits to device b, device c transmits to device d 
+			log:info("device %d transmits to device %d", testParams.ports[i], testParams.ports[testParams.connections[i]]);
+			if testParams.runBidirec then
+				testParams.connections[i + 1] = i  -- device b transmits to device a, device d transmits to device c
+				log:info("device %d transmits to device %d", testParams.ports[testParams.connections[i]], testParams.ports[i]);
+			end
+		end
+	end
+
+	-- store the src MACs for each device
+	if not testParams.srcMacs then
+		testParams.srcMacs = {}
+	end
 	for i, v in ipairs(testParams.ports) do
 		devs[i] = device.config{ port = testParams.ports[i],
 				 	rxQueues = rxQueues,
 				 	txQueues = txQueues}
+		-- by default a source MAC is retrived from the actual device
+		-- if a source MAC was already provided for the device (via opnfv-vsperf-cfg.lua), then leave it alone
+		if not testParams.srcMacs[i] and testParams.connections[i] then
+			testParams.srcMacs[i] = devs[i]:getTxQueue(0)
+			--testParams.srcMacsUnsigned[i] = macToU48(testParams.srcMacs[i])
+		end
+		if testParams.srcMacs[i] and testParams.connections[i] then
+			log:info("device %d src MAC: [%s]", v, testParams.srcMacs[i])
+		end
 	end
-	-- connections define where one device connects to another 
-	-- currently this follows a pattter of 1->2, 3->4, and so on
-	-- if bidirectional traffic is enabled, the reverse is also true
-	testParams.connections = {}
+
+	-- store the dst MACs for each device
+	if not testParams.dstMacs then
+		testParams.dstMacs = {}
+	end
 	for i, v in ipairs(testParams.ports) do
-		if ( i % 2 == 1) then
-			testParams.connections[i] = i + 1  -- device 1 transmits to device 2
-			log:info("port %d transmits to port %d", testParams.ports[i], testParams.ports[testParams.connections[i]]);
-			if testParams.runBidirec then
-				testParams.connections[i + 1] = i  -- device 2 transmits to device 1
-				log:info("port %d transmits to port %d", testParams.ports[testParams.connections[i]], testParams.ports[i]);
-			end
+		-- by default a destination MAC is used by looking at the source MAC in the connections[] table
+		-- if a destination MAC was already provided for the device (via opnfv-vsperf-cfg.lua), then leave it alone
+		if not testParams.dstMacs[i] and testParams.connections[i] then
+			testParams.dstMacs[i] = testParams.srcMacs[testParams.connections[i]]
+			--testParams.dstMacsUnsigned[i] = macToU48(testParams.dstMacs[i])
+		end
+		if testParams.dstMacs[i] and testParams.connections[i] then
+			log:info("device %d when transmitting will use dst MAC: [%s]", v, testParams.dstMacs[i])
+		end
+		if testParams.vlanIds and testParams.vlanIds[i] then
+			log:info("device %d when transmitting will use vlan ID: [%d]", v, testParams.vlanIds[i])
 		end
 	end
 	device.waitForLinks()
@@ -312,11 +348,9 @@ function getTestParams(testParams)
 	testParams.dstIp = testParams.dstIp or DST_IP
 	testParams.srcPort = testParams.srcPort or SRC_PORT
 	testParams.dstPort = testParams.dstPort or DST_PORT
-	testParams.srcMac = testParams.srcMac or SRC_MAC
-	testParams.dstMac = testParams.dstMac or DST_MAC
-	testParams.vlanId = testParams.vlanId
-	testParams.baseDstMacUnsigned = macToU48(testParams.dstMac)
-	testParams.baseSrcMacUnsigned = macToU48(testParams.srcMac)
+	testParams.srcMacs = testParams.srcMacs
+	testParams.dstMacs = testParams.dstMacs
+	testParams.vlanIds = testParams.vlanIds
 	testParams.srcIp = parseIPAddress(testParams.srcIp)
 	testParams.dstIp = parseIPAddress(testParams.dstIp)
 	testParams.oneShot = testParams.oneShot or false
@@ -335,17 +369,22 @@ end
 
 function acceptableLoss(testParams, rxStats, txStats)
 	local pass = true
-	for i, v in ipairs(txStats) do
+	local i
+	for i, v in pairs(txStats) do
 		if testParams.connections[i] then
-			local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
-			local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
-			if (lostFramePct > testParams.acceptableLossPct) then
-				log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
-				 (i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
-				pass = false
-			else
-				log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
-				 (i-1), (testParams.connections[i]-1), lostFrames, lostFramePct, testParams.acceptableLossPct);
+			for q = 0, testParams.txQueuesPerDev - 1 do
+				if q == 0 then
+					local lostFrames = txStats[i].totalFrames - rxStats[testParams.connections[i]].totalFrames
+					local lostFramePct = 100 * lostFrames / txStats[i].totalFrames
+					if (lostFramePct > testParams.acceptableLossPct) then
+						log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
+				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
+						pass = false
+					else
+						log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
+				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
+					end
+				end
 			end
 		end
 	end
@@ -376,7 +415,7 @@ function acceptableRate(tx_rate_tolerance, rate, txStats, maxRateAttempts, t)
 	return true
 end
 
-function getLineRateMpps(devs, testParams)
+function getLineRateMpps(testParams)
 	-- TODO: check actual link rate instead of using LINK_SPEED
 	return  (LINK_SPEED /(testParams.frameSize*8 +64 +96) /1000000)
 end
@@ -385,7 +424,7 @@ function calcTxQueues(rate, testParams)
 	return 1 + math.floor(rate / testParams.mppsPerQueue)
 end
 
-function getMaxRateMpps(devs, testParams, rate)
+function getMaxRateMpps(devs, testParams, lineRate, rate)
 	local qid
 	local idx
 	local calTasks = {}
@@ -397,13 +436,13 @@ function getMaxRateMpps(devs, testParams, rate)
 	local runTime = 10
 
 	-- set the number of transmit queues based on the transmit rate
-	testParams.txQueuesPerDev = calcTxQueues(rate, testParams)
+	testParams.txQueuesPerDev = calcTxQueues(rate or lineRate, testParams)
         devs = prepareDevs(testParams)
 	-- find the maximum transmit rate
 	local perDevCalibratedRate = {}
-	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
-	for i, v in ipairs(devs) do
-		if testParams.connections[i] then
+	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS
+	for devId, v in ipairs(devs) do
+		if testParams.connections[devId] then
 			local packetCount = 0
 			local measuredRate = 0
 			local prevMeasuredRate = 0
@@ -411,13 +450,18 @@ function getMaxRateMpps(devs, testParams, rate)
 			local calibrationCount = 0
 			local overcorrection = 1
 
-			-- first find the maximum rate without setting the rate value (which should be absolute fastest rate possible)
-			local calibratedRate = 0 -- using 0 will force calibrateSlave to not set a rate
+			if rate then
+				calibratedRate = rate
+			else
+				-- find the maximum rate without setting the rate value (which should be absolute fastest rate possible)
+				calibratedRate = 0 -- using 0 will force calibrateSlave to not set a rate
+				rate = lineRate
+			end
 			log:info("Finding maximum Tx Rate",  testParams.txMethod, rate)
-			log:info("num flows: %d",  testParams.nrFlows)
+			--log:info("num flows: %d",  testParams.nrFlows)
 			-- launch a process to transmit packets per queue
 			for q = 0, testParams.txQueuesPerDev - 1 do
-				calTasks[q] = dpdk.launchLua("calibrateSlave", devs[i], calibratedRate, testParams, q)
+				calTasks[q] = dpdk.launchLua("calibrateSlave", devs, devId, calibratedRate, testParams, q)
 			end
 			-- wait for all jobs to complete
 			for q = 0, testParams.txQueuesPerDev - 1 do
@@ -433,11 +477,12 @@ function getMaxRateMpps(devs, testParams, rate)
 			testParams.rate = rate
 			calibratedRate = rate
 			repeat
-				log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
-				log:info("num flows: %d",  testParams.nrFlows)
+				--log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
+				--log:info("num flows: %d",  testParams.nrFlows)
 				-- launch 1 process per Tx queue to transmit packets
 				for q = 0, testParams.txQueuesPerDev - 1 do
-					calTasks[q] = dpdk.launchLua("calibrateSlave", devs[i], calibratedRate, testParams, q)
+					--log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
+					calTasks[q] = dpdk.launchLua("calibrateSlave", devs, devId, calibratedRate, testParams, q)
 				end
 				-- wait for all jobs to complete
 				for q = 0, testParams.txQueuesPerDev - 1 do
@@ -501,21 +546,20 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- calibrate transmit rate
 	local calibratedRate = testParams.rate
 	local perDevCalibratedRate = {}
-	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS / 2
-	for i, v in ipairs(devs) do
-		if testParams.connections[i] then
+	local rate_accuracy = TX_HW_RATE_TOLERANCE_MPPS
+	for devId, v in ipairs(devs) do
+		if testParams.connections[devId] then
 			local packetCount = 0
 			local measuredRate = 0
 			local prevMeasuredRate = 0
 			local calibrated = false
 			local calibrationCount = 0
 			local overcorrection = 1
+			log:info("Starting tramsnit rate calibration for device %d", testParams.ports[devId])
 			repeat
-				log:info("Calibrating %s tx rate for %.2f Mfs",  testParams.txMethod , testParams.rate)
-				log:info("num flows: %d",  testParams.nrFlows)
 				-- launch a process to transmit packets per queue
 				for q = 0, testParams.txQueuesPerDev - 1 do
-					calTasks[q] = dpdk.launchLua("calibrateSlave", devs[i], calibratedRate, testParams, q)
+					calTasks[q] = dpdk.launchLua("calibrateSlave", devs, devId, calibratedRate, testParams, q)
 				end
 				-- wait for all jobs to complete
 				for q = 0, testParams.txQueuesPerDev - 1 do
@@ -534,26 +578,26 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 					end
 					calibratedRate = calibratedRate * correction_ratio
 						prevMeasuredRate = measuredRate
-                        		log:info("measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
-			 		measuredRate, testParams.rate, correction_ratio, calibratedRate)
+                        		log:info("Device %d measuredRate: %.4f  desiredRate:%.4f  new correction_ratio: %.4f  new calibratedRate: %.4f ",
+			 		testParams.connections[devId], measuredRate, testParams.rate, correction_ratio, calibratedRate)
 				else
 					calibrated = true
 					end
 				calibrationCount = calibrationCount + 1
 			until ( calibrated or calibrationCount > MAX_CALIBRATION_ATTEMPTS )
 			if calibrated then
-				perDevCalibratedRate[i] = calibratedRate
-				log:info("Rate calibration complete") 
+				perDevCalibratedRate[devId] = calibratedRate
+				log:info("Device %d rate calibration complete", testParams.ports[devId]) 
 			else
-				log:error("Could not achive Tx packet rate") 
+				log:error("Device %d could not achive Tx packet rate", testParams.ports[devId]) 
 				return
 			end
 		end
 	end
 	-- start devices which receive
-	for i, v in ipairs(devs) do
-		if testParams.connections[i] then
-			rxTasks[i] = dpdk.launchLua("counterSlave", devs[testParams.connections[i]]:getRxQueue(0), runTime)
+	for devId, v in ipairs(devs) do
+		if testParams.connections[devId] then
+			rxTasks[devId] = dpdk.launchLua("counterSlave", devs[testParams.connections[devId]]:getRxQueue(0), runTime)
 		end
 	end
 	dpdk.sleepMillis(3000)
@@ -562,53 +606,68 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	end
 	-- start devices which transmit
 	idx = 1
-	for i, v in ipairs(devs) do
-		if testParams.connections[i] then
+	local txTaskId = 1
+	for devId, v in ipairs(devs) do
+		if testParams.connections[devId] then
 			printf("Testing %.2f Mfps", testParams.rate)
 			for q = 0, testParams.txQueuesPerDev - 1 do
-				txTasks[i*q+q] = dpdk.launchLua("loadSlave", devs[i], perDevCalibratedRate[i], runTime, testParams, q)
+				--log:info("launching loadSLave for devId [%d] queue [%d] txTaskId [%d]", devId, q, txTaskId)
+				txTasks[txTaskId] = dpdk.launchLua("loadSlave", devs, devId, perDevCalibratedRate[devId], runTime, testParams, q)
+				txTaskId = txTaskId + 1
 			end
 			if testParams.testType == "latency" or
 				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
-				if not timerTasks[testParams.connections[i]] then
-					timerTasks[i] = dpdk.launchLua("timerSlave", devs[i], devs[testParams.connections[i]], i, runTime, testParams)
+				if not timerTasks[testParams.connections[devId]] then
+					timerTasks[devId] = dpdk.launchLua("timerSlave", devs, devId, testParams.connections[devId], runTime, testParams)
 				end
 			end
 		end
 	end
 	-- wait for transmit devices to finish
-	for i, v in ipairs(devs) do
-		if testParams.connections[i] then
+	local txTaskId = 1
+	for devId, v in ipairs(devs) do
+		if testParams.connections[devId] then
 			for q = 0, testParams.txQueuesPerDev - 1 do
 				if q == 0 then
-					txStats[i] = txTasks[i*q+q]:wait()
+					txStats[devId] = txTasks[txTaskId]:wait()
+					--log:info("getting txStats for devID [%d] queue [%d] txTaskId [%d]", devId, q, txTaskId)
 				else
-					txTasks[i*q+q]:wait()
+					txTasks[txTaskId]:wait()
+					--log:info("not getting txStats for devID [%d] queue [%d] txTaskId [%d]", devId, q, txTaskId)
 				end
+				txTaskId = txTaskId + 1
 			end
 		end
 	end
+	--for i, v in pairs(txStats) do
+		--log:info("Have txStats for device ID [%d]", i)
+	--end
+
 	if final then
 		log:info("Stopping final validation");
 	end
 	dpdk.sleepMillis(3000)
 	-- wait for receive devices to finish
-	for i, v in ipairs(devs) do
-		if testParams.connections[i] then
-			rxStats[testParams.connections[i]] = rxTasks[i]:wait()
+	for devId, v in ipairs(devs) do
+		if testParams.connections[devId] then
+			rxStats[testParams.connections[devId]] = rxTasks[devId]:wait()
+			--log:info("getting rxStats for device ID [%d]", testParams.connections[devId])
 		end
 		if testParams.testType == "latency" or
 			( testParams.testType == "throughput-latency" and final ) then
-			if timerTasks[i] then
-				timerTasks[i]:wait()
+			if timerTasks[devId] then
+				timerTasks[devId]:wait()
 			end
 		end
 	end
+	--for i, v in pairs(rxStats) do
+		--log:info("Have rxStats for device ID [%d]", i)
+	--end
 	return true
 end
 
-function adjustHeaders(bufs, packetCount, testParams)
+function adjustHeaders(devId, bufs, packetCount, testParams)
 	for _, buf in ipairs(bufs) do
 		local pkt = buf:getUdpPacket()
 		local ethernetPacket = buf:getEthernetPacket()
@@ -633,7 +692,7 @@ function adjustHeaders(bufs, packetCount, testParams)
 			end
 	
 			if ( v == "srcMac" ) then
-				addr = testParams.baseSrcMacUnsigned + flowId
+				addr = testParams.srcMacsUnsigned + flowId
 				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -643,7 +702,7 @@ function adjustHeaders(bufs, packetCount, testParams)
 			end
 	
 			if ( v == "dstMac" ) then
-				addr = testParams.baseDstMacUnsigned + flowId
+				addr = testParams.dstMacsUnsigned + flowId
 				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -658,30 +717,39 @@ function adjustHeaders(bufs, packetCount, testParams)
 	return packetCount
 end
 
-function calibrateSlave(dev, calibratedRate, testParams, qid)
-	local frame_size_without_crc = testParams.frameSize - 4
-	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
+function getBuffers(devId, testParams)
 	local mem = memory.createMemPool(function(buf)
+		local eth_dst
 		buf:getUdpPacket():fill{
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
-			ethSrc = testParams.srcMac,
-			ethDst = testParams.dstMac,
+			ethSrc = testParams.srcMacs[devId],
+			ethDst = testParams.dstMacs[devId],
 			ip4Dst = testParams.dstIp,
 			udpSrc = testParams.srcPort,
 			udpDst = testParams.dstPort
 		}
 	end)
 	local bufs = mem:bufArray()
+	return bufs
+end
+
+function calibrateSlave(devs, devId, calibratedRate, testParams, qid)
+	local dev = devs[devId]
+	local frame_size_without_crc = testParams.frameSize - 4
+	local bufs = getBuffers(devId, testParams)
 	local packetCount = 0
 	local overcorrection = 1
-	-- each queue/process does a fraction of the rate
-	calibratedRate = calibratedRate / testParams.txQueuesPerDev
+	local id = dev:getPciId()
 	-- only the first process tracks stats for the device
 	if qid == 0 then
 		txStats = stats:newDevTxCounter(dev, "plain")
 	end
 	if ( testParams.txMethod == "hardware"  and calibratedRate > 0 ) then
-		dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
+        	if id == PCI_ID_X710 or id == PCI_ID_XL710 then
+                	dev:setRate(calibratedRate * (testParams.frameSize + 4) * 8)
+		else
+			dev:getTxQueue(qid):setRateMpps(calibratedRate / testParams.txQueuesPerDev, testParams.frameSize)
+		end
 		runtime = timer:new(5)
 	else
 		-- s/w rate seems to be less consistent, so test over longer time period
@@ -689,9 +757,9 @@ function calibrateSlave(dev, calibratedRate, testParams, qid)
 	end
 	while runtime:running() and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
-		packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
-		if (testParams.vlanId) then
-			bufs:setVlans(testParams.vlanId)
+		packetCount = adjustHeaders(devId, bufs, packetCount, testParams, srcMacs, dstMacs)
+		if (testParams.vlanIds and testParams.vlanIds[devId]) then
+			bufs:setVlans(testParams.vlanIds[devId])
 		end
                	bufs:offloadUdpChecksums()
 		if ( testParams.txMethod == "hardware" ) then
@@ -705,7 +773,7 @@ function calibrateSlave(dev, calibratedRate, testParams, qid)
 			dev:getTxQueue(qid):sendWithDelay(bufs)
 		end
 		if qid == 0 then
-			txStats:update(0.5)
+			txStats:update(0.5, false)
 		end
 	end
 	local results = {}
@@ -731,36 +799,30 @@ function counterSlave(rxQueue, runTime)
         return results
 end
 
-function loadSlave(dev, calibratedRate, runTime, testParams, qid)
+function loadSlave(devs, devId, calibratedRate, runTime, testParams, qid)
+	local dev = devs[devId]
 	local frame_size_without_crc = testParams.frameSize - 4
-	-- TODO: this leaks memory as mempools cannot be deleted in DPDK
-	local mem = memory.createMemPool(function(buf)
-		buf:getUdpPacket():fill{
-			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
-			ethSrc = testParams.srcMac,
-			ethDst = testParams.dstMac,
-			ip4Dst = testParams.dstIp,
-			udpSrc = testParams.srcPort,
-			udpDst = testParams.dstPort
-		}
-	end)
-	local bufs = mem:bufArray()
+	local bufs = getBuffers(devId, testParams)
 	if runTime > 0 then
 		runtime = timer:new(runTime)
 	end
 	
 	local txStats = stats:newDevTxCounter(dev, "plain")
-	calibratedRate = calibratedRate / testParams.txQueuesPerDev
 	local count = 0
+	local pci_id = dev:getPciId()
 	if ( testParams.txMethod == "hardware" ) then
-		dev:getTxQueue(qid):setRateMpps(calibratedRate, testParams.frameSize)
+        	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
+                	dev:setRate(calibratedRate * (testParams.frameSize + 4) * 8)
+		else
+			dev:getTxQueue(qid):setRateMpps(calibratedRate / testParams.txQueuesPerDev, testParams.frameSize)
+		end
 	end
 	local packetCount = 0
 	while (runTime == 0 or runtime:running()) and dpdk.running() do
 		bufs:alloc(frame_size_without_crc)
-		packetCount = adjustHeaders(bufs, packetCount, testParams, srcMacs, dstMacs)
-		if (testParams.vlanId) then
-			bufs:setVlans(testParams.vlanId)
+		packetCount = adjustHeaders(devId, bufs, packetCount, testParams, srcMacs, dstMacs)
+		if (testParams.vlanIds and testParams.vlanIds[devId]) then
+			bufs:setVlans(testParams.vlanIds[devId])
 		end
                 bufs:offloadUdpChecksums()
 		if ( testParams.txMethod == "hardware" ) then
@@ -772,7 +834,7 @@ function loadSlave(dev, calibratedRate, runTime, testParams, qid)
 			dev:getTxQueue(qid):sendWithDelay(bufs)
 		end
 		if qid == 0 then
-			txStats:update(0.5)
+			txStats:update(0.5, false)
 		end
 	end
         local results = {}
@@ -784,7 +846,9 @@ function loadSlave(dev, calibratedRate, runTime, testParams, qid)
         return results
 end
 
-function timerSlave(dev1, dev2, port1, runTime, testParams)
+function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
+	local dev1 = devs[dev1Id]
+	local dev2 = devs[dev2Id]
 	local rxQid = testParams.rxQueuesPerDev
 	local txQid = testParams.txQueuesPerDev
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
@@ -794,6 +858,8 @@ function timerSlave(dev1, dev2, port1, runTime, testParams)
 	local frameSizeWithoutCrc = testParams.frameSize - 4
 	local rateLimit = timer:new(0.001) -- less than 100 samples per second
 
+	-- TODO: adjust headers for flows
+	
 	hist1 = hist()
 	dev2:filterTimestamps(dev2:getRxQueue(rxQid))
 	timestamper1 = ts:newUdpTimestamper(dev1:getTxQueue(txQid), dev2:getRxQueue(rxQid))
@@ -839,8 +905,8 @@ function timerSlave(dev1, dev2, port1, runTime, testParams)
 		end
 	end
 	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
-	local histDesc = "Histogram port " .. testParams.ports[port1] .. " to port " .. testParams.ports[testParams.connections[port1]]
-	local histFile = "hist:" .. testParams.ports[port1] .. "-" .. testParams.ports[testParams.connections[port1]] .. ".csv"
+	local histDesc = "Histogram port " .. testParams.ports[dev1Id] .. " to port " .. testParams.ports[testParams.connections[dev1Id]]
+	local histFile = "hist:" .. testParams.ports[deb1Id] .. "-" .. testParams.ports[testParams.connections[dev1Id]] .. ".csv"
 	if haveHisto1 then
 		hist1:print(histDesc)
 		hist1:save(histFile)
@@ -848,8 +914,8 @@ function timerSlave(dev1, dev2, port1, runTime, testParams)
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
-		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[port1]] .. " to port " .. testParams.ports[port1]
-		local histFile = "hist:" .. testParams.ports[testParams.connections[port1]] .. "-" .. testParams.ports[port1] .. ".csv"
+		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[dev1Id]] .. " to port " .. testParams.ports[deb1Id]
+		local histFile = "hist:" .. testParams.ports[testParams.connections[dev1Id]] .. "-" .. testParams.ports[dev1Id] .. ".csv"
 		if haveHisto2 then
 			hist2:print(histDesc)
 			hist2:save(histFile)
