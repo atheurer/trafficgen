@@ -131,7 +131,7 @@ function master(...)
 	if testParams.testType == "latency" then 
 		printf("Starting latency test", testParams.acceptableLossPct);
 		if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
-			showReport(rxStats, txStats, testParams)
+			showReport(rxStats, txStats, testParams, "REPORT")
 		else
 			log:error("Test failed");
 			return
@@ -155,9 +155,10 @@ function master(...)
 						prevRate = testParams.rate
 						if testParams.oneShot or (acceptableLossResult == ATTEMPT_PASS) then
 							if finalValidation then
-								showReport(rxStats, txStats, testParams)
+								showReport(rxStats, txStats, testParams, "REPORT")
 								return
 							else
+								showReport(rxStats, txStats, testParams, "RESULT")
 								nextRate = (prevFailRate + testParams.rate ) / 2
 								if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
 									-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
@@ -168,6 +169,7 @@ function master(...)
 								end
 							end
 						else
+							showReport(rxStats, txStats, testParams, "RESULT")
 							if testParams.rate <= testParams.rate_granularity then
 								log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
 								return
@@ -202,7 +204,7 @@ function master(...)
 	end
 end
 
-function showReport(rxStats, txStats, testParams)
+function showReport(rxStats, txStats, testParams, mode)
 	local totalRxMpps = 0
 	local totalTxMpps = 0
 	local totalRxFrames = 0
@@ -242,13 +244,13 @@ function showReport(rxStats, txStats, testParams)
 			totalTxFrames = totalTxFrames + txStats[i].totalFrames
 			totalLostFrames = totalLostFrames + lostFrames
 			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
-			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
+			printf("[%s]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f", mode,
 			 testParams.ports[i], testParams.ports[testParams.connections[i]], txStats[i].totalFrames,
 			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
 		end
 	end
-	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
-	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
+	printf("[%s]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
+	 mode, totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
 end
 
 function prepareDevs(testParams)
