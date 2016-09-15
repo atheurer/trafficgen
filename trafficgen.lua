@@ -76,6 +76,10 @@ local MPPS_PER_QUEUE = 5
 local QUEUES_PER_TASK = 3
 local PCI_ID_X710 = 0x80861572
 local PCI_ID_XL710 = 0x80861583
+local ATTEMPT_FAIL = 0
+local ATTEMPT_PASS = 1
+local ATTEMPT_RETRY = 2
+
 
 function macToU48(mac)
 	-- this is similar to parseMac, but maintains ordering as represented in the input string
@@ -107,6 +111,8 @@ function master(...)
 	local prevPassRate = 0
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
+	local negativeLossAttempts = {0}
+	local maxNegativeLossAttempts = 3
 	if ( method == "hardware" ) then
 		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
 	else
@@ -140,10 +146,14 @@ function master(...)
 			end
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
 				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
-					local acceptableLossResult = acceptableLoss(testParams, rxStats, txStats)
-					if not acceptableLossResult or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+					local acceptableLossResult = acceptableLoss(testParams, rxStats, txStats, maxNegativeLossAttempts, negativeLossAttempts)
+					local acceptableRateResult = false
+					if acceptableLossResult == ATTEMPT_PASS then
+						acceptableRateResult = acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts)
+					end
+					if (acceptableLossResult == ATTEMPT_FAIL) or acceptableRateResult then
 						prevRate = testParams.rate
-						if testParams.oneShot or acceptableLossResult then
+						if testParams.oneShot or (acceptableLossResult == ATTEMPT_PASS) then
 							if finalValidation then
 								showReport(rxStats, txStats, testParams)
 								return
@@ -370,8 +380,8 @@ function fileExists(f)
 	return not not file
 end
 
-function acceptableLoss(testParams, rxStats, txStats)
-	local pass = true
+function acceptableLoss(testParams, rxStats, txStats, maxNegativeLossAttempts, t)
+	local pass = ATTEMPT_PASS
 	local i
 	for i, v in pairs(txStats) do
 		if testParams.connections[i] then
@@ -382,19 +392,42 @@ function acceptableLoss(testParams, rxStats, txStats)
 					if (lostFramePct > testParams.acceptableLossPct) then
 						log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
 				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
-						pass = false
+						pass = ATTEMPT_FAIL
 					else
-						log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
-				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
+						if (lostFramePct < 0) then
+							if pass == ATTEMPT_PASS then
+								pass = ATTEMPT_RETRY
+							end
+
+							log:warn("Device %d->%d: RETRY - negative frame loss (%d)",
+							testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames);
+						else
+							log:info("Device %d->%d: PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
+							testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
+						end
 					end
 				end
 			end
 		end
 	end
-	if pass then
-		log:info("Test Result:  PASSED")
+	if pass == ATTEMPT_RETRY then
+		t[1] = t[1] + 1
+
+		if t[1] > maxNegativeLossAttempts then
+			log:warn("Exceeded maximum number of negative packet loss attempts (%d)", maxNegativeLossAttempts)
+			pass = ATTEMPT_FAIL
+		else
+			log:warn("Test Result: RETRY - Attempt #%d", t[1])
+		end
+	end
+	if pass == ATTEMPT_PASS then
+		log:info("Test Result: PASSED")
+		t[1] = 0
 	else
-		log:warn("Test Result:  FAILED")
+		if pass == ATTEMPT_FAIL then
+			log:warn("Test Result: FAILED")
+			t[1] = 0
+		end
 	end
 	return pass
 end
