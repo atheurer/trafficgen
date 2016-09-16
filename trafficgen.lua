@@ -1013,10 +1013,8 @@ function timerSlave(runTime, testParams, queueIds)
 		end
 	end
 	moongen.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
-	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id)
-	local histFile = "hist:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. ".csv"
-	--local histDesc = "Histogram port " .. testParams.ports[queueIds[1].id] .. " to port " .. testParams.ports[queueIds[2].id]
-	--local histFile = "hist:" .. testParams.ports[queueIds[1].id] .. "-" .. testParams.ports[queueIds[2].id] .. ".csv"
+	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id) .. " at rate " .. testParams.rate .. " Mpps"
+	local histFile = "hist:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. "_rate:" .. testParams.rate .. ".csv"
 	if haveHisto1 then
 		hist1:print(histDesc)
 		hist1:save(histFile)
@@ -1028,8 +1026,8 @@ function timerSlave(runTime, testParams, queueIds)
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
-		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id)
-		local histFile = "hist:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. ".csv"
+		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id) .. " at rate " .. testParams.rate .. " Mpps"
+		local histFile = "hist:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. "_rate:" .. testParams.rate .. ".csv"
 		if haveHisto2 then
 			hist2:print(histDesc)
 			hist2:save(histFile)
