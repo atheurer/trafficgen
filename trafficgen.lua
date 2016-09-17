@@ -949,11 +949,22 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, que
         return results
 end
 
+function saveSampleLog(file, samples)
+	log:info("Saving sample log to '%s'", file)
+	file = io.open(file, "w+")
+	for i,v in ipairs(samples) do
+		file:write(i, ",", v, "\n")
+	end
+	file:close()
+end
+
 function timerSlave(runTime, testParams, queueIds)
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
 	local frameSizeWithoutCrc = testParams.frameSize - 4
 	local rateLimit = timer:new(0.001) -- less than 100 samples per second
+	local sampleLog1 = {}
+	local sampleLog2 = {}
 
 	-- TODO: adjust headers for flows
 	
@@ -974,6 +985,7 @@ function timerSlave(runTime, testParams, queueIds)
 	end
 	local timestamper = timestamper1
 	local hist = hist1
+	local sampleLog = sampleLog1
 	local haveHisto = false
 	local haveHisto1 = false
 	local haveHisto2 = false
@@ -988,6 +1000,9 @@ function timerSlave(runTime, testParams, queueIds)
 			if (lat) then
 				haveHisto = true;
                 		hist:update(lat)
+				sampleLog[counter] = lat
+			else
+				sampleLog[counter] = -1
 			end
 			rateLimit:reset()
 		end
@@ -995,6 +1010,7 @@ function timerSlave(runTime, testParams, queueIds)
 			if timestamper == timestamper2 then
 				timestamper = timestamper1
 				hist = hist1
+				sampleLog = sampleLog1
 				haveHisto2 = haveHisto
 				haveHisto = haveHisto1
 				counter2 = counter
@@ -1002,6 +1018,7 @@ function timerSlave(runTime, testParams, queueIds)
 			else
 				timestamper = timestamper2
 				hist = hist2
+				sampleLog = sampleLog2
 				haveHisto1 = haveHisto
 				haveHisto = haveHisto2
 				counter1 = counter
@@ -1014,27 +1031,29 @@ function timerSlave(runTime, testParams, queueIds)
 	end
 	moongen.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
 	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id) .. " at rate " .. testParams.rate .. " Mpps"
-	local histFile = "hist:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. "_rate:" .. testParams.rate .. ".csv"
+	local histFile = "dev:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. "_rate:" .. testParams.rate .. ".csv"
 	if haveHisto1 then
 		hist1:print(histDesc)
-		hist1:save(histFile)
+		hist1:save("latency:histogram_" .. histFile)
 		local hist_size = hist1:totals()
 		if hist_size ~= counter1 then
 		   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter1 - hist_size, (counter1 - hist_size)/counter1*100)
 		end
+		saveSampleLog("latency:samples_" .. histFile, sampleLog1)
 	else
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
 		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id) .. " at rate " .. testParams.rate .. " Mpps"
-		local histFile = "hist:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. "_rate:" .. testParams.rate .. ".csv"
+		local histFile = "dev:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. "_rate:" .. testParams.rate .. ".csv"
 		if haveHisto2 then
 			hist2:print(histDesc)
-			hist2:save(histFile)
+			hist2:save("latency:histogram_" .. histFile)
 			local hist_size = hist2:totals()
 			if hist_size ~= counter2 then
 			   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter2 - hist_size, (counter2 - hist_size)/counter2*100) 
 			end
+			saveSampleLog("latency:samples_" .. histFile, sampleLog2)
 		else
 			log:warn("no latency samples found for %s", histDesc)
 		end
