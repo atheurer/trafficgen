@@ -996,7 +996,7 @@ function timerSlave(runTime, testParams, queueIds)
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
 			counter = counter + 1
-			local lat = timestamper:measureLatency();
+			local lat = timestamper:measureLatency(testParams.frameSize);
 			if (lat) then
 				haveHisto = true;
                 		hist:update(lat)
