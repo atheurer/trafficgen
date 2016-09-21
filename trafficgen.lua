@@ -962,7 +962,7 @@ function timerSlave(runTime, testParams, queueIds)
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
 	local frameSizeWithoutCrc = testParams.frameSize - 4
-	local rateLimit = timer:new(0.001) -- less than 100 samples per second
+	local rateLimit = timer:new(0.001) -- less than 1000 samples per second
 	local sampleLog1 = {}
 	local sampleLog2 = {}
 
