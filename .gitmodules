@@ -1,0 +1,3 @@
+[submodule "MoonGen"]
+	path = MoonGen
+	url = https://github.com/emmericp/MoonGen.git
