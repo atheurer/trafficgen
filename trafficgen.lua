@@ -967,6 +967,12 @@ function timerSlave(runTime, testParams, queueIds)
 	local sampleLog2 = {}
 
 	-- TODO: adjust headers for flows
+
+	if testParams.runBidirec then
+		log:info("timerSlave: bidirectional testing from %d->%d and %d->%d", queueIds[1].id, queueIds[2].id, queueIds[3].id, queueIds[4].id)
+	else
+		log:info("timerSlave: unidirectional testing from %d->%d", queueIds[1].id, queueIds[2].id)
+	end
 	
 	hist1 = hist()
 	timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
