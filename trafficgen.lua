@@ -35,6 +35,7 @@
 -- frameSize		Integer: the size of the Ethernet frame (including CRC)
 -- oneShot		true or false: set to true only if you don't want a binary search for maximum packet rate
 
+local moongen	= require "moongen"
 local dpdk	= require "dpdk"
 local memory	= require "memory"
 local ts	= require "timestamping"
@@ -174,7 +175,7 @@ function master(...)
 							prevFailRate = testParams.rate
 							testParams.rate = nextRate
 						end
-						if not dpdk.running() then
+						if not moongen.running() then
 							break
 						end
 					else
@@ -430,6 +431,19 @@ function calcTxQueues(rate, testParams)
 	return 1 + math.floor(rate / testParams.mppsPerQueue)
 end
 
+function getTxQueues(txQueuesPerTask, txQueuesPerDev, taskId, devs, devId)
+	local queueIds = {}
+	local firstQueueId = taskId * txQueuesPerTask
+	local lastQueueId = firstQueueId + txQueuesPerTask - 1
+	if lastQueueId > (txQueuesPerDev - 1) then
+		lastQueueId = txQueuesPerDev - 1
+	end
+	for queueId = firstQueueId, lastQueueId do
+		table.insert(queueIds, devs[devId]:getTxQueue(queueId))
+	end
+	return queueIds
+end
+
 function getMaxRateMpps(devs, testParams, lineRate, rate)
 	local qid
 	local idx
@@ -469,7 +483,8 @@ function getMaxRateMpps(devs, testParams, lineRate, rate)
 			log:info("Finding maximum Tx Rate",  testParams.txMethod, rate)
 			local taskId
 			for taskId = 0, testParams.txTasks - 1 do
-				calTasks[taskId] = dpdk.launchLua("calibrateSlave", devs, devId, calibratedRate, testParams, taskId)
+				local queueIds = getTxQueues(testParams.queuesPerTask, testParams.txQueuesPerDev, taskId, devs, devId)
+				calTasks[taskId] = moongen.startTask("calibrateSlave", devs, devId, calibratedRate, testParams, taskId, queueIds)
 			end
 			-- wait for all jobs to complete
 			for taskId = 0, testParams.txTasks - 1 do
@@ -490,7 +505,8 @@ function getMaxRateMpps(devs, testParams, lineRate, rate)
 			log:info("testparams.txTasks: %d", testParams.txTasks)
 			repeat
 				for taskId = 0, testParams.txTasks - 1 do
-					calTasks[taskId] = dpdk.launchLua("calibrateSlave", devs, devId, calibratedRate, testParams, taskId)
+					local queueIds = getTxQueues(testParams.queuesPerTask, testParams.txQueuesPerDev, taskId, devs, devId)
+					calTasks[taskId] = moongen.startTask("calibrateSlave", devs, devId, calibratedRate, testParams, taskId, queueIds)
 				end
 				-- wait for all jobs to complete
 				for taskId = 0, testParams.txTasks - 1 do
@@ -571,7 +587,8 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 				local taskId
 				-- launch a process to transmit packets per queue
 				for taskId = 0, testParams.txTasks - 1 do
-					calTasks[taskId] = dpdk.launchLua("calibrateSlave", devs, devId, calibratedRate, testParams, taskId)
+					local queueIds = getTxQueues(testParams.queuesPerTask, testParams.txQueuesPerDev, taskId, devs, devId)
+					calTasks[taskId] = moongen.startTask("calibrateSlave", devs, devId, calibratedRate, testParams, taskId, queueIds)
 				end
 				-- wait for all jobs to complete
 				for taskId = 0, testParams.txTasks - 1 do
@@ -609,10 +626,10 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- start devices which receive
 	for devId, v in ipairs(devs) do
 		if testParams.connections[devId] then
-			rxTasks[devId] = dpdk.launchLua("counterSlave", devs[testParams.connections[devId]]:getRxQueue(0), runTime)
+			rxTasks[devId] = moongen.startTask("counterSlave", devs[testParams.connections[devId]]:getRxQueue(0), runTime)
 		end
 	end
-	dpdk.sleepMillis(3000)
+	moongen.sleepMillis(3000)
 	if final then
 		log:info("Starting final validation");
 	end
@@ -625,14 +642,15 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 			--for q = 0, testParams.txQueuesPerDev - 1 do
 			for perDevTaskId = 0, testParams.txTasks - 1 do
 				--log:info("calibrateSlave: devId: %d  taskId: %d  perDevTaskId: %d", devId, txTaskId, perDevTaskId)
-				txTasks[txTaskId] = dpdk.launchLua("loadSlave", devs, devId, perDevCalibratedRate[devId], runTime, testParams, perDevTaskId)
+				local queueIds = getTxQueues(testParams.queuesPerTask, testParams.txQueuesPerDev, perDevTaskId, devs, devId)
+				txTasks[txTaskId] = moongen.startTask("loadSlave", devs, devId, perDevCalibratedRate[devId], runTime, testParams, perDevTaskId, queueIds)
 				txTaskId = txTaskId + 1
 			end
 			if testParams.testType == "latency" or
 				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[devId]] then
-					timerTasks[devId] = dpdk.launchLua("timerSlave", devs, devId, testParams.connections[devId], runTime, testParams)
+					timerTasks[devId] = moongen.startTask("timerSlave", devs, devId, testParams.connections[devId], runTime, testParams)
 				end
 			end
 		end
@@ -655,7 +673,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	if final then
 		log:info("Stopping final validation");
 	end
-	dpdk.sleepMillis(3000)
+	moongen.sleepMillis(3000)
 	-- wait for receive devices to finish
 	for devId, v in ipairs(devs) do
 		if testParams.connections[devId] then
@@ -737,19 +755,22 @@ function getBuffers(devId, testParams)
 	return bufs
 end
 
-function calibrateSlave(devs, devId, calibratedRate, testParams, taskId)
+function dumpQueues(queueIds)
+	local queues = ""
+	for _ , queueId in pairs(queueIds)  do
+		queues = queues..queueId:__tostring()
+	end
+	return queues
+end
+
+function calibrateSlave(devs, devId, calibratedRate, testParams, taskId, queueIds)
 	local dev = devs[devId]
 	local frame_size_without_crc = testParams.frameSize - 4
 	local bufs = getBuffers(devId, testParams)
 	local packetCount = 0
 	local overcorrection = 1
 	local id = dev:getPciId()
-	local firstQueueId = taskId * testParams.queuesPerTask
-	local lastQueueId = firstQueueId + testParams.queuesPerTask - 1
-	if lastQueueId > (testParams.txQueuesPerDev - 1) then
-		lastQueueId = testParams.txQueuesPerDev - 1
-	end
-	log:info("calibrateSlave: devId: %d  taskId: %d  queues: %d-%d", devId, taskId, firstQueueId, lastQueueId)
+	log:info("calibrateSlave: devId: %d  taskId: %d  calibratedRate: %.4f queues: %s", devId, taskId, calibratedRate, dumpQueues(queueIds))
 	-- only the first process tracks stats for the device
 	if taskId == 0 then
 		txStats = stats:newDevTxCounter(dev, "plain")
@@ -758,8 +779,9 @@ function calibrateSlave(devs, devId, calibratedRate, testParams, taskId)
         	if id == PCI_ID_X710 or id == PCI_ID_XL710 then
                 	dev:setRate(calibratedRate * (testParams.frameSize + 4) * 8)
 		else
-			for qid = firstQueueId, lastQueueId, 1 do
-				dev:getTxQueue(qid):setRateMpps(calibratedRate / testParams.txQueuesPerDev, testParams.frameSize)
+			local queueId
+			for _ , queueId in pairs(queueIds)  do
+				queueId:setRateMpps(calibratedRate / testParams.txQueuesPerDev, testParams.frameSize)
 			end
 		end
 		runtime = timer:new(5)
@@ -767,7 +789,7 @@ function calibrateSlave(devs, devId, calibratedRate, testParams, taskId)
 		-- s/w rate seems to be less consistent, so test over longer time period
 		runtime = timer:new(10)
 	end
-	while runtime:running() and dpdk.running() do
+	while runtime:running() and moongen.running() do
 		bufs:alloc(frame_size_without_crc)
 		packetCount = adjustHeaders(devId, bufs, packetCount, testParams, srcMacs, dstMacs)
 		if (testParams.vlanIds and testParams.vlanIds[devId]) then
@@ -775,8 +797,9 @@ function calibrateSlave(devs, devId, calibratedRate, testParams, taskId)
 		end
                	bufs:offloadUdpChecksums()
 		if ( testParams.txMethod == "hardware" ) then
-			for qid=firstQueueId,lastQueueId,1 do
-				dev:getTxQueue(qid):send(bufs)
+			local queueId
+			for _ , queueId in pairs(queueIds)  do
+				queueId:send(bufs)
 			end
 		else
 			if calibratedRate > 0 then
@@ -784,8 +807,9 @@ function calibrateSlave(devs, devId, calibratedRate, testParams, taskId)
 					buf:setRate(calibratedRate)
 				end
 			end
-			for qid=firstQueueId,lastQueueId,1 do
-				dev:getTxQueue(qid):sendWithDelay(bufs)
+			local queueId
+			for _ , queueId in pairs(queueIds)  do
+				queueId:sendWithDelay(bufs)
 			end
 		end
 		if taskId == 0 then
@@ -806,7 +830,7 @@ function counterSlave(rxQueue, runTime)
 		-- Rx runs a bit longer than Tx to ensure all packets are received
 		runTimer = timer:new(runTime + 6)
 	end
-	while (runTime == 0 or runTimer:running()) and dpdk.running() do
+	while (runTime == 0 or runTimer:running()) and moongen.running() do
 		rxStats:update(0.5)
 	end
         rxStats:finalize()
@@ -815,16 +839,11 @@ function counterSlave(rxQueue, runTime)
         return results
 end
 
-function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId)
+function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, queueIds)
 	local dev = devs[devId]
 	local frame_size_without_crc = testParams.frameSize - 4
 	local bufs = getBuffers(devId, testParams)
-	local firstQueueId = taskId * testParams.queuesPerTask
-	local lastQueueId = firstQueueId + testParams.queuesPerTask - 1
-	if lastQueueId > (testParams.txQueuesPerDev - 1) then
-		lastQueueId = testParams.txQueuesPerDev - 1
-	end
-	log:info("loadSlave: devId: %d  taskId: %d  queues: %d-%d", devId, taskId, firstQueueId, lastQueueId)
+	log:info("calibrateSlave: devId: %d  taskId: %d  calibratedRate: %.4f queues: %s", devId, taskId, calibratedRate, dumpQueues(queueIds))
 	if runTime > 0 then
 		runtime = timer:new(runTime)
 	end
@@ -838,13 +857,14 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId)
         	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
                 	dev:setRate(calibratedRate * (testParams.frameSize + 4) * 8)
 		else
-			for qid=firstQueueId,lastQueueId,1 do
-				dev:getTxQueue(qid):setRateMpps(calibratedRate / testParams.txQueuesPerDev, testParams.frameSize)
+			local queueId
+			for _ , queueId in pairs(queueIds)  do
+				queueId:setRateMpps(calibratedRate / testParams.txQueuesPerDev, testParams.frameSize)
 			end
 		end
 	end
 	local packetCount = 0
-	while (runTime == 0 or runtime:running()) and dpdk.running() do
+	while (runTime == 0 or runtime:running()) and moongen.running() do
 		bufs:alloc(frame_size_without_crc)
 		packetCount = adjustHeaders(devId, bufs, packetCount, testParams, srcMacs, dstMacs)
 		if (testParams.vlanIds and testParams.vlanIds[devId]) then
@@ -852,15 +872,17 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId)
 		end
                 bufs:offloadUdpChecksums()
 		if ( testParams.txMethod == "hardware" ) then
-			for qid=firstQueueId,lastQueueId,1 do
-				dev:getTxQueue(qid):send(bufs)
+			local queueId
+			for _ , queueId in pairs(queueIds)  do
+				queueId:send(bufs)
 			end
 		else
 			for _, buf in ipairs(bufs) do
 				buf:setRate(calibratedRate)
 			end
-			for qid=firstQueueId,lastQueueId,1 do
-				dev:getTxQueue(qid):sendWithDelay(bufs)
+			local queueId
+			for _ , queueId in pairs(queueIds)  do
+				queueId:sendWithDelay(bufs)
 			end
 		end
 		if taskId == 0 then
@@ -899,7 +921,7 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 		hist2 = hist()
 	end
 	-- timestamping starts after and finishes before the main packet load starts/finishes
-	dpdk.sleepMillis(LATENCY_TRIM)
+	moongen.sleepMillis(LATENCY_TRIM)
 	if runTime > 0 then
 		runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
 	end
@@ -911,7 +933,7 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 	local counter = 0
 	local counter1 = 0
 	local counter2 = 0
-	while (runTime == 0 or runTimer:running()) and dpdk.running() do
+	while (runTime == 0 or runTimer:running()) and moongen.running() do
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
 			counter = counter + 1
@@ -943,7 +965,7 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 			counter1 = counter
 		end
 	end
-	dpdk.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
+	moongen.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
 	local histDesc = "Histogram port " .. testParams.ports[dev1Id] .. " to port " .. testParams.ports[testParams.connections[dev1Id]]
 	local histFile = "hist:" .. testParams.ports[dev1Id] .. "-" .. testParams.ports[testParams.connections[dev1Id]] .. ".csv"
 	if haveHisto1 then
