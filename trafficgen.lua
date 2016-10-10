@@ -444,6 +444,17 @@ function getTxQueues(txQueuesPerTask, txQueuesPerDev, taskId, devs, devId)
 	return queueIds
 end
 
+function getTimerQueues(devs, devId, testParams)
+	-- build a table of one or more pairs of queues
+	local queueIds = { devs[devId]:getTxQueue(testParams.txQueuesPerDev), devs[testParams.connections[devId]]:getRxQueue(testParams.rxQueuesPerDev) }
+	-- If this is a bidirectional test, add another queue-pair for the other direction:
+	if testParams.connections[testParams.connections[devId]] then
+		table.insert(queueIds, devs[testParams.connections[devId]]:getTxQueue(testParams.txQueuesPerDev))
+		table.insert(queueIds, devs[devId]:getRxQueue(testParams.rxQueuesPerDev))
+	end
+	return queueIds
+end
+
 function getMaxRateMpps(devs, testParams, lineRate, rate)
 	local qid
 	local idx
@@ -650,7 +661,9 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 				( testParams.testType == "throughput-latency" and final ) then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[testParams.connections[devId]] then
-					timerTasks[devId] = moongen.startTask("timerSlave", devs, devId, testParams.connections[devId], runTime, testParams)
+					local queueIds = getTimerQueues(devs, devId, testParams)
+					log:info("timer queues: %s", dumpQueues(queueIds))
+					timerTasks[devId] = moongen.startTask("timerSlave", runTime, testParams, queueIds)
 				end
 			end
 		end
@@ -843,9 +856,12 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, que
 	local dev = devs[devId]
 	local frame_size_without_crc = testParams.frameSize - 4
 	local bufs = getBuffers(devId, testParams)
-	log:info("calibrateSlave: devId: %d  taskId: %d  calibratedRate: %.4f queues: %s", devId, taskId, calibratedRate, dumpQueues(queueIds))
+	log:info("loadSlave: devId: %d  taskId: %d  calibratedRate: %.4f queues: %s", devId, taskId, calibratedRate, dumpQueues(queueIds))
 	if runTime > 0 then
 		runtime = timer:new(runTime)
+		log:info("loadSlave test to run for %d seconds", runTime)
+	else
+		log:warn("loadSlave runTime is 0")
 	end
 	
 	if taskId == 0 then
@@ -898,14 +914,8 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, que
         return results
 end
 
-function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
-	local dev1 = devs[dev1Id]
-	local dev2 = devs[dev2Id]
-	local rxQid = testParams.rxQueuesPerDev
-	local txQid = testParams.txQueuesPerDev
+function timerSlave(runTime, testParams, queueIds)
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
-	local rxQueues = {}
-	local txQueues = {}
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
 	local frameSizeWithoutCrc = testParams.frameSize - 4
 	local rateLimit = timer:new(0.001) -- less than 100 samples per second
@@ -913,17 +923,19 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 	-- TODO: adjust headers for flows
 	
 	hist1 = hist()
-	dev2:filterTimestamps(dev2:getRxQueue(rxQid))
-	timestamper1 = ts:newUdpTimestamper(dev1:getTxQueue(txQid), dev2:getRxQueue(rxQid))
+	timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
 	if testParams.runBidirec then
-		dev1:filterTimestamps(dev1:getRxQueue(rxQid))
-		timestamper2 = ts:newUdpTimestamper(dev2:getTxQueue(txQid), dev1:getRxQueue(rxQid))
+		timestamper2 = ts:newUdpTimestamper(queueIds[3], queueIds[4])
 		hist2 = hist()
 	end
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	moongen.sleepMillis(LATENCY_TRIM)
 	if runTime > 0 then
-		runTimer = timer:new(runTime - LATENCY_TRIM/1000*2)
+		local actualRunTime = runTime - LATENCY_TRIM/1000*2
+		runTimer = timer:new(actualRunTime)
+		log:info("Latency test to run for %d seconds", actualRunTime)
+	else
+		log:warn("Latency runTime is 0")
 	end
 	local timestamper = timestamper1
 	local hist = hist1
@@ -966,8 +978,10 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 		end
 	end
 	moongen.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
-	local histDesc = "Histogram port " .. testParams.ports[dev1Id] .. " to port " .. testParams.ports[testParams.connections[dev1Id]]
-	local histFile = "hist:" .. testParams.ports[dev1Id] .. "-" .. testParams.ports[testParams.connections[dev1Id]] .. ".csv"
+	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id)
+	local histFile = "hist:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. ".csv"
+	--local histDesc = "Histogram port " .. testParams.ports[queueIds[1].id] .. " to port " .. testParams.ports[queueIds[2].id]
+	--local histFile = "hist:" .. testParams.ports[queueIds[1].id] .. "-" .. testParams.ports[queueIds[2].id] .. ".csv"
 	if haveHisto1 then
 		hist1:print(histDesc)
 		hist1:save(histFile)
@@ -979,8 +993,8 @@ function timerSlave(devs, dev1Id, dev2Id, runTime, testParams)
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
-		local histDesc = "Histogram port " .. testParams.ports[testParams.connections[dev1Id]] .. " to port " .. testParams.ports[dev1Id]
-		local histFile = "hist:" .. testParams.ports[testParams.connections[dev1Id]] .. "-" .. testParams.ports[dev1Id] .. ".csv"
+		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id)
+		local histFile = "hist:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. ".csv"
 		if haveHisto2 then
 			hist2:print(histDesc)
 			hist2:save(histFile)
