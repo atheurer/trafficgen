@@ -975,9 +975,18 @@ function timerSlave(runTime, testParams, queueIds)
 	end
 	
 	hist1 = hist()
-	timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
+	if testParams.frameSize < 76 then
+		log:warn("Latency packets are not UDP due to requested size (%d) less than minimum UDP size (76)", testParams.frameSize)
+		timestamper1 = ts:newTimestamper(queueIds[1], queueIds[2])
+	else
+		timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
+	end
 	if testParams.runBidirec then
-		timestamper2 = ts:newUdpTimestamper(queueIds[3], queueIds[4])
+		if testParams.frameSize < 76 then
+			timestamper2 = ts:newTimestamper(queueIds[3], queueIds[4])
+		else
+			timestamper2 = ts:newUdpTimestamper(queueIds[3], queueIds[4])
+		end
 		hist2 = hist()
 	end
 	-- timestamping starts after and finishes before the main packet load starts/finishes
