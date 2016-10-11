@@ -34,6 +34,7 @@
 -- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
 -- frameSize		Integer: the size of the Ethernet frame (including CRC)
 -- oneShot		true or false: set to true only if you don't want a binary search for maximum packet rate
+-- negativeLossRetry	true or false: set to false only if you want to allow negative packet loss attempts to pass
 
 local moongen	= require "moongen"
 local dpdk	= require "dpdk"
@@ -366,6 +367,7 @@ function getTestParams(testParams)
 	testParams.srcIp = parseIPAddress(testParams.srcIp)
 	testParams.dstIp = parseIPAddress(testParams.dstIp)
 	testParams.oneShot = testParams.oneShot or false
+	testParams.negativeLossRetry = testParams.negativeLossRetry and true
 	testParams.mppsPerQueue = testParams.mppsPerQueue or MPPS_PER_QUEUE
 	testParams.queuesPerTask = testParams.queuesPerTask or QUEUES_PER_TASK
 	testParams.rxQueuesPerDev = 1
@@ -396,7 +398,7 @@ function acceptableLoss(testParams, rxStats, txStats, maxNegativeLossAttempts, t
 				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
 						pass = ATTEMPT_FAIL
 					else
-						if (lostFramePct < 0) then
+						if testParams.negativeLossRetry and lostFramePct < 0 then
 							if pass == ATTEMPT_PASS then
 								pass = ATTEMPT_RETRY
 							end
