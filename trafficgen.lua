@@ -107,6 +107,7 @@ end
 
 function master(...)
 	local testParams = getTestParams()
+	dumpTestParams(testParams)
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
@@ -811,6 +812,30 @@ function dumpQueues(queueIds)
 		queues = queues..queueId:__tostring()
 	end
 	return queues
+end
+
+function dumpTable(table, indent)
+	local indentString = ""
+
+	for i=1,indent,1 do
+		indentString = indentString.."\t"
+	end
+
+	for key,value in pairs(table) do
+		if type(value) == "table" then
+			log:info("%s%s => {", indentString, key)
+			dumpTable(value, indent+1)
+			log:info("%s}", indentString)
+		else
+			log:info("%s%s: %s", indentString, key, value)
+		end
+	end
+end
+
+function dumpTestParams(testParams)
+	log:info("testParams => {")
+	dumpTable(testParams, 1)
+	log:info("}")
 end
 
 function calibrateSlave(devs, devId, calibratedRate, testParams, taskId, queueIds)
