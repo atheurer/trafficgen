@@ -986,6 +986,13 @@ function saveSampleLog(file, samples, label)
 	file:close()
 end
 
+function saveHistogram(file, hist, label)
+	output = io.open(file, "w")
+	output:write("bucket,", label, "\n")
+	hist:save(output)
+	output:close()
+end
+
 function timerSlave(runTime, testParams, queueIds)
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
@@ -1075,30 +1082,30 @@ function timerSlave(runTime, testParams, queueIds)
 	moongen.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
 	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id) .. " at rate " .. testParams.rate .. " Mpps"
 	local histFile = "dev:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. "_rate:" .. testParams.rate .. ".csv"
-	local sampleLabel = "Dev:" .. ("%d"):format(queueIds[1].id) .. "->" .. ("%d"):format(queueIds[2].id) .. " @ " .. testParams.rate .. " Mpps"
+	local headerLabel = "Dev:" .. ("%d"):format(queueIds[1].id) .. "->" .. ("%d"):format(queueIds[2].id) .. " @ " .. testParams.rate .. " Mpps"
 	if haveHisto1 then
 		hist1:print(histDesc)
-		hist1:save("latency:histogram_" .. histFile)
+		saveHistogram("latency:histogram_" .. histFile, hist1, headerLabel)
 		local hist_size = hist1:totals()
 		if hist_size ~= counter1 then
 		   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter1 - hist_size, (counter1 - hist_size)/counter1*100)
 		end
-		saveSampleLog("latency:samples_" .. histFile, sampleLog1, sampleLabel)
+		saveSampleLog("latency:samples_" .. histFile, sampleLog1, headerLabel)
 	else
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
 		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id) .. " at rate " .. testParams.rate .. " Mpps"
 		local histFile = "dev:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. "_rate:" .. testParams.rate .. ".csv"
-		local sampleLabel = "Dev:" .. ("%d"):format(queueIds[3].id) .. "->" .. ("%d"):format(queueIds[4].id) .. " @ " .. testParams.rate .. " Mpps"
+		local headerLabel = "Dev:" .. ("%d"):format(queueIds[3].id) .. "->" .. ("%d"):format(queueIds[4].id) .. " @ " .. testParams.rate .. " Mpps"
 		if haveHisto2 then
 			hist2:print(histDesc)
-			hist2:save("latency:histogram_" .. histFile)
+			saveHistogram("latency:histogram_" .. histFile, hist2, headerLabel)
 			local hist_size = hist2:totals()
 			if hist_size ~= counter2 then
 			   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter2 - hist_size, (counter2 - hist_size)/counter2*100) 
 			end
-			saveSampleLog("latency:samples_" .. histFile, sampleLog2, sampleLabel)
+			saveSampleLog("latency:samples_" .. histFile, sampleLog2, headerLabel)
 		else
 			log:warn("no latency samples found for %s", histDesc)
 		end
