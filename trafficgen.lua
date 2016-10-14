@@ -368,7 +368,9 @@ function getTestParams(testParams)
 	testParams.srcIp = parseIPAddress(testParams.srcIp)
 	testParams.dstIp = parseIPAddress(testParams.dstIp)
 	testParams.oneShot = testParams.oneShot or false
-	testParams.negativeLossRetry = testParams.negativeLossRetry and true
+	if testParams.negativeLossRetry == nil then
+		testParams.negativeLossRetry = true
+	end
 	testParams.mppsPerQueue = testParams.mppsPerQueue or MPPS_PER_QUEUE
 	testParams.queuesPerTask = testParams.queuesPerTask or QUEUES_PER_TASK
 	testParams.rxQueuesPerDev = 1
