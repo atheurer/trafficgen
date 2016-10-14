@@ -34,6 +34,7 @@
 -- txQueuesPerDev	Integer: The number of queues to use when transmitting packets.  The default is 3 and should not need to be changed
 -- frameSize		Integer: the size of the Ethernet frame (including CRC)
 -- oneShot		true or false: set to true only if you don't want a binary search for maximum packet rate
+-- negativeLossRetry	true or false: set to false only if you want to allow negative packet loss attempts to pass
 
 local moongen	= require "moongen"
 local dpdk	= require "dpdk"
@@ -76,6 +77,10 @@ local MPPS_PER_QUEUE = 5
 local QUEUES_PER_TASK = 3
 local PCI_ID_X710 = 0x80861572
 local PCI_ID_XL710 = 0x80861583
+local ATTEMPT_FAIL = 0
+local ATTEMPT_PASS = 1
+local ATTEMPT_RETRY = 2
+
 
 function macToU48(mac)
 	-- this is similar to parseMac, but maintains ordering as represented in the input string
@@ -102,11 +107,14 @@ end
 
 function master(...)
 	local testParams = getTestParams()
+	dumpTestParams(testParams)
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
 	local rateAttempts = {0}
 	local maxRateAttempts = 2 -- the number of times we will allow MoonGen to get the Tx rate correct
+	local negativeLossAttempts = {0}
+	local maxNegativeLossAttempts = 3
 	if ( method == "hardware" ) then
 		tx_rate_tolerance = TX_HW_RATE_TOLERANCE_MPPS
 	else
@@ -125,7 +133,7 @@ function master(...)
 	if testParams.testType == "latency" then 
 		printf("Starting latency test", testParams.acceptableLossPct);
 		if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
-			showReport(rxStats, txStats, testParams)
+			showReport(rxStats, txStats, testParams, "REPORT")
 		else
 			log:error("Test failed");
 			return
@@ -140,14 +148,19 @@ function master(...)
 			end
 			while ( math.abs(testParams.rate - prevRate) >= testParams.rate_granularity or finalValidation ) do
 				if launchTest(finalValidation, devs, testParams, txStats, rxStats) then
-					local acceptableLossResult = acceptableLoss(testParams, rxStats, txStats)
-					if not acceptableLossResult or acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts) then
+					local acceptableLossResult = acceptableLoss(testParams, rxStats, txStats, maxNegativeLossAttempts, negativeLossAttempts)
+					local acceptableRateResult = false
+					if acceptableLossResult == ATTEMPT_PASS then
+						acceptableRateResult = acceptableRate(tx_rate_tolerance, testParams.rate, txStats, maxRateAttempts, rateAttempts)
+					end
+					if (acceptableLossResult == ATTEMPT_FAIL) or acceptableRateResult then
 						prevRate = testParams.rate
-						if testParams.oneShot or acceptableLossResult then
+						if testParams.oneShot or (acceptableLossResult == ATTEMPT_PASS) then
 							if finalValidation then
-								showReport(rxStats, txStats, testParams)
+								showReport(rxStats, txStats, testParams, "REPORT")
 								return
 							else
+								showReport(rxStats, txStats, testParams, "RESULT")
 								nextRate = (prevFailRate + testParams.rate ) / 2
 								if math.abs(nextRate - testParams.rate) <= testParams.rate_granularity then
 									-- since the rate difference from rate that just passed and the next rate is not greater than rate_granularity, the next run is a "final validation"
@@ -158,6 +171,7 @@ function master(...)
 								end
 							end
 						else
+							showReport(rxStats, txStats, testParams, "RESULT")
 							if testParams.rate <= testParams.rate_granularity then
 								log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
 								return
@@ -192,7 +206,7 @@ function master(...)
 	end
 end
 
-function showReport(rxStats, txStats, testParams)
+function showReport(rxStats, txStats, testParams, mode)
 	local totalRxMpps = 0
 	local totalTxMpps = 0
 	local totalRxFrames = 0
@@ -232,13 +246,13 @@ function showReport(rxStats, txStats, testParams)
 			totalTxFrames = totalTxFrames + txStats[i].totalFrames
 			totalLostFrames = totalLostFrames + lostFrames
 			totalLostFramePct = 100 * totalLostFrames / totalTxFrames
-			printf("[REPORT]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f",
+			printf("[%s]Device %d->%d: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Rx Mpps: %f", mode,
 			 testParams.ports[i], testParams.ports[testParams.connections[i]], txStats[i].totalFrames,
 			 rxStats[testParams.connections[i]].totalFrames, lostFrames, lostFramePct, rxMpps)
 		end
 	end
-	printf("[REPORT]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
-	 totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
+	printf("[%s]      total: Tx frames: %d Rx Frames: %d frame loss: %d, %f%% Tx Mpps: %f Rx Mpps: %f",
+	 mode, totalTxFrames, totalRxFrames, totalLostFrames, totalLostFramePct, totalTxMpps, totalRxMpps)
 end
 
 function prepareDevs(testParams)
@@ -354,6 +368,7 @@ function getTestParams(testParams)
 	testParams.srcIp = parseIPAddress(testParams.srcIp)
 	testParams.dstIp = parseIPAddress(testParams.dstIp)
 	testParams.oneShot = testParams.oneShot or false
+	testParams.negativeLossRetry = testParams.negativeLossRetry and true
 	testParams.mppsPerQueue = testParams.mppsPerQueue or MPPS_PER_QUEUE
 	testParams.queuesPerTask = testParams.queuesPerTask or QUEUES_PER_TASK
 	testParams.rxQueuesPerDev = 1
@@ -370,8 +385,8 @@ function fileExists(f)
 	return not not file
 end
 
-function acceptableLoss(testParams, rxStats, txStats)
-	local pass = true
+function acceptableLoss(testParams, rxStats, txStats, maxNegativeLossAttempts, t)
+	local pass = ATTEMPT_PASS
 	local i
 	for i, v in pairs(txStats) do
 		if testParams.connections[i] then
@@ -382,19 +397,42 @@ function acceptableLoss(testParams, rxStats, txStats)
 					if (lostFramePct > testParams.acceptableLossPct) then
 						log:warn("Device %d->%d: FAILED - frame loss (%d, %.8f%%) is greater than the maximum (%.8f%%)",
 				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
-						pass = false
+						pass = ATTEMPT_FAIL
 					else
-						log:info("Device %d->%d PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
-				 		testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
+						if testParams.negativeLossRetry and lostFramePct < 0 then
+							if pass == ATTEMPT_PASS then
+								pass = ATTEMPT_RETRY
+							end
+
+							log:warn("Device %d->%d: RETRY - negative frame loss (%d)",
+							testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames);
+						else
+							log:info("Device %d->%d: PASSED - frame loss (%d, %.8f%%) is less than or equal to the maximum (%.8f%%)",
+							testParams.ports[i], testParams.ports[testParams.connections[i]], lostFrames, lostFramePct, testParams.acceptableLossPct);
+						end
 					end
 				end
 			end
 		end
 	end
-	if pass then
-		log:info("Test Result:  PASSED")
+	if pass == ATTEMPT_RETRY then
+		t[1] = t[1] + 1
+
+		if t[1] > maxNegativeLossAttempts then
+			log:warn("Exceeded maximum number of negative packet loss attempts (%d)", maxNegativeLossAttempts)
+			pass = ATTEMPT_FAIL
+		else
+			log:warn("Test Result: RETRY - Attempt #%d", t[1])
+		end
+	end
+	if pass == ATTEMPT_PASS then
+		log:info("Test Result: PASSED")
+		t[1] = 0
 	else
-		log:warn("Test Result:  FAILED")
+		if pass == ATTEMPT_FAIL then
+			log:warn("Test Result: FAILED")
+			t[1] = 0
+		end
 	end
 	return pass
 end
@@ -776,6 +814,30 @@ function dumpQueues(queueIds)
 	return queues
 end
 
+function dumpTable(table, indent)
+	local indentString = ""
+
+	for i=1,indent,1 do
+		indentString = indentString.."\t"
+	end
+
+	for key,value in pairs(table) do
+		if type(value) == "table" then
+			log:info("%s%s => {", indentString, key)
+			dumpTable(value, indent+1)
+			log:info("%s}", indentString)
+		else
+			log:info("%s%s: %s", indentString, key, value)
+		end
+	end
+end
+
+function dumpTestParams(testParams)
+	log:info("testParams => {")
+	dumpTable(testParams, 1)
+	log:info("}")
+end
+
 function calibrateSlave(devs, devId, calibratedRate, testParams, taskId, queueIds)
 	local dev = devs[devId]
 	local frame_size_without_crc = testParams.frameSize - 4
@@ -914,18 +976,52 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, que
         return results
 end
 
+function saveSampleLog(file, samples, label)
+	log:info("Saving sample log to '%s'", file)
+	file = io.open(file, "w+")
+	file:write("samples,", label, "\n")
+	for i,v in ipairs(samples) do
+		file:write(i, ",", v, "\n")
+	end
+	file:close()
+end
+
+function saveHistogram(file, hist, label)
+	output = io.open(file, "w")
+	output:write("bucket,", label, "\n")
+	hist:save(output)
+	output:close()
+end
+
 function timerSlave(runTime, testParams, queueIds)
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
 	local frameSizeWithoutCrc = testParams.frameSize - 4
-	local rateLimit = timer:new(0.001) -- less than 100 samples per second
+	local rateLimit = timer:new(0.001) -- less than 1000 samples per second
+	local sampleLog1 = {}
+	local sampleLog2 = {}
 
 	-- TODO: adjust headers for flows
+
+	if testParams.runBidirec then
+		log:info("timerSlave: bidirectional testing from %d->%d and %d->%d", queueIds[1].id, queueIds[2].id, queueIds[3].id, queueIds[4].id)
+	else
+		log:info("timerSlave: unidirectional testing from %d->%d", queueIds[1].id, queueIds[2].id)
+	end
 	
 	hist1 = hist()
-	timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
+	if testParams.frameSize < 76 then
+		log:warn("Latency packets are not UDP due to requested size (%d) less than minimum UDP size (76)", testParams.frameSize)
+		timestamper1 = ts:newTimestamper(queueIds[1], queueIds[2])
+	else
+		timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
+	end
 	if testParams.runBidirec then
-		timestamper2 = ts:newUdpTimestamper(queueIds[3], queueIds[4])
+		if testParams.frameSize < 76 then
+			timestamper2 = ts:newTimestamper(queueIds[3], queueIds[4])
+		else
+			timestamper2 = ts:newUdpTimestamper(queueIds[3], queueIds[4])
+		end
 		hist2 = hist()
 	end
 	-- timestamping starts after and finishes before the main packet load starts/finishes
@@ -939,6 +1035,7 @@ function timerSlave(runTime, testParams, queueIds)
 	end
 	local timestamper = timestamper1
 	local hist = hist1
+	local sampleLog = sampleLog1
 	local haveHisto = false
 	local haveHisto1 = false
 	local haveHisto2 = false
@@ -949,10 +1046,13 @@ function timerSlave(runTime, testParams, queueIds)
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
 			counter = counter + 1
-			local lat = timestamper:measureLatency();
+			local lat = timestamper:measureLatency(testParams.frameSize);
 			if (lat) then
 				haveHisto = true;
                 		hist:update(lat)
+				sampleLog[counter] = lat
+			else
+				sampleLog[counter] = -1
 			end
 			rateLimit:reset()
 		end
@@ -960,6 +1060,7 @@ function timerSlave(runTime, testParams, queueIds)
 			if timestamper == timestamper2 then
 				timestamper = timestamper1
 				hist = hist1
+				sampleLog = sampleLog1
 				haveHisto2 = haveHisto
 				haveHisto = haveHisto1
 				counter2 = counter
@@ -967,6 +1068,7 @@ function timerSlave(runTime, testParams, queueIds)
 			else
 				timestamper = timestamper2
 				hist = hist2
+				sampleLog = sampleLog2
 				haveHisto1 = haveHisto
 				haveHisto = haveHisto2
 				counter1 = counter
@@ -978,30 +1080,32 @@ function timerSlave(runTime, testParams, queueIds)
 		end
 	end
 	moongen.sleepMillis(LATENCY_TRIM + 1000) -- the extra 1000 ms ensures the stats are output after the throughput stats
-	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id)
-	local histFile = "hist:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. ".csv"
-	--local histDesc = "Histogram port " .. testParams.ports[queueIds[1].id] .. " to port " .. testParams.ports[queueIds[2].id]
-	--local histFile = "hist:" .. testParams.ports[queueIds[1].id] .. "-" .. testParams.ports[queueIds[2].id] .. ".csv"
+	local histDesc = "Histogram port " .. ("%d"):format(queueIds[1].id) .. " to port " .. ("%d"):format(queueIds[2].id) .. " at rate " .. testParams.rate .. " Mpps"
+	local histFile = "dev:" .. ("%d"):format(queueIds[1].id) .. "-" .. ("%d"):format(queueIds[2].id) .. "_rate:" .. testParams.rate .. ".csv"
+	local headerLabel = "Dev:" .. ("%d"):format(queueIds[1].id) .. "->" .. ("%d"):format(queueIds[2].id) .. " @ " .. testParams.rate .. " Mpps"
 	if haveHisto1 then
 		hist1:print(histDesc)
-		hist1:save(histFile)
+		saveHistogram("latency:histogram_" .. histFile, hist1, headerLabel)
 		local hist_size = hist1:totals()
 		if hist_size ~= counter1 then
 		   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter1 - hist_size, (counter1 - hist_size)/counter1*100)
 		end
+		saveSampleLog("latency:samples_" .. histFile, sampleLog1, headerLabel)
 	else
 		log:warn("no latency samples found for %s", histDesc)
 	end
 	if testParams.runBidirec then
-		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id)
-		local histFile = "hist:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. ".csv"
+		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id) .. " at rate " .. testParams.rate .. " Mpps"
+		local histFile = "dev:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. "_rate:" .. testParams.rate .. ".csv"
+		local headerLabel = "Dev:" .. ("%d"):format(queueIds[3].id) .. "->" .. ("%d"):format(queueIds[4].id) .. " @ " .. testParams.rate .. " Mpps"
 		if haveHisto2 then
 			hist2:print(histDesc)
-			hist2:save(histFile)
+			saveHistogram("latency:histogram_" .. histFile, hist2, headerLabel)
 			local hist_size = hist2:totals()
 			if hist_size ~= counter2 then
 			   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter2 - hist_size, (counter2 - hist_size)/counter2*100) 
 			end
+			saveSampleLog("latency:samples_" .. histFile, sampleLog2, headerLabel)
 		else
 			log:warn("no latency samples found for %s", histDesc)
 		end
