@@ -16,20 +16,52 @@ local ip        = require "proto.ip4"
 local PCI_ID_X710 = 0x80861572
 local PCI_ID_XL710 = 0x80861583
 
+function intsToTable(instr)
+	local t = {}
+	sep = ","
+	for str in string.gmatch(instr, "([^"..sep.."]+)") do
+               	table.insert(t, tonumber(str))
+	end
+	return t
+end
+
+function stringsToTable(instr)
+	local t = {}
+	sep = ","
+	for str in string.gmatch(instr, "([^"..sep.."]+)") do
+               	table.insert(t, str)
+	end
+	return t
+end
+
+function parseIPAddresses(t)
+	for i, _ in ipairs(t) do
+		t[i] = parseIPAddress(t[i])
+	end
+end
+
+function parseMacs(t)
+	local u = {}
+	for i, _ in ipairs(t) do
+		table.insert(u, macToU48(t[i]))
+	end
+	return u
+end
+
 function configure(parser)
-	parser:option("--devices", "A comma separated list of one or more Tx/Rx device pairs, for example: 0,1,2,3"):args(2):default({0,1}):convert(tonumber)
-	parser:option("--vlanIds", "A comma separated list of one or more vlanIds, corresponding to each entry in deviceList"):default(nil)
+	parser:option("--devices", "A comma separated list (no spaces) of one or more Tx/Rx device pairs, for example: 0,1,2,3"):default({0,1}):convert(intsToTable)
+	parser:option("--vlanIds", "A comma separated list of one or more vlanIds, corresponding to each entry in deviceList"):default(nil):convert(intsToTable)
 	parser:option("--size", "Frame size."):default(64):convert(tonumber)
 	parser:option("--rate", "Transmit rate in Mpps"):default(1):convert(tonumber)
 	parser:option("--measureLatency", "true or false"):default(false)
 	parser:option("--bidirectional", "true or false"):default(false)
 	parser:option("--nrFlows", "Number of unique network flows"):default(1024):convert(tonumber)
 	parser:option("--runTime", "Number of seconds to run"):default(30):convert(tonumber)
-	parser:option("--flowMods", "Comma separated list, one or more of:  srcIp,dstIp,srcMac,dstMac,srcPort,dstPort"):default({srcIp})
-	parser:option("--srcIp", "Source IP address used"):default("10.0.0.1")
-	parser:option("--dstIp", "Destination IP address used"):default("192.168.0.1")
-	parser:option("--srcMacs", "Source MAC address used"):default({})
-	parser:option("--dstMacs", "Destination MAC address used"):default({})
+	parser:option("--flowMods", "Comma separated list (no spaces), one or more of:  srcIp,dstIp,srcMac,dstMac,srcPort,dstPort"):default({"srcIp"}):convert(stringsToTable)
+	parser:option("--srcIps", "A comma separated list (no spaces) of source IP address used"):default("10.0.0.1,192.168.0.1"):convert(stringsToTable)
+	parser:option("--dstIps", "A comma separated list (no spaces) of destination IP address used"):default("192.168.0.1,10.0.0.1"):convert(stringsToTable)
+	parser:option("--srcMacs", "A comma separated list (no spaces) of source MAC address used"):default({}):convert(stringsToTable)
+	parser:option("--dstMacs", "A comma separated list (no spaces) of destination MAC address used"):default({}):convert(stringsToTable)
 	parser:option("--srcPort", "Source port used"):default(1234):convert(tonumber)
 	parser:option("--dstPort", "Destination port used"):default(1234):convert(tonumber)
 	parser:option("--mppsPerQueue", "The maximum transmit rate in Mpps for each device queue"):default(5):convert(tonumber)
@@ -43,6 +75,8 @@ function master(args)
 	args.txMethod = "hardware"
 	local txQueues = 1 + math.floor(args.rate / args.mppsPerQueue)
 	local devs = {}
+	parseIPAddresses(args.srcIps)
+	parseIPAddresses(args.dstIps)
 	-- The connections[] table defines a relationship between te device which transmits and a device which receives the same packets.
 	-- This relationship is derived via the devices[] table, where if devices contained {a, b, c, d}, device a transmits to device b,
 	-- and device c transmits to device d.  
@@ -79,7 +113,7 @@ function master(args)
 			log:info("device %d when transmitting will use vlan ID: [%d]", deviceNum, args.vlanIds[i])
 		end
 		if not args.srcMacs[i] and connections[i] then
-			args.srcMacs[i] = devs[i]:getTxQueue(0)
+			args.srcMacs[i] = devs[i]:getMacString()
 		end
 		if args.srcMacs[i] and connections[i] then
 			log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
@@ -93,6 +127,8 @@ function master(args)
 			log:info("device %d when transmitting will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
 		end
 	end
+	args.srcMacsU48 = parseMacs(args.srcMacs)
+	args.dstMacsU48 = parseMacs(args.dstMacs)
 	device.waitForLinks()
 	
 	idx = 1
@@ -178,15 +214,15 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "srcIp" ) then
-				pkt.ip4.src:set(args.srcIp + flowId)
+				pkt.ip4.src:set(args.srcIps[devId] + flowId)
 			end
 	
 			if ( v == "dstIp" ) then
-				pkt.ip4.dst:set(args.dstIp + flowId)
+				pkt.ip4.dst:set(args.dstIps[devId] + flowId)
 			end
 	
 			if ( v == "srcMac" ) then
-				addr = args.srcMacsUnsigned + flowId
+				addr = args.srcMacsUnsigned[devId] + flowId
 				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -196,7 +232,7 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "dstMac" ) then
-				addr = args.dstMacsUnsigned + flowId
+				addr = args.dstMacsUnsigned[devId] + flowId
 				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -218,7 +254,7 @@ function getBuffers(devId, args)
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
 			ethSrc = args.srcMacs[devId],
 			ethDst = args.dstMacs[devId],
-			ip4Dst = args.dstIp,
+			ip4Dst = args.dstIps[devId],
 			udpSrc = args.srcPort,
 			udpDst = args.dstPort
 		}
