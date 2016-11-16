@@ -40,10 +40,10 @@ function parseIPAddresses(t)
 	end
 end
 
-function parseMacs(t)
+function convertMacs(t)
 	local u = {}
-	for i, _ in ipairs(t) do
-		table.insert(u, macToU48(t[i]))
+	for i, v in ipairs(t) do
+		table.insert(u, macToU48(v))
 	end
 	return u
 end
@@ -110,12 +110,10 @@ function master(args)
 	end
 	for i, deviceNum in ipairs(args.devices) do 
 		if args.vlanIds and args.vlanIds[i] then
-			log:info("device %d when transmitting will use vlan ID: [%d]", deviceNum, args.vlanIds[i])
+			log:info("device %d will use vlan ID: [%d]", deviceNum, args.vlanIds[i])
 		end
-		if not args.srcMacs[i] and connections[i] then
+		if not args.srcMacs[i] then
 			args.srcMacs[i] = devs[i]:getMacString()
-		end
-		if args.srcMacs[i] and connections[i] then
 			log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
 		end
 	end
@@ -127,8 +125,8 @@ function master(args)
 			log:info("device %d when transmitting will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
 		end
 	end
-	args.srcMacsU48 = parseMacs(args.srcMacs)
-	args.dstMacsU48 = parseMacs(args.dstMacs)
+	args.srcMacsU48 = convertMacs(args.srcMacs)
+	args.dstMacsU48 = convertMacs(args.dstMacs)
 	device.waitForLinks()
 	
 	idx = 1
@@ -222,7 +220,7 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "srcMac" ) then
-				addr = args.srcMacsUnsigned[devId] + flowId
+				addr = args.srcMacsU48[devId] + flowId
 				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -232,7 +230,7 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "dstMac" ) then
-				addr = args.dstMacsUnsigned[devId] + flowId
+				addr = args.dstMacsU48[devId] + flowId
 				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
