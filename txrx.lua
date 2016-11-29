@@ -9,12 +9,14 @@ local stats	= require "stats"
 local hist	= require "histogram"
 local log	= require "log"
 local ip        = require "proto.ip4"
+local icmp	= require "proto.icmp"
 
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
 
 local PCI_ID_X710 = 0x80861572
 local PCI_ID_XL710 = 0x80861583
+local LATENCY_TRIM = 2
 
 function intsToTable(instr)
 	local t = {}
@@ -53,7 +55,7 @@ function configure(parser)
 	parser:option("--vlanIds", "A comma separated list of one or more vlanIds, corresponding to each entry in deviceList"):default(nil):convert(intsToTable)
 	parser:option("--size", "Frame size."):default(64):convert(tonumber)
 	parser:option("--rate", "Transmit rate in Mpps"):default(1):convert(tonumber)
-	parser:option("--measureLatency", "true or false"):default(false)
+	parser:option("--measureLatency", "true or false"):default(true)
 	parser:option("--bidirectional", "true or false"):default(false)
 	parser:option("--nrFlows", "Number of unique network flows"):default(1024):convert(tonumber)
 	parser:option("--runTime", "Number of seconds to run"):default(30):convert(tonumber)
@@ -65,7 +67,7 @@ function configure(parser)
 	parser:option("--srcPort", "Source port used"):default(1234):convert(tonumber)
 	parser:option("--dstPort", "Destination port used"):default(1234):convert(tonumber)
 	parser:option("--mppsPerQueue", "The maximum transmit rate in Mpps for each device queue"):default(5):convert(tonumber)
-	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(3):convert(tonumber)
+	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(1):convert(tonumber)
 	parser:option("--linkSpeed", "The speed in Gbps of the device(s)"):default(10):convert(tonumber)
 	parser:option("--maxLossPct", "The maximum frame loss percentage tolerated"):default(0.002):convert(tonumber)
 	parser:option("--rateTolerance", "Stop the test if the specified transmit rate drops by this amount, in Mpps"):default(0.25):convert(tonumber)
@@ -73,7 +75,16 @@ end
 
 function master(args)
 	args.txMethod = "hardware"
-	local txQueues = 1 + math.floor(args.rate / args.mppsPerQueue)
+	--the number of transmit queues -not- including queues for measuring latency
+	local numTxQueues = 1 + math.floor(args.rate / args.mppsPerQueue)
+	--the number of receive queues -not- including queues for measuring latency
+	--local numRxQueues = 2 --first queue is for traffic that does not match what is sent, second queue is for only packets that aer sent
+	local numRxQueues = 2 --first queue is for traffic that does not match what is sent, second queue is for only packets that aer sent
+	if args.measureLatency == true then 
+		log:info("Adding 1 rx and 1 tx queue to measure latency")
+		numRxQueues = numRxQueues + 1
+		numTxQueues = numTxQueues + 1
+	end
 	local devs = {}
 	parseIPAddresses(args.srcIps)
 	parseIPAddresses(args.dstIps)
@@ -84,20 +95,17 @@ function master(args)
 	connections = {}
 	for i, deviceNum in ipairs(args.devices) do -- devices = {a, b, c, d} a sends packets to b, c sends packets to d
 		-- initialize the devices
-		if args.measureLatency then 
-			local rxQueues = 2
-			txQueues = txQueues + 1
-			log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, txQueues, rxQueues)
+		log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, numTxQueues, numRxQueues)
+		if args.measureLatency == true then 
 			devs[i] = device.config{ port = args.devices[i],
-				 		txQueues = txQueues,
-				 		rxQueues = rxQueues}
+			 			txQueues = numTxQueues + 1,
+			 			rxQueues = numRxQueues + 1}
 		else
-			local rxQueues = 1
-			log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, txQueues, rxQueues)
 			devs[i] = device.config{ port = args.devices[i],
-				 		txQueues = txQueues,
-				 		rxQueues = rxQueues}
+			 			txQueues = numTxQueues,
+			 			rxQueues = numRxQueues}
 		end
+
 		-- configure the connections
 		if ( i % 2 == 1) then -- for devices a, c
 			connections[i] = i + 1  -- device a transmits to device b, device c transmits to device d 
@@ -111,6 +119,7 @@ function master(args)
 	for i, deviceNum in ipairs(args.devices) do 
 		if args.vlanIds and args.vlanIds[i] then
 			log:info("device %d will use vlan ID: [%d]", deviceNum, args.vlanIds[i])
+			devs[i]:filterVlan(args.vlanIds[i])
 		end
 		if not args.srcMacs[i] then
 			args.srcMacs[i] = devs[i]:getMacString()
@@ -129,68 +138,149 @@ function master(args)
 	args.dstMacsU48 = convertMacs(args.dstMacs)
 	device.waitForLinks()
 	
-	idx = 1
-	local txTasksPerDev = math.ceil(txQueues / args.queuesPerTask)
-	local txTaskId = 1
+	filterEther = false
+	filterTs = false
+	filterTuple = false
+	for i, deviceNum in ipairs(args.devices) do 
+		-- add a filter for the IP address of the receiving device
+		if connections[i] then -- if this device transmits
+			rxDevId = connections[i]  -- this is the receicing device
+			if filterEther == true then
+				devs[rxDevId]:l2Filter(0x0800, devs[rxDevId]:getRxQueue(1))
+			end
+			if filterTs == true then
+				devs[rxDevId]:filterUdpTimestamps(devs[rxDevId]:getRxQueue(1))
+			end
+			if filterTuple == true then
+				log:info("filter srcIp: %s", ip4ToString(args.srcIps[i]))
+				log:info("filter dstIp: %s", ip4ToString(args.dstIps[i]))
+				devs[rxDevId]:fiveTupleFilter({
+								dstIp = ip4ToString(args.dstIps[i]),
+								srcIp = ip4ToString(args.srcIps[i]),
+								srcPort = 1234, dstPort = 1234,
+								proto = 0x11}, devs[rxDevId]:getRxQueue(1))
+			end
+		end
+	end
+	local txTasksPerDev = math.ceil(numTxQueues / args.queuesPerTask)
+	local taskId
 	local txTasks = {}
 	local rxTasks = {}
-	-- start the load tasks
-	for devId, v in ipairs(devs) do
-		if connections[devId] then
+	local timerTasks = {}
+
+	-- start the rx tasks
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
+			for perDevTaskId = 0, numRxQueues - 1 do
+				--devs[rxDevId]:l2Filter(0x0800, devs[rxDevId]:getRxQueue(1))
+				rxTasks[taskId] = moongen.startTask("rx", args, perDevTaskId, devs[rxDevId]:getRxQueue(perDevTaskId))
+				taskId = taskId + 1
+			end
+		end
+	end
+	-- a little time to ensure rx threads are ready
+	moongen.sleepMillis(1000)
+	-- start the tx tasks
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
 			printf("Testing %.2f Mfps", args.rate)
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-				local queueIds = getTxQueues(args.queuesPerTask, txQueues, perDevTaskId, devs, devId)
-				txTasks[txTaskId] = moongen.startTask("loadSlave", devs, devId, args, perDevTaskId, queueIds, devs[connections[devId]]:getRxQueue(0))
-				txTaskId = txTaskId + 1
+				local txQueues = getTxQueues(args.queuesPerTask, numTxQueues, perDevTaskId, devs[txDevId])
+				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId)
+				taskId = taskId + 1
 			end
-			--if args.testType == "latency" or
-				--( args.testType == "throughput-latency" and final ) then
-				---- latency measurements do not involve a dedicated task for each direction of traffic
-				--if not timerTasks[connections[devId]] then
-					--local queueIds = getTimerQueues(devs, devId, args)
-					--log:info("timer queues: %s", dumpQueues(queueIds))
-					--timerTasks[devId] = moongen.startTask("timerSlave", args, queueIds)
-				--end
-			--end
+			if args.measureLatency == true then
+				-- latency measurements do not involve a dedicated task for each direction of traffic
+				if not timerTasks[connections[txDevId]] then
+					local latencyQueues = getTimerQueues(devs, txDevId, args, numTxQueues, numRxQueues, connections)
+					log:info("timer queues: %s", dumpQueues(latencyQueues))
+					timerTasks[txDevId] = moongen.startTask("timerSlave", args, latencyQueueIds)
+				end
+			end
 		end
 	end
-	-- wait for loadSlaves devices to finish
+	-- wait for tx devices to finish
 	local txStats = {}
-	local txTaskId = 1
-	for devId, v in ipairs(devs) do
-		if connections[devId] then
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
 			for perDevTaskId = 0, txTasksPerDev - 1 do
 				if perDevTaskId == 0 then
-					txStats[devId] = txTasks[txTaskId]:wait()
+					txStats[txDevId] = txTasks[taskId]:wait()
 				else
-					txTasks[txTaskId]:wait()
+					txTasks[taskId]:wait()
 				end
-				txTaskId = txTaskId + 1
+				taskId = taskId + 1
+			end
+		end
+	end
+	-- give time for the packet to come back
+	moongen.sleepMillis(1000)
+	moongen.stop()
+	local rxStats = {}
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			for perDevTaskId = 0, numRxQueues - 1 do
+				if perDevTaskId == 0 then
+					rxStats[txDevId] = rxTasks[taskId]:wait()
+				else
+					rxTasks[taskId]:wait()
+				end
+				taskId = taskId + 1
+			end
+		end
+	end
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxTasks[txDevId]:wait()
+			if args.measureLatency == true then
+				if not timerTasks[connections[txDevId]] then
+					timerTasks[txDevId]:wait()
+				end
 			end
 		end
 	end
 end
 
-function getTxQueues(txQueuesPerTask, txQueues, taskId, devs, devId)
-	local queueIds = {}
-	local firstQueueId = taskId * txQueuesPerTask
-	local lastQueueId = firstQueueId + txQueuesPerTask - 1
-	if lastQueueId > (txQueues - 1) then
-		lastQueueId = txQueues - 1
+function getRxQueues(queuesPerTask, numQueues, taskId, dev)
+	local queues = {}
+	local firstQueueId = taskId * queuesPerTask
+	local lastQueueId = firstQueueId + queuesPerTask - 1
+	if lastQueueId > (numQueues - 1) then
+		lastQueueId = numQueues - 1
 	end
 	for queueId = firstQueueId, lastQueueId do
-		table.insert(queueIds, devs[devId]:getTxQueue(queueId))
+		table.insert(queues, dev:getRxQueue(queueId))
 	end
-	return queueIds
+	return queues
 end
 
-function getTimerQueues(devs, devId, testParams)
+function getTxQueues(txQueuesPerTask, numTxQueues, taskId, dev)
+	local queues = {}
+	local firstQueueId = taskId * txQueuesPerTask
+	local lastQueueId = firstQueueId + txQueuesPerTask - 1
+	if lastQueueId > (numTxQueues - 1) then
+		lastQueueId = numTxQueues - 1
+	end
+	for queueId = firstQueueId, lastQueueId do
+		table.insert(queues, dev:getTxQueue(queueId))
+	end
+	return queues
+end
+
+function getTimerQueues(devs, devId, args, txQueueId, rxQueueId, connections)
 	-- build a table of one or more pairs of queues
-	local queueIds = { devs[devId]:getTxQueue(txQueues), devs[testParams.connections[devId]]:getRxQueue(testParams.rxQueuesPerDev) }
+	log:info("txQueueId: %d rxQueueId: %d", txQueueId, rxQueueId)
+	local queueIds = { devs[devId]:getTxQueue(txQueueId), devs[connections[devId]]:getRxQueue(rxQueueId) }
 	-- If this is a bidirectional test, add another queue-pair for the other direction:
-	if testParams.connections[testParams.connections[devId]] then
-		table.insert(queueIds, devs[testParams.connections[devId]]:getTxQueue(txQueues))
-		table.insert(queueIds, devs[devId]:getRxQueue(testParams.rxQueuesPerDev))
+	if connections[connections[devId]] then
+		table.insert(queueIds, devs[connections[devId]]:getTxQueue(txQueueId))
+		table.insert(queueIds, devs[devId]:getRxQueue(rxQueueId))
 	end
 	return queueIds
 end
@@ -247,11 +337,12 @@ end
 
 function getBuffers(devId, args)
 	local mem = memory.createMemPool(function(buf)
-		local eth_dst
-		buf:getUdpPacket():fill{
-			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
+		--buf:getUdpPacket():fill{
+		buf:getUdpPtpPacket():fill{
+			pktLength = frame_size_without_crc,
 			ethSrc = args.srcMacs[devId],
 			ethDst = args.dstMacs[devId],
+			ip4Src = args.srcIps[devId],
 			ip4Dst = args.dstIps[devId],
 			udpSrc = args.srcPort,
 			udpDst = args.dstPort
@@ -261,12 +352,13 @@ function getBuffers(devId, args)
 	return bufs
 end
 
-function dumpQueues(queueIds)
-	local queues = ""
-	for _ , queueId in pairs(queueIds)  do
-		queues = queues..queueId:__tostring()
+function dumpQueues(queues)
+	local queuesStr = ""
+	local queue
+	for _, queue in ipairs(queues)  do
+		queuesStr = queuesStr..queue:__tostring()
 	end
-	return queues
+	return queuesStr
 end
 
 function dumpTable(table, indent)
@@ -293,45 +385,44 @@ function dumpTestParams(args)
 	log:info("}")
 end
 
-function loadSlave(devs, devId, args, taskId, queueIds, rxQueue)
-	local dev = devs[devId]
+function tx(args, taskId, txQueues, txDevId)
+	local txDev = txQueues[1].dev
 	local frame_size_without_crc = args.size - 4
-	local bufs = getBuffers(devId, args)
-	log:info("loadSlave: devId: %d  taskId: %d  rate: %.4f queues: %s", devId, taskId, args.rate, dumpQueues(queueIds))
+	local bufs = getBuffers(txDevId, args)
+	log:info("tx: txDev: %s  taskId: %d  rate: %.4f txQueues: %s", txDev, taskId, args.rate, dumpQueues(txQueues))
+
 	if args.runTime > 0 then
 		runtime = timer:new(args.runTime)
-		log:info("loadSlave test to run for %d seconds", args.runTime)
+		log:info("tx test to run for %d seconds", args.runTime)
 	else
-		log:warn("loadSlave args.runTime is 0")
+		log:warn("tx args.runTime is 0")
 	end
 	
-	if taskId == 0 then
-		rxStats = stats:newDevRxCounter(rxQueue.dev, "plain")
-		txStats = stats:newDevTxCounter(dev, "plain")
-	end
 	local count = 0
-	local pci_id = dev:getPciId()
+	local pci_id = txDev:getPciId()
 	if ( args.txMethod == "hardware" ) then
         	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
-                	dev:setRate(args.rate * (args.size + 4) * 8)
+                	txDev:setRate(args.rate * (args.size + 4) * 8)
 		else
 			local queueId
-			for _ , queueId in pairs(queueIds)  do
-				queueId:setRateMpps(args.rate / txQueues, args.size)
+			for _ , queueId in pairs(txQueues)  do
+				queueId:setRateMpps(args.rate / table.getn(txQueues), args.size)
 			end
 		end
 	end
 	local packetCount = 0
 	while (args.runTime == 0 or runtime:running()) and moongen.running() do
 		bufs:alloc(frame_size_without_crc)
-		packetCount = adjustHeaders(devId, bufs, packetCount, args, srcMacs, dstMacs)
-		if (args.vlanIds and args.vlanIds[devId]) then
-			bufs:setVlans(args.vlanIds[devId])
+		if args.flowMods then
+			packetCount = adjustHeaders(txDevId, bufs, packetCount, args, srcMacs, dstMacs)
 		end
+		--if (args.vlanIds and args.vlanIds[txDevId]) then
+			--bufs:setVlans(args.vlanIds[txDevId])
+		--end
                 bufs:offloadUdpChecksums()
 		if ( args.txMethod == "hardware" ) then
 			local queueId
-			for _ , queueId in pairs(queueIds)  do
+			for _, queueId in ipairs(txQueues)  do
 				queueId:send(bufs)
 			end
 		else
@@ -339,25 +430,27 @@ function loadSlave(devs, devId, args, taskId, queueIds, rxQueue)
 				buf:setRate(args.rate)
 			end
 			local queueId
-			for _ , queueId in pairs(queueIds)  do
+			for _ , queueId in pairs(txQueues)  do
 				queueId:sendWithDelay(bufs)
 			end
 		end
-		if taskId == 0 then
-			rxStats:update()
-			txStats:update()
-		end
 	end
+	log:info("tx: sent %d packets", packetCount)
         local results = {}
-	if taskId == 0 then
-        	rxStats:finalize()
-		txStats:finalize()
-        	results.totalRxFrames = rxStats.total
-		results.totalTxFrames = txStats.total
-		results.avgMpps = txStats.mpps.avg
-	end
         return results
 end
+
+function rx(args, perDevTaskId, queue)
+	local totalPkts = 0
+	local bufs = memory.bufArray(64)
+	while moongen.running() do
+		local numPkts = queue:recv(bufs)
+		bufs:free(numPkts)
+		totalPkts = totalPkts + numPkts
+	end
+	log:info("queue %s total rx packets: %d", queue, totalPkts)
+end
+
 
 function saveSampleLog(file, samples, label)
 	log:info("Saving sample log to '%s'", file)
@@ -411,7 +504,7 @@ function timerSlave(args, queueIds)
 	moongen.sleepMillis(LATENCY_TRIM)
 	if args.runTime > 0 then
 		local actualRunTime = args.runTime - LATENCY_TRIM/1000*2
-		args.runTimer = timer:new(actualRunTime)
+		runTimer = timer:new(actualRunTime)
 		log:info("Latency test to run for %d seconds", actualRunTime)
 	else
 		log:warn("Latency args.runTime is 0")
