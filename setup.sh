@@ -25,7 +25,7 @@ if git submodule init && git submodule update; then
 
 		if pushd libmoon/deps/dpdk; then
 			sed -i -e 's@SRCS-y += ethtool/igb/igb_main.c@#SRCS-y += ethtool/igb/igb_main.c/@' lib/librte_eal/linuxapp/kni/Makefile
-			if make -j $NUM_CPUS install T=x86_64-native-linuxapp-gcc; then
+			if make -j $NUM_CPUS install T=x86_64-native-linuxapp-gcc DESTDIR=install; then
 				popd 
 			else
 				echo "make-install of dpdk failed, exiting"
