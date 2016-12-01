@@ -8,8 +8,7 @@ local timer	= require "timer"
 local stats	= require "stats"
 local hist	= require "histogram"
 local log	= require "log"
-local ip        = require "proto.ip4"
-local icmp	= require "proto.icmp"
+local proto     = require "proto.proto"
 
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
@@ -52,7 +51,8 @@ end
 
 function configure(parser)
 	parser:option("--devices", "A comma separated list (no spaces) of one or more Tx/Rx device pairs, for example: 0,1,2,3"):default({0,1}):convert(intsToTable)
-	parser:option("--vlanIds", "A comma separated list of one or more vlanIds, corresponding to each entry in deviceList"):default(nil):convert(intsToTable)
+	parser:option("--vlanIds", "A comma separated list of one or more VLAN IDs, corresponding to each entry in deviceList.. Using this option enables VLAN tagged packets"):default({}):convert(intsToTable)
+	parser:option("--vxlanIds", "A comma separated list of one or more VxLAN IDs, corresponding to each entry in deviceList.  Using this option enables VxLAN encapsulated packets and requires at least --dstIpsVxlan and --dstMacsVxlan"):default({}):convert(intsToTable)
 	parser:option("--size", "Frame size."):default(64):convert(tonumber)
 	parser:option("--rate", "Transmit rate in Mpps"):default(1):convert(tonumber)
 	parser:option("--measureLatency", "true or false"):default(true)
@@ -66,6 +66,10 @@ function configure(parser)
 	parser:option("--dstMacs", "A comma separated list (no spaces) of destination MAC address used"):default({}):convert(stringsToTable)
 	parser:option("--srcPort", "Source port used"):default(1234):convert(tonumber)
 	parser:option("--dstPort", "Destination port used"):default(1234):convert(tonumber)
+	parser:option("--srcIpsVxlan", "A comma separated list (no spaces) of source IP address used for outer header with VxLAN"):default("10.0.101.2,10.0.102.2"):convert(stringsToTable)
+	parser:option("--dstIpsVxlan", "A comma separated list (no spaces) of destination IP address used for outer header with VxLAN"):default("10.0.101.1,10.0.102.1"):convert(stringsToTable)
+	parser:option("--srcMacsVxlan", "A comma separated list (no spaces) of source MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:02", "90:e2:ba:01:02:03"}):convert(stringsToTable)
+	parser:option("--dstMacsVxlan", "A comma separated list (no spaces) of destination MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:04", "90:e2:ba:01:02:05"}):convert(stringsToTable)
 	parser:option("--mppsPerQueue", "The maximum transmit rate in Mpps for each device queue"):default(5):convert(tonumber)
 	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(1):convert(tonumber)
 	parser:option("--linkSpeed", "The speed in Gbps of the device(s)"):default(10):convert(tonumber)
@@ -117,25 +121,47 @@ function master(args)
 		end
 	end
 	for i, deviceNum in ipairs(args.devices) do 
-		if args.vlanIds and args.vlanIds[i] then
+		-- assign vlan IDs
+		if args.vlanIds[i] then
 			log:info("device %d will use vlan ID: [%d]", deviceNum, args.vlanIds[i])
 			devs[i]:filterVlan(args.vlanIds[i])
 		end
-		if not args.srcMacs[i] then
-			args.srcMacs[i] = devs[i]:getMacString()
-			log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
+		-- assign device's native HW MAC if user does not provide one
+		if not args.vxlanIds[i] then -- when VxLANs are used, srcMacs are for the innner packet, and therefore should not be using the device's native HW MAC
+			if not args.srcMacs[i] then
+				args.srcMacs[i] = devs[i]:getMacString()
+				log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
+			end
+		else -- if this is VxLAN, use the srcMacsVxlan table, which will be referenced for outer packet MAC during getBuffer()
+			if not args.srcMacsVxlan[i] then
+				args.srcMacsVxlan[i] = devs[i]:getMacString()
+				log:info("device %d for VxLAN, outer packet src MAC: [%s]", deviceNum, args.srcMacsVxlan[i])
+			end
 		end
 	end
+	-- assign the dst MAC addresses
 	for i, deviceNum in ipairs(args.devices) do
 		if not args.dstMacs[i] and connections[i] then
 			args.dstMacs[i] = args.srcMacs[connections[i]]
 		end
+		if args.vxlanIds[i] and not args.dstMacsVxlan[i] and connections[i] then
+			args.dstMacsVxlan[i] = args.srcMacsVxlan[connections[i]]
+		end
 		if args.dstMacs[i] and connections[i] then
-			log:info("device %d when transmitting will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
+			if args.vxlanIds[i] then
+				log:info("device %d when transmitting VxLAN packets, the inner packet will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
+			else
+				log:info("device %d when transmitting packets will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
+			end
+		end
+		if args.dstMacsVxlan[i] and connections[i] then
+			log:info("device %d when transmitting VxLAN packets, the outer packet will use dst MAC: [%s]", deviceNum, args.dstMacsVxlan[i])
 		end
 	end
 	args.srcMacsU48 = convertMacs(args.srcMacs)
 	args.dstMacsU48 = convertMacs(args.dstMacs)
+	args.srcMacsU48 = convertMacs(args.srcMacsVxlan)
+	args.dstMacsU48 = convertMacs(args.dstMacsVxlan)
 	device.waitForLinks()
 	
 	filterEther = false
@@ -335,17 +361,40 @@ function adjustHeaders(devId, bufs, packetCount, args)
 end
 
 function getBuffers(devId, args)
+	local frame_size_without_crc = args.size - 4 + 50
 	local mem = memory.createMemPool(function(buf)
 		
-		buf:getUdpPacket():fill{
+		--buf:getUdpPacket():fill{
+			--pktLength = frame_size_without_crc,
+			--ethSrc = args.srcMacs[devId],
+			--ethDst = args.dstMacs[devId],
+			--ip4Src = args.srcIps[devId],
+			--ip4Dst = args.dstIps[devId],
+			--udpSrc = args.srcPort,
+			--udpDst = args.dstPort
+		--}
+
+		buf:getVxlanEthernetPacket():fill{ 
 			pktLength = frame_size_without_crc,
-			ethSrc = args.srcMacs[devId],
-			ethDst = args.dstMacs[devId],
-			ip4Src = args.srcIps[devId],
-			ip4Dst = args.dstIps[devId],
-			udpSrc = args.srcPort,
-			udpDst = args.dstPort
+
+			-- outer header for VxLAN
+			vxlanVNI = args.vxlanIds[devId],
+			ethSrc = args.srcMacsVxlan[devId],
+			ethDst = args.dstMacsVxlan[devId],
+			ip4Src = args.srcIpsVxlan[devId],
+			ip4Dst = args.dstIpsVxlan[devId],
+			udpSrc = proto.udp.PORT_VXLAN,
+			udpDst = proto.udp.PORT_VXLAN,
+
+			-- inner header for VxLAN
+			innerEthSrc = args.srcMacs[devId],
+			innerEthDst = args.dstMacs[devId],
+			innerIp4Src = args.srcIps[devId],
+			innerIp4Src = args.dstIps[devId],
+			innerEthType = 0x0800,
+
 		}
+
 	end)
 	local bufs = mem:bufArray()
 	return bufs
@@ -386,7 +435,7 @@ end
 
 function tx(args, taskId, txQueues, txDevId)
 	local txDev = txQueues[1].dev
-	local frame_size_without_crc = args.size - 4
+	local frame_size_without_crc = args.size - 4 + 50
 	local bufs = getBuffers(txDevId, args)
 	log:info("tx: txDev: %s  taskId: %d  rate: %.4f txQueues: %s", txDev, taskId, args.rate, dumpQueues(txQueues))
 
@@ -415,7 +464,7 @@ function tx(args, taskId, txQueues, txDevId)
 		if args.flowMods then
 			packetCount = adjustHeaders(txDevId, bufs, packetCount, args, srcMacs, dstMacs)
 		end
-		if (args.vlanIds and args.vlanIds[txDevId]) then
+		if (args.vlanIds[txDevId]) then
 			bufs:setVlans(args.vlanIds[txDevId])
 		end
                 bufs:offloadUdpChecksums()
@@ -619,263 +668,4 @@ function macToU48(mac)
 		acc = acc + bytes[i] * 256 ^ (6 - i)
 	end
 	return acc
-end
-
--- vtep is the endpoint when MoonGen de-/encapsulates traffic 
--- enc(capsulated/tunneled traffic) is facing the l3 network, dec(apsulated traffic) is facing l2 network
--- remote is where we tx/rx traffic with MoonGen (load-/counterslave)
--- Setup: <interface>:<host>:<interface>
--- :loadgen/sink:decRemote <-----> decVtep:Vtep:encVtep <-----> encRemote:sink/loadgen:
-local encVtepEth 	= "90:e2:ba:2c:cb:02" -- vtep, public/l3 side
-local encVtepIP		= "10.0.0.1"
-local encRemoteEth	= "90:e2:ba:01:02:03" -- MoonGen load/counter slave
-local encRemoteIP	= "10.0.0.2"
-
-local VNI 		= 1000
-
-local decVtepEth	= "90:e2:ba:1f:8d:44" -- vtep, private/l2 side
-local decRemoteEth	= "90:e2:ba:0a:0b:0c" -- MoonGen counter/load slave
-
--- can be any proper payload really, we use this etherType to identify the packets
-local decEthType 	= 1
-
-local decPacketLen	= 60
-local encapsulationLen	= 14 + 20 + 8 + 8 -- Eth, IP, UDP, VXLAN
-local encPacketLen 	= encapsulationLen + decPacketLen
-
-function loadSlave(sendTunneled, port, queue)
-
-	local queue = device.get(port):getTxQueue(queue)
-	local packetLen
-	local mem
-
-	if sendTunneled then
-		-- create a with VXLAN encapsulated ethernet packet
-		packetLen = encPacketLen
-		mem = memory.createMemPool(function(buf)
-			buf:getVxlanEthernetPacket():fill{ 
-				ethSrc=encRemoteEth, 
-				ethDst=encVtepEth, 
-				ip4Src=encRemoteIP,
-				ip4Dst=encVtepIP,
-
-				vxlanVNI=VNI,
-
-				innerEthSrc=decVtepEth,
-				innerEthDst=decRemoteEth,
-				innerEthType=decEthType,
-
-				pktLength=encPacketLen 
-			}
-		end)
-	else
-		-- create an ethernet packet
-		packetLen = decPacketLen
-		mem = memory.createMemPool(function(buf)
-			buf:getEthernetPacket():fill{ 
-				ethSrc=decRemoteEth,
-				ethDst=decVtepEth,
-				ethType=decEthType,
-
-				pktLength=decPacketLen 
-			}
-		end)
-
-	end
-
-	local bufs = mem:bufArray()
-	local c = 0
-
-	local txStats = stats:newDevTxCounter(queue, "plain")
-	while mg.running() do
-		-- fill packets and set their size 
-		bufs:alloc(packetLen)
-		
-		-- dump first packet to see what we send
-		if c < 1 then
-			bufs[1]:dump()
-			c = c + 1
-		end 
-		
-		if sendTunneled then
-			--offload checksums to NIC
-			bufs:offloadUdpChecksums()
-		end
-		
-		queue:send(bufs)
-		txStats:update()
-	end
-	txStats:finalize()
-end
-
---- Checks if the content of a packet parsed as Vxlan packet indeed fits with a Vxlan packet
---- @param pkt A buffer parsed as Vxlan packet
---- @return true if the content fits a Vxlan packet (etherType, ip4Proto and udpDst fit)
-function isVxlanPacket(pkt)
-	return pkt.eth:getType() == proto.eth.TYPE_IP 
-		and pkt.ip4:getProtocol() == proto.ip4.PROTO_UDP 
-		and pkt.udp:getDstPort() == proto.udp.PORT_VXLAN
-end
-
-function counterSlave(receiveInner, dev)
-	rxStats = stats:newDevRxCounter(dev, "plain")
-	local bufs = memory.bufArray(1)
-	local c = 0
-
-	while mg.running() do
-		local rx = dev:getRxQueue(0):recv(bufs)
-		if rx > 0 then
-			local buf = bufs[1]
-			if receiveInner then
-				-- any ethernet frame
-				local pkt = buf:getEthernetPacket()
-				if c < 1 then
-					printf(red("Received"))
-					buf:dump()
-					c = c + 1
-				end
-			else
-				local pkt = buf:getVxlanEthernetPacket()
-				-- any vxlan packet
-				if isVxlanPacket(pkt) then
-					if c < 1 then
-						printf(red("Received"))
-						buf:dump()
-						c = c + 1
-					end
-				end
-			end
-
-			bufs:freeAll()
-		end
-		rxStats:update()
-	end
-	rxStats:finalize()
-end
-
-function decapsulateSlave(rxDev, txPort, queue)
-	local txDev = device.get(txPort)
-
-	local mem = memory.createMemPool(function(buf)
-		buf:getRawPacket():fill{ 
-			-- we take everything from the received encapsulated packet's payload
-		}
-	end)
-	local rxBufs = memory.bufArray()
-	local txBufs = mem:bufArray()
-
-	local rxStats = stats:newDevRxCounter(rxDev, "plain")
-	local txStats = stats:newDevTxCounter(txDev, "plain")
-
-	local rxQ = rxDev:getRxQueue(0)
-	local txQ = txDev:getTxQueue(queue)
-	
-	log:info("Starting vtep decapsulation task")
-	while mg.running() do
-		local rx = rxQ:tryRecv(rxBufs, 0)
-		
-		-- alloc empty tx packets
-		txBufs:allocN(decPacketLen, rx)
-		
-		for i = 1, rx do
-			local rxBuf = rxBufs[i]
-			local rxPkt = rxBuf:getVxlanPacket()
-			-- if its a vxlan packet, decapsulate it
-			if isVxlanPacket(rxPkt) then
-				-- use template raw packet (empty)
-				local txPkt = txBufs[i]:getRawPacket()
-			
-				-- get the size of only the payload
-				local payloadSize = rxBuf:getSize() - encapsulationLen
-				
-				-- copy payload
-				ffi.copy(txPkt.payload, rxPkt.payload, payloadSize)
-
-				-- update buffer size
-				txBufs[i]:setSize(payloadSize)
-			end
-		end
-		-- send decapsulated packet
-		txQ:send(txBufs)
-		
-		-- free received packet                                         
-                rxBufs:freeAll()	
-		
-		-- update statistics
-		rxStats:update()
-		txStats:update()
-	end
-	rxStats:finalize()
-	txStats:finalize()
-end
-
-function encapsulateSlave(rxDev, txPort, queue)	
-	local txDev = device.get(txPort)
-	
-	local mem = memory.createMemPool(function(buf)
-		buf:getVxlanPacket():fill{ 
-			-- the outer packet, basically defines the VXLAN tunnel 
-			ethSrc=encVtepEth, 
-			ethDst=encRemoteEth, 
-			ip4Src=encVtepIP,
-			ip4Dst=encRemoteIP,
-			
-			vxlanVNI=VNI,}
-	end)
-	
-	local rxBufs = memory.bufArray()
-	local txBufs = mem:bufArray()
-
-	local rxStats = stats:newDevRxCounter(rxDev, "plain")
-	local txStats = stats:newDevTxCounter(txDev, "plain")
-	
-	local rxQ = rxDev:getRxQueue(0)
-	local txQ = txDev:getTxQueue(queue)
-	
-	log:info("Starting vtep encapsulation task")
-	while mg.running() do
-		local rx = rxQ:tryRecv(rxBufs, 0)
-		
-		-- alloc "rx" tx packets with VXLAN template
-		-- In the end we only want to send as many packets as we have received in the first place.
-		-- In case this number would be lower than the size of the bufArray, we would have a memory leak (only sending frees the buffer!).
-		-- allocN implicitly resizes the bufArray to that all operations like checksum offloading or sending the packets are only done for the packets that actually exist (would crash otherwise)
-		txBufs:allocN(encPacketLen, rx)
-		
-		-- check if we received any packets
-		for i = 1, rx do
-			-- we encapsulate everything that gets here. One could also parse it as ethernet frame and then only encapsulate on matching src/dst addresses
-			local rxPkt = rxBufs[i]:getRawPacket()
-			
-			-- size of the packet
-			local rawSize = rxBufs[i]:getSize()
-			
-			-- use template VXLAN packet
-			local txPkt = txBufs[i]:getVxlanPacket()
-
-			-- copy raw payload (whole frame) to encapsulated packet payload
-			ffi.copy(txPkt.payload, rxPkt.payload, rawSize)
-
-			-- update size
-			local totalSize = encapsulationLen + rawSize
-			-- for the actual buffer
-			txBufs[i]:setSize(totalSize)
-			-- for the IP/UDP header
-			txPkt:setLength(totalSize)
-		end
-		-- offload checksums
-		txBufs:offloadUdpChecksums()
-
-		-- send encapsulated packet
-		txQ:send(txBufs)
-		
-		-- free received packet
-		rxBufs:freeAll()
-	
-		-- update statistics
-		txStats:update()
-		rxStats:update()
-	end
-	rxStats:finalize()
-	txStats:finalize()
 end
