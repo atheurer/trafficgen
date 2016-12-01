@@ -363,38 +363,35 @@ end
 function getBuffers(devId, args)
 	local frame_size_without_crc = args.size - 4 + 50
 	local mem = memory.createMemPool(function(buf)
-		
-		--buf:getUdpPacket():fill{
-			--pktLength = frame_size_without_crc,
-			--ethSrc = args.srcMacs[devId],
-			--ethDst = args.dstMacs[devId],
-			--ip4Src = args.srcIps[devId],
-			--ip4Dst = args.dstIps[devId],
-			--udpSrc = args.srcPort,
-			--udpDst = args.dstPort
-		--}
-
-		buf:getVxlanEthernetPacket():fill{ 
-			pktLength = frame_size_without_crc,
-
-			-- outer header for VxLAN
-			vxlanVNI = args.vxlanIds[devId],
-			ethSrc = args.srcMacsVxlan[devId],
-			ethDst = args.dstMacsVxlan[devId],
-			ip4Src = args.srcIpsVxlan[devId],
-			ip4Dst = args.dstIpsVxlan[devId],
-			udpSrc = proto.udp.PORT_VXLAN,
-			udpDst = proto.udp.PORT_VXLAN,
-
-			-- inner header for VxLAN
-			innerEthSrc = args.srcMacs[devId],
-			innerEthDst = args.dstMacs[devId],
-			innerIp4Src = args.srcIps[devId],
-			innerIp4Src = args.dstIps[devId],
-			innerEthType = 0x0800,
-
-		}
-
+		if args.vxlanIds[devId] then
+			buf:getVxlanEthernetPacket():fill{ 
+				pktLength = frame_size_without_crc,
+				-- outer header for VxLAN
+				vxlanVNI = args.vxlanIds[devId],
+				ethSrc = args.srcMacsVxlan[devId],
+				ethDst = args.dstMacsVxlan[devId],
+				ip4Src = args.srcIpsVxlan[devId],
+				ip4Dst = args.dstIpsVxlan[devId],
+				udpSrc = proto.udp.PORT_VXLAN,
+				udpDst = proto.udp.PORT_VXLAN,
+				-- inner header for VxLAN
+				innerEthSrc = args.srcMacs[devId],
+				innerEthDst = args.dstMacs[devId],
+				innerIp4Src = args.srcIps[devId],
+				innerIp4Src = args.dstIps[devId],
+				innerEthType = 0x0800,
+			}
+		else
+			buf:getUdpPacket():fill{
+				pktLength = frame_size_without_crc,
+				ethSrc = args.srcMacs[devId],
+				ethDst = args.dstMacs[devId],
+				ip4Src = args.srcIps[devId],
+				ip4Dst = args.dstIps[devId],
+				udpSrc = args.srcPort,
+				udpDst = args.dstPort
+			}
+		end
 	end)
 	local bufs = mem:bufArray()
 	return bufs
