@@ -115,7 +115,7 @@ function master(args)
 		if ( i % 2 == 1) then -- for devices a, c
 			connections[i] = i + 1  -- device a transmits to device b, device c transmits to device d 
 			log:info("device %d transmits to device %d", args.devices[i], args.devices[connections[i]]);
-			if args.bidirectional then
+			if args.bidirectional == true then
 				connections[i + 1] = i  -- device b transmits to device a, device d transmits to device c
 				log:info("device %d transmits to device %d", args.devices[connections[i]], args.devices[i]);
 			end
@@ -539,7 +539,7 @@ function timerSlave(args, queueIds)
 
 	-- TODO: adjust headers for flows
 
-	if args.bidirectional then
+	if args.bidirectional == true then
 		log:info("timerSlave: bidirectional testing from %d->%d and %d->%d", queueIds[1].id, queueIds[2].id, queueIds[3].id, queueIds[4].id)
 	else
 		log:info("timerSlave: unidirectional testing from %d->%d", queueIds[1].id, queueIds[2].id)
@@ -552,7 +552,7 @@ function timerSlave(args, queueIds)
 	else
 		timestamper1 = ts:newUdpTimestamper(queueIds[1], queueIds[2])
 	end
-	if args.bidirectional then
+	if args.bidirectional == true then
 		if args.size < 76 then
 			timestamper2 = ts:newTimestamper(queueIds[3], queueIds[4])
 		else
@@ -592,7 +592,7 @@ function timerSlave(args, queueIds)
 			end
 			rateLimit:reset()
 		end
-		if args.bidirectional then
+		if args.bidirectional == true then
 			if timestamper == timestamper2 then
 				timestamper = timestamper1
 				hist = hist1
@@ -630,7 +630,7 @@ function timerSlave(args, queueIds)
 	else
 		log:warn("no latency samples found for %s", histDesc)
 	end
-	if args.bidirectional then
+	if args.bidirectional == true then
 		local histDesc = "Histogram port " .. ("%d"):format(queueIds[3].id) .. " to port " .. ("%d"):format(queueIds[4].id) .. " at rate " .. args.rate .. " Mpps"
 		local histFile = "dev:" .. ("%d"):format(queueIds[3].id) .. "-" .. ("%d"):format(queueIds[4].id) .. "_rate:" .. args.rate .. ".csv"
 		local headerLabel = "Dev:" .. ("%d"):format(queueIds[3].id) .. "->" .. ("%d"):format(queueIds[4].id) .. " @ " .. args.rate .. " Mpps"
