@@ -59,6 +59,7 @@ function configure(parser)
 	parser:option("--measureLatency", "true or false"):default(true)
 	parser:option("--bidirectional", "true or false"):default(false)
 	parser:option("--nrFlows", "Number of unique network flows"):default(1024):convert(tonumber)
+	parser:option("--nrPackets", "Number of packets to send.  Actual number of packets sent can be up to 64 + nrPackets.  The runTime option will be ignored if this is used"):default(0):convert(tonumber)
 	parser:option("--runTime", "Number of seconds to run"):default(30):convert(tonumber)
 	parser:option("--flowMods", "Comma separated list (no spaces), one or more of:  srcIp,dstIp,srcMac,dstMac,srcPort,dstPort"):default({"srcIp"}):convert(stringsToTable)
 	parser:option("--srcIps", "A comma separated list (no spaces) of source IP address used"):default("10.0.0.1,192.168.0.1"):convert(stringsToTable)
@@ -482,6 +483,9 @@ function tx(args, taskId, txQueues, txDevId)
 			for _ , queueId in pairs(txQueues)  do
 				queueId:sendWithDelay(bufs)
 			end
+		end
+		if args.nrPackets > 0 and packetCount > args.nrPackets then
+			break
 		end
 	end
 	log:info("tx: sent %d packets", packetCount)
