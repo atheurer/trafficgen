@@ -501,8 +501,8 @@ function rx(args, perDevTaskId, queue)
 		for i = 1, numPkts do
 			local buf = bufs[i]
 			totalPkts = totalPkts + 1
-			if totalPkts % 100000 == 0 then
-				log:info("Dumping packet number %d", totalPkts)
+			if totalPkts % 100000 == 1 then
+				log:info("Rx queue: %s packet number %d", queue, totalPkts)
 				local ethPkt = buf:getEthernetPacket()
 				local udpPkt = buf:getUdpPacket()
 				--log:info("Destination port: %d", udpPkt.udp:getDstPort())
