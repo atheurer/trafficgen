@@ -16,6 +16,7 @@ local proto     = require "proto.proto"
 local PCI_ID_X710 = 0x80861572
 local PCI_ID_XL710 = 0x80861583
 local LATENCY_TRIM = 2
+local vxlanStack = packetCreate("eth", "ip4", "udp", "vxlan", { "eth", "innerEth" }, {"ip4", "innerIp4"}, {"udp", "innerUdp"})
 
 function intsToTable(instr)
 	local t = {}
@@ -68,7 +69,7 @@ function configure(parser)
 	parser:option("--dstPort", "Destination port used"):default(1234):convert(tonumber)
 	parser:option("--srcIpsVxlan", "A comma separated list (no spaces) of source IP address used for outer header with VxLAN"):default("10.0.101.2,10.0.102.2"):convert(stringsToTable)
 	parser:option("--dstIpsVxlan", "A comma separated list (no spaces) of destination IP address used for outer header with VxLAN"):default("10.0.101.1,10.0.102.1"):convert(stringsToTable)
-	parser:option("--srcMacsVxlan", "A comma separated list (no spaces) of source MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:02", "90:e2:ba:01:02:03"}):convert(stringsToTable)
+	parser:option("--srcMacsVxlan", "A comma separated list (no spaces) of source MAC address used for outer header with VxLAN"):default({}):convert(stringsToTable)
 	parser:option("--dstMacsVxlan", "A comma separated list (no spaces) of destination MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:04", "90:e2:ba:01:02:05"}):convert(stringsToTable)
 	parser:option("--mppsPerQueue", "The maximum transmit rate in Mpps for each device queue"):default(5):convert(tonumber)
 	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(1):convert(tonumber)
@@ -364,7 +365,8 @@ function getBuffers(devId, args)
 	local frame_size_without_crc = args.size - 4 + 50
 	local mem = memory.createMemPool(function(buf)
 		if args.vxlanIds[devId] then
-			buf:getVxlanEthernetPacket():fill{ 
+			local pkt = vxlanStack(buf)
+			pkt:fill{
 				pktLength = frame_size_without_crc,
 				-- outer header for VxLAN
 				vxlanVNI = args.vxlanIds[devId],
@@ -378,9 +380,11 @@ function getBuffers(devId, args)
 				innerEthSrc = args.srcMacs[devId],
 				innerEthDst = args.dstMacs[devId],
 				innerIp4Src = args.srcIps[devId],
-				innerIp4Src = args.dstIps[devId],
-				innerEthType = 0x0800,
+				innerIp4Dst = args.dstIps[devId],
+				innerUdpSrc = args.srcPort,
+				innerUdpDst = args.dstPort,
 			}
+			pkt.innerIp4:calculateChecksum()
 		else
 			buf:getUdpPacket():fill{
 				pktLength = frame_size_without_crc,
