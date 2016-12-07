@@ -77,6 +77,7 @@ function configure(parser)
 	parser:option("--linkSpeed", "The speed in Gbps of the device(s)"):default(10):convert(tonumber)
 	parser:option("--maxLossPct", "The maximum frame loss percentage tolerated"):default(0.002):convert(tonumber)
 	parser:option("--rateTolerance", "Stop the test if the specified transmit rate drops by this amount, in Mpps"):default(0.25):convert(tonumber)
+	parser:option("--packetDumpInterval", "Print the contents of every nth packet received.  This will affect Rx performance and can drop packets.  Use only for debugging."):default(0):convert(tonumber)
 end
 
 function master(args)
@@ -502,11 +503,8 @@ function rx(args, perDevTaskId, queue)
 		for i = 1, numPkts do
 			local buf = bufs[i]
 			totalPkts = totalPkts + 1
-			if totalPkts % 100000 == 1 then
+			if args.packetDumpInterval > 0 and totalPkts % args.packetDumpInterval == 1 then
 				log:info("Rx queue: %s packet number %d", queue, totalPkts)
-				local ethPkt = buf:getEthernetPacket()
-				local udpPkt = buf:getUdpPacket()
-				--log:info("Destination port: %d", udpPkt.udp:getDstPort())
 				buf:dump()
 			end
 		end
