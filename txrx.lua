@@ -138,6 +138,7 @@ function master(args)
 			if not args.srcMacsVxlan[i] then
 				args.srcMacsVxlan[i] = devs[i]:getMacString()
 				log:info("device %d for VxLAN, outer packet src MAC: [%s]", deviceNum, args.srcMacsVxlan[i])
+				log:warn("This program does not reply to ARP requests.  You will need to create a static ARP entry for IP [%s] and MAC [%s] on the VxLAN endpoint", args.srcIpsVxlan[i], args.srcMacsVxlan[i])
 			end
 		end
 	end
