@@ -145,20 +145,17 @@ function master(args)
 	end
 	-- assign the dst MAC addresses
 	for i, deviceNum in ipairs(args.devices) do
+		-- if VxLAN is used, this is for the inner packet
 		if not args.dstMacs[i] and connections[i] then
 			args.dstMacs[i] = args.srcMacs[connections[i]]
-		end
-		if args.vxlanIds[i] and not args.dstMacsVxlan[i] and connections[i] then
-			args.dstMacsVxlan[i] = args.srcMacsVxlan[connections[i]]
-		end
-		if args.dstMacs[i] and connections[i] then
 			if args.vxlanIds[i] then
-				log:info("device %d when transmitting VxLAN packets, the inner packet will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
+				log:info("device %d when transmitting VxLAN %d packets, the inner packet will use dst MAC: [%s]", deviceNum, args.vxlanIds[i], args.dstMacs[i])
 			else
 				log:info("device %d when transmitting packets will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
 			end
 		end
-		if args.dstMacsVxlan[i] and connections[i] then
+		if args.vxlanIds[i] and not args.dstMacsVxlan[i] and connections[i] then
+			args.dstMacsVxlan[i] = args.srcMacsVxlan[connections[i]]
 			log:info("device %d when transmitting VxLAN packets, the outer packet will use dst MAC: [%s]", deviceNum, args.dstMacsVxlan[i])
 		end
 	end
@@ -365,7 +362,12 @@ function adjustHeaders(devId, bufs, packetCount, args)
 end
 
 function getBuffers(devId, args)
-	local frame_size_without_crc = args.size - 4 + 50
+	local frame_size_without_crc
+	if args.vxlanIds[txDevId] then
+		frame_size_without_crc = args.size - 4 + 50
+	else
+		frame_size_without_crc = args.size - 4
+	end
 	local mem = memory.createMemPool(function(buf)
 		if args.vxlanIds[devId] then
 			local pkt = vxlanStack(buf)
@@ -439,7 +441,16 @@ end
 
 function tx(args, taskId, txQueues, txDevId)
 	local txDev = txQueues[1].dev
-	local frame_size_without_crc = args.size - 4 + 50
+	local txStats
+	if taskId == 0 then
+		 txStats = stats:newDevTxCounter(txDev, "plain")
+	end
+	local frame_size_without_crc
+	if args.vxlanIds[txDevId] then
+		frame_size_without_crc = args.size - 4 + 50
+	else
+		frame_size_without_crc = args.size - 4
+	end
 	local bufs = getBuffers(txDevId, args)
 	log:info("tx: txDev: %s  taskId: %d  rate: %.4f txQueues: %s", txDev, taskId, args.rate, dumpQueues(txQueues))
 
@@ -486,9 +497,15 @@ function tx(args, taskId, txQueues, txDevId)
 				queueId:sendWithDelay(bufs)
 			end
 		end
+		if taskId == 0 then
+			txStats:update(0.5, false)
+		end
 		if args.nrPackets > 0 and packetCount > args.nrPackets then
 			break
 		end
+	end
+	if taskId == 0 then
+		txStats:finalize()
 	end
 	log:info("tx: sent %d packets", packetCount)
         local results = {}
@@ -496,6 +513,9 @@ function tx(args, taskId, txQueues, txDevId)
 end
 
 function rx(args, perDevTaskId, queue)
+	local rxDev = queue.dev
+	local rxStats
+	rxStats = stats:newDevRxCounter(rxDev, "plain")
 	local totalPkts = 0
 	local bufs = memory.bufArray(64)
 	while moongen.running() do
@@ -509,8 +529,10 @@ function rx(args, perDevTaskId, queue)
 			end
 		end
 		bufs:free(numPkts)
+		--rxStats:update()
 			
 	end
+	rxStats:finalize()
 	log:info("queue %s total rx packets: %d", queue, totalPkts)
 end
 
