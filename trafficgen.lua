@@ -80,6 +80,7 @@ local PCI_ID_XL710 = 0x80861583
 local ATTEMPT_FAIL = 0
 local ATTEMPT_PASS = 1
 local ATTEMPT_RETRY = 2
+local MIN_RATE = 0
 
 
 function macToU48(mac)
@@ -172,6 +173,10 @@ function master(...)
 							end
 						else
 							showReport(rxStats, txStats, testParams, "RESULT")
+							if testParams.rate == testParams.minRate then
+								log:error("Could not pass minimum specified rate (%f)", testParams.minRate)
+								return
+							end
 							if testParams.rate <= testParams.rate_granularity then
 								log:error("Could not even pass with rate <= the rate granularity, %f", testParams.rate_granularity)
 								return
@@ -181,6 +186,10 @@ function master(...)
 								nextRate = testParams.rate - testParams.rate_granularity
 							else
 								nextRate = (prevPassRate + testParams.rate ) / 2
+							end
+							if nextRate < testParams.minRate then
+								log:info("Setting nextRate to testParams.minRate (%f)", testParams.minRate)
+								nextRate = testParams.minRate
 							end
 							if math.abs(nextRate - testParams.rate) < testParams.rate_granularity then
 								-- since the rate difference from the previous *passing* test rate and next rate is not greater than rate_granularity, the next run is a "final validation"
@@ -348,6 +357,7 @@ function getTestParams(testParams)
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
 	testParams.testType = testParams.testType or TEST_TYPE
 	testParams.startRate = testParams.startRate
+	testParams.minRate = testParams.minRate or MIN_RATE
 	testParams.txMethod = "hardware"
 	testParams.runBidirec = testParams.runBidirec or false
 	testParams.nrFlows = testParams.nrFlows or NR_FLOWS
