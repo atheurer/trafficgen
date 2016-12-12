@@ -18,6 +18,14 @@ local PCI_ID_XL710 = 0x80861583
 local LATENCY_TRIM = 2
 local vxlanStack = packetCreate("eth", "ip4", "udp", "vxlan", { "eth", "innerEth" }, {"ip4", "innerIp4"}, {"udp", "innerUdp"})
 
+function intToBoolean(instr)
+	if tonumber(instr) > 0 then
+		return true
+	else
+		return false
+	end
+end
+
 function intsToTable(instr)
 	local t = {}
 	sep = ","
@@ -56,8 +64,8 @@ function configure(parser)
 	parser:option("--vxlanIds", "A comma separated list of one or more VxLAN IDs, corresponding to each entry in deviceList.  Using this option enables VxLAN encapsulated packets and requires at least --dstIpsVxlan and --dstMacsVxlan"):default({}):convert(intsToTable)
 	parser:option("--size", "Frame size."):default(64):convert(tonumber)
 	parser:option("--rate", "Transmit rate in Mpps"):default(1):convert(tonumber)
-	parser:option("--measureLatency", "true or false"):default(true)
-	parser:option("--bidirectional", "true or false"):default(false)
+	parser:option("--measureLatency", "0 or 1"):default(false):convert(intToBoolean)
+	parser:option("--bidirectional", "0 or 1"):default(false):convert(intToBoolean)
 	parser:option("--nrFlows", "Number of unique network flows"):default(1024):convert(tonumber)
 	parser:option("--nrPackets", "Number of packets to send.  Actual number of packets sent can be up to 64 + nrPackets.  The runTime option will be ignored if this is used"):default(0):convert(tonumber)
 	parser:option("--runTime", "Number of seconds to run"):default(30):convert(tonumber)
@@ -191,6 +199,7 @@ function master(args)
 	end
 	local txTasksPerDev = math.ceil(numTxQueues / args.queuesPerTask)
 	local taskId
+	local devStatsTasks = {}
 	local txTasks = {}
 	local rxTasks = {}
 	local timerTasks = {}
@@ -208,6 +217,10 @@ function master(args)
 	end
 	-- a little time to ensure rx threads are ready
 	moongen.sleepMillis(1000)
+
+	-- start single task to output all device level Tx/Rx stats
+	devStatTask = moongen.startTask("devStats", devs, connections)
+
 	-- start the tx tasks
 	taskId = 1
 	for txDevId, v in ipairs(devs) do
@@ -230,13 +243,13 @@ function master(args)
 		end
 	end
 	-- wait for tx devices to finish
-	local txStats = {}
+	local perDevTxStats = {}
 	taskId = 1
 	for txDevId, v in ipairs(devs) do
 		if connections[txDevId] then
 			for perDevTaskId = 0, txTasksPerDev - 1 do
 				if perDevTaskId == 0 then
-					txStats[txDevId] = txTasks[taskId]:wait()
+					perDevTxStats[txDevId] = txTasks[taskId]:wait()
 				else
 					txTasks[taskId]:wait()
 				end
@@ -247,13 +260,13 @@ function master(args)
 	-- give time for the packet to come back
 	moongen.sleepMillis(1000)
 	moongen.stop()
-	local rxStats = {}
+	local perDevRxStats = {}
 	taskId = 1
 	for txDevId, v in ipairs(devs) do
 		if connections[txDevId] then
 			for perDevTaskId = 0, numRxQueues - 1 do
 				if perDevTaskId == 0 then
-					rxStats[txDevId] = rxTasks[taskId]:wait()
+					perDevRxStats[txDevId] = rxTasks[taskId]:wait()
 				else
 					rxTasks[taskId]:wait()
 				end
@@ -439,12 +452,42 @@ function dumpTestParams(args)
 	log:info("}")
 end
 
+function devStats(devs, connections)
+	local rxStats = {}
+	local txStats = {}
+
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
+			txStats[txDevId] = stats:newDevTxCounter(devs[txDevId], "plain")
+			log:info("Adding Tx stats for device index %d", txDevId)
+			rxStats[rxDevId] = stats:newDevRxCounter(devs[rxDevId], "plain")
+			log:info("Adding Rx stats for device index %d", rxDevId)
+		end
+	end
+
+	while moongen.running() do
+		for txDevId, v in ipairs(devs) do
+			if connections[txDevId] then
+				rxDevId = connections[txDevId]
+				txStats[txDevId]:update()
+				rxStats[rxDevId]:update()
+			end
+		end
+	end
+
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
+			txStats[txDevId]:finalize()
+			rxStats[rxDevId]:finalize()
+		end
+	end
+end
+
+
 function tx(args, taskId, txQueues, txDevId)
 	local txDev = txQueues[1].dev
-	local txStats
-	if taskId == 0 then
-		 txStats = stats:newDevTxCounter(txDev, "plain")
-	end
 	local frame_size_without_crc
 	if args.vxlanIds[txDevId] then
 		frame_size_without_crc = args.size - 4 + 50
@@ -497,15 +540,9 @@ function tx(args, taskId, txQueues, txDevId)
 				queueId:sendWithDelay(bufs)
 			end
 		end
-		if taskId == 0 then
-			txStats:update(0.5, false)
-		end
 		if args.nrPackets > 0 and packetCount > args.nrPackets then
 			break
 		end
-	end
-	if taskId == 0 then
-		txStats:finalize()
 	end
 	log:info("tx: sent %d packets", packetCount)
         local results = {}
@@ -514,8 +551,6 @@ end
 
 function rx(args, perDevTaskId, queue)
 	local rxDev = queue.dev
-	local rxStats
-	rxStats = stats:newDevRxCounter(rxDev, "plain")
 	local totalPkts = 0
 	local bufs = memory.bufArray(64)
 	while moongen.running() do
@@ -529,10 +564,8 @@ function rx(args, perDevTaskId, queue)
 			end
 		end
 		bufs:free(numPkts)
-		--rxStats:update()
 			
 	end
-	rxStats:finalize()
 	log:info("queue %s total rx packets: %d", queue, totalPkts)
 end
 
