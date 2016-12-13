@@ -9,6 +9,7 @@ local stats	= require "stats"
 local hist	= require "histogram"
 local log	= require "log"
 local proto     = require "proto.proto"
+local libmoon   = require "libmoon"
 
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
@@ -81,7 +82,7 @@ function configure(parser)
 	parser:option("--srcMacsVxlan", "A comma separated list (no spaces) of source MAC address used for outer header with VxLAN"):default({}):convert(stringsToTable)
 	parser:option("--dstMacsVxlan", "A comma separated list (no spaces) of destination MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:04", "90:e2:ba:01:02:05"}):convert(stringsToTable)
 	parser:option("--mppsPerQueue", "The maximum transmit rate in Mpps for each device queue"):default(5):convert(tonumber)
-	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(1):convert(tonumber)
+	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(2):convert(tonumber)
 	parser:option("--linkSpeed", "The speed in Gbps of the device(s)"):default(10):convert(tonumber)
 	parser:option("--maxLossPct", "The maximum frame loss percentage tolerated"):default(0.002):convert(tonumber)
 	parser:option("--rateTolerance", "Stop the test if the specified transmit rate drops by this amount, in Mpps"):default(0.25):convert(tonumber)
@@ -91,15 +92,9 @@ end
 function master(args)
 	args.txMethod = "hardware"
 	--the number of transmit queues -not- including queues for measuring latency
-	local numTxQueues = 1 + math.floor(args.rate / args.mppsPerQueue)
+	args.numTxQueues = 1 + math.floor(args.rate / args.mppsPerQueue)
 	--the number of receive queues -not- including queues for measuring latency
-	--local numRxQueues = 2 --first queue is for traffic that does not match what is sent, second queue is for only packets that aer sent
-	local numRxQueues = 2 --first queue is for traffic that does not match what is sent, second queue is for only packets that aer sent
-	if args.measureLatency == true then 
-		log:info("Adding 1 rx and 1 tx queue to measure latency")
-		numRxQueues = numRxQueues + 1
-		numTxQueues = numTxQueues + 1
-	end
+	local numRxQueues = 1
 	local devs = {}
 	parseIPAddresses(args.srcIps)
 	parseIPAddresses(args.dstIps)
@@ -110,14 +105,14 @@ function master(args)
 	connections = {}
 	for i, deviceNum in ipairs(args.devices) do -- devices = {a, b, c, d} a sends packets to b, c sends packets to d
 		-- initialize the devices
-		log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, numTxQueues, numRxQueues)
+		log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, args.numTxQueues, numRxQueues)
 		if args.measureLatency == true then 
 			devs[i] = device.config{ port = args.devices[i],
-			 			txQueues = numTxQueues + 1,
+			 			txQueues = args.numTxQueues + 1,
 			 			rxQueues = numRxQueues + 1}
 		else
 			devs[i] = device.config{ port = args.devices[i],
-			 			txQueues = numTxQueues,
+			 			txQueues = args.numTxQueues,
 			 			rxQueues = numRxQueues}
 		end
 
@@ -197,9 +192,9 @@ function master(args)
 			end
 		end
 	end
-	local txTasksPerDev = math.ceil(numTxQueues / args.queuesPerTask)
+	local txTasksPerDev = math.ceil(args.numTxQueues / args.queuesPerTask)
 	local taskId
-	local devStatsTasks = {}
+	local devStatsTask
 	local txTasks = {}
 	local rxTasks = {}
 	local timerTasks = {}
@@ -219,7 +214,7 @@ function master(args)
 	moongen.sleepMillis(1000)
 
 	-- start single task to output all device level Tx/Rx stats
-	devStatTask = moongen.startTask("devStats", devs, connections)
+	devStatsTask = moongen.startTask("devStats", devs, connections)
 
 	-- start the tx tasks
 	taskId = 1
@@ -228,14 +223,14 @@ function master(args)
 			rxDevId = connections[txDevId]
 			printf("Testing %.2f Mfps", args.rate)
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-				local txQueues = getTxQueues(args.queuesPerTask, numTxQueues, perDevTaskId, devs[txDevId])
-				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId)
+				local txQueues = getTxQueues(args.queuesPerTask, args.numTxQueues, perDevTaskId, devs[txDevId])
+				txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId)
 				taskId = taskId + 1
 			end
 			if args.measureLatency == true then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[connections[txDevId]] then
-					local latencyQueues = getTimerQueues(devs, txDevId, args, numTxQueues, numRxQueues, connections)
+					local latencyQueues = getTimerQueues(devs, txDevId, args, args.numTxQueues, numRxQueues, connections)
 					log:info("timer queues: %s", dumpQueues(latencyQueues))
 					timerTasks[txDevId] = moongen.startTask("timerSlave", args, latencyQueueIds)
 				end
@@ -284,6 +279,7 @@ function master(args)
 			end
 		end
 	end
+	devStatsTask:wait()
 end
 
 function getRxQueues(queuesPerTask, numQueues, taskId, dev)
@@ -460,9 +456,7 @@ function devStats(devs, connections)
 		if connections[txDevId] then
 			rxDevId = connections[txDevId]
 			txStats[txDevId] = stats:newDevTxCounter(devs[txDevId], "plain")
-			log:info("Adding Tx stats for device index %d", txDevId)
 			rxStats[rxDevId] = stats:newDevRxCounter(devs[rxDevId], "plain")
-			log:info("Adding Rx stats for device index %d", rxDevId)
 		end
 	end
 
@@ -475,16 +469,75 @@ function devStats(devs, connections)
 			end
 		end
 	end
+end
 
-	for txDevId, v in ipairs(devs) do
-		if connections[txDevId] then
-			rxDevId = connections[txDevId]
-			txStats[txDevId]:finalize()
-			rxStats[rxDevId]:finalize()
+function setTxRate(txDev, txQueues, rate, txMethod, size, numTxQueues)
+	local pci_id = txDev:getPciId()
+	if ( txMethod == "hardware" ) then
+        	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
+                	txDev:setRate(rate * (size + 4) * 8)
+		else
+			local queueId
+			for _ , queueId in pairs(txQueues)  do
+				queueId:setRateMpps(rate / numTxQueues / 2, size)
+			end
 		end
 	end
 end
 
+function calibrateTx(args, taskId, txQueues, txDevId)
+	local txDev = txQueues[1].dev
+	local frame_size_without_crc
+	local rate = args.rate
+	if args.vxlanIds[txDevId] then
+		frame_size_without_crc = args.size - 4 + 50
+	else
+		frame_size_without_crc = args.size - 4
+	end
+	local bufs = getBuffers(txDevId, args)
+	log:info("tx: calibrateDev: %s  taskId: %d  rate: %.4f txQueues: %s", txDev, taskId, args.rate, dumpQueues(txQueues))
+	local packetCount = 0
+	local measuredRate = 0
+	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, args.numTxQueues)
+	local sendCount = 0
+	local start = libmoon.getTime()
+	while moongen.running() and args.rate - measuredRate > 0.01 and measuredRate < args.rate do
+		bufs:alloc(frame_size_without_crc)
+		if args.flowMods then
+			packetCount = adjustHeaders(txDevId, bufs, packetCount, args, srcMacs, dstMacs)
+		end
+		if (args.vlanIds[txDevId]) then
+			bufs:setVlans(args.vlanIds[txDevId])
+		end
+                bufs:offloadUdpChecksums()
+		if ( args.txMethod == "hardware" ) then
+			local queueId
+			for _, queueId in ipairs(txQueues)  do
+				queueId:send(bufs)
+			end
+		else
+			for _, buf in ipairs(bufs) do
+				buf:setRate(rate)
+			end
+			local queueId
+			for _ , queueId in pairs(txQueues)  do
+				queueId:sendWithDelay(bufs)
+			end
+		end
+		stop = libmoon.getTime()
+		elapsedTime = stop - start
+		if stop - start > 1 then
+			measuredRate = packetCount / elapsedTime / 1000000
+			log:info("rate is %f", measuredRate)
+			packetCount = 0
+			rate = rate * args.rate / measuredRate
+			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, args.numTxQueues)
+			start = libmoon.getTime()
+		end
+	end
+	log:info("calibrated rate: %f", rate)
+        return rate
+end
 
 function tx(args, taskId, txQueues, txDevId)
 	local txDev = txQueues[1].dev
@@ -504,7 +557,6 @@ function tx(args, taskId, txQueues, txDevId)
 		log:warn("tx args.runTime is 0")
 	end
 	
-	local count = 0
 	local pci_id = txDev:getPciId()
 	if ( args.txMethod == "hardware" ) then
         	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
@@ -512,7 +564,7 @@ function tx(args, taskId, txQueues, txDevId)
 		else
 			local queueId
 			for _ , queueId in pairs(txQueues)  do
-				queueId:setRateMpps(args.rate / table.getn(txQueues), args.size)
+				queueId:setRateMpps(args.rate / args.numTxQueues, args.size)
 			end
 		end
 	end
