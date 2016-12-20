@@ -81,8 +81,9 @@ function configure(parser)
 	parser:option("--dstIpsVxlan", "A comma separated list (no spaces) of destination IP address used for outer header with VxLAN"):default("10.0.101.1,10.0.102.1"):convert(stringsToTable)
 	parser:option("--srcMacsVxlan", "A comma separated list (no spaces) of source MAC address used for outer header with VxLAN"):default({}):convert(stringsToTable)
 	parser:option("--dstMacsVxlan", "A comma separated list (no spaces) of destination MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:04", "90:e2:ba:01:02:05"}):convert(stringsToTable)
-	parser:option("--mppsPerQueue", "The maximum transmit rate in Mpps for each device queue"):default(5):convert(tonumber)
-	parser:option("--queuesPerTask", "The maximum transmit number of queues to use per task"):default(2):convert(tonumber)
+	parser:option("--mppsPerTxQueue", "The maximum transmit rate in Mpps for each device queue"):default(8):convert(tonumber)
+	parser:option("--mppsPerRxQueue", "The maximum receive rate in Mpps for each device queue"):default(8):convert(tonumber)
+	parser:option("--queuesPerTxTask", "The maximum transmit number of queues to use per task"):default(1):convert(tonumber)
 	parser:option("--linkSpeed", "The speed in Gbps of the device(s)"):default(10):convert(tonumber)
 	parser:option("--maxLossPct", "The maximum frame loss percentage tolerated"):default(0.002):convert(tonumber)
 	parser:option("--rateTolerance", "Stop the test if the specified transmit rate drops by this amount, in Mpps"):default(0.25):convert(tonumber)
@@ -92,9 +93,17 @@ end
 function master(args)
 	args.txMethod = "hardware"
 	--the number of transmit queues -not- including queues for measuring latency
-	args.numTxQueues = 1 + math.floor(args.rate / args.mppsPerQueue)
+	args.numTxQueues = 1 + math.floor(args.rate / args.mppsPerTxQueue)
 	--the number of receive queues -not- including queues for measuring latency
-	local numRxQueues = 1
+	--when using RSS, the number of queues needs to be a power of 2
+	x = args.rate
+	numRxQueues = 1
+	x = x / args.mppsPerRxQueue
+	while x > 1 do
+		x = x / args.mppsPerRxQueue
+		numRxQueues = numRxQueues * 2
+	end
+	log:info("number rx queues: %d", numRxQueues)
 	local devs = {}
 	parseIPAddresses(args.srcIps)
 	parseIPAddresses(args.dstIps)
@@ -107,13 +116,21 @@ function master(args)
 		-- initialize the devices
 		log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, args.numTxQueues, numRxQueues)
 		if args.measureLatency == true then 
-			devs[i] = device.config{ port = args.devices[i],
+			devs[i] = device.config{
+						port = args.devices[i],
 			 			txQueues = args.numTxQueues + 1,
-			 			rxQueues = numRxQueues + 1}
+			 			rxQueues = numRxQueues + 1,
+						rxDescs = 2048,
+						rssQueues = numRxQueues
+						}
 		else
-			devs[i] = device.config{ port = args.devices[i],
+			devs[i] = device.config{
+						port = args.devices[i],
 			 			txQueues = args.numTxQueues,
-			 			rxQueues = numRxQueues}
+			 			rxQueues = numRxQueues,
+						rxDescs = 2048,
+						rssQueues = numRxQueues
+						}
 		end
 
 		-- configure the connections
@@ -192,12 +209,67 @@ function master(args)
 			end
 		end
 	end
-	local txTasksPerDev = math.ceil(args.numTxQueues / args.queuesPerTask)
+	local txTasksPerDev = math.ceil(args.numTxQueues / args.queuesPerTxTask)
 	local taskId
 	local devStatsTask
 	local txTasks = {}
 	local rxTasks = {}
 	local timerTasks = {}
+
+	-- start single task to output all device level Tx/Rx stats
+	devStatsTask = moongen.startTask("devStats", devs, connections)
+
+	-- a little time to ensure rx threads are ready
+	moongen.sleepMillis(1000)
+
+	--calibrate the Tx rate
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
+			printf("calibrating %.2f Mfps", args.rate)
+			for perDevTaskId = 0, txTasksPerDev - 1 do
+				local txQueues = getTxQueues(args.queuesPerTxTask, args.numTxQueues, perDevTaskId, devs[txDevId])
+				txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId, txTasksPerDev)
+				taskId = taskId + 1
+			end
+		end
+	end
+	-- wait for tx devices to finish
+	taskId = 1
+	local calibratedRate = {}
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			calibratedRate[txDevId] = {}
+			for perDevTaskId = 0, txTasksPerDev - 1 do
+					calibratedRate[txDevId][perDevTaskId] = txTasks[taskId]:wait()
+				taskId = taskId + 1
+			end
+		end
+	end
+
+	-- drain the rx queues
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
+			for perDevTaskId = 0, numRxQueues - 1 do -- always 1 rx queue per rx task
+				rxTasks[taskId] = moongen.startTask("drainRx", args, perDevTaskId, devs[rxDevId]:getRxQueue(perDevTaskId), rxDevId)
+				taskId = taskId + 1
+			end
+		end
+	end
+	taskId = 1
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			for perDevTaskId = 0, numRxQueues - 1 do
+				rxTasks[taskId]:wait()
+				taskId = taskId + 1
+			end
+		end
+	end
+
+	log:info("Tx calibration finished")
 
 	-- start the rx tasks
 	taskId = 1
@@ -205,16 +277,13 @@ function master(args)
 		if connections[txDevId] then
 			rxDevId = connections[txDevId]
 			for perDevTaskId = 0, numRxQueues - 1 do
-				rxTasks[taskId] = moongen.startTask("rx", args, perDevTaskId, devs[rxDevId]:getRxQueue(perDevTaskId))
+				rxTasks[taskId] = moongen.startTask("rx", args, perDevTaskId, devs[rxDevId]:getRxQueue(perDevTaskId), rxDevId)
 				taskId = taskId + 1
 			end
 		end
 	end
 	-- a little time to ensure rx threads are ready
-	moongen.sleepMillis(1000)
-
-	-- start single task to output all device level Tx/Rx stats
-	devStatsTask = moongen.startTask("devStats", devs, connections)
+	moongen.sleepMillis(2000)
 
 	-- start the tx tasks
 	taskId = 1
@@ -223,8 +292,8 @@ function master(args)
 			rxDevId = connections[txDevId]
 			printf("Testing %.2f Mfps", args.rate)
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-				local txQueues = getTxQueues(args.queuesPerTask, args.numTxQueues, perDevTaskId, devs[txDevId])
-				txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId)
+				local txQueues = getTxQueues(args.queuesPerTxTask, args.numTxQueues, perDevTaskId, devs[txDevId])
+				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId, calibratedRate[txDevId][perDevTaskId])
 				taskId = taskId + 1
 			end
 			if args.measureLatency == true then
@@ -238,37 +307,51 @@ function master(args)
 		end
 	end
 	-- wait for tx devices to finish
-	local perDevTxStats = {}
 	taskId = 1
+	totalTxPackets = 0
+	local perDevTxStats = {}
 	for txDevId, v in ipairs(devs) do
 		if connections[txDevId] then
+			perDevTxStats[txDevId] = {}
+			perDevTxStats[txDevId].txCount = 0
+			perDevTxStats[txDevId].txRate = 0
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-				if perDevTaskId == 0 then
-					perDevTxStats[txDevId] = txTasks[taskId]:wait()
-				else
-					txTasks[taskId]:wait()
-				end
+					local txStats = txTasks[taskId]:wait()
+					perDevTxStats[txDevId].txCount = perDevTxStats[txDevId].txCount + txStats.txCount
+					perDevTxStats[txDevId].txRate = perDevTxStats[txDevId].txRate + txStats.txRate
+					totalTxPackets = totalTxPackets + txStats.txCount
 				taskId = taskId + 1
 			end
 		end
 	end
+
 	-- give time for the packet to come back
 	moongen.sleepMillis(1000)
 	moongen.stop()
 	local perDevRxStats = {}
 	taskId = 1
+	totalRxPackets = 0
 	for txDevId, v in ipairs(devs) do
+		perDevTotalRxPackets = 0
 		if connections[txDevId] then
+			rxDevId = connections[txDevId]
 			for perDevTaskId = 0, numRxQueues - 1 do
-				if perDevTaskId == 0 then
-					perDevRxStats[txDevId] = rxTasks[taskId]:wait()
-				else
-					rxTasks[taskId]:wait()
-				end
+				perDevTotalRxPackets = perDevTotalRxPackets + rxTasks[taskId]:wait()
 				taskId = taskId + 1
 			end
+			local rxPacketRate = perDevTxStats[txDevId].txRate * perDevTotalRxPackets / perDevTxStats[txDevId].txCount
+			local rxPacketLoss = perDevTxStats[txDevId].txCount - perDevTotalRxPackets
+			local rxPacketLossPct = 100 * rxPacketLoss / perDevTxStats[txDevId].txCount
+			log:info("[%d]->[%d] txPackets: %d rxPackets: %d packetLoss: %d txRate: %f rxRate: %f packetLossPct: %f",
+				args.devices[txDevId], args.devices[rxDevId],
+				perDevTxStats[txDevId].txCount, perDevTotalRxPackets, rxPacketLoss,
+				perDevTxStats[txDevId].txRate, rxPacketRate, rxPacketLossPct)
 		end
+		totalRxPackets = totalRxPackets + perDevTotalRxPackets
 	end
+	log:info("totalRxPackets: %d", totalRxPackets)
+	log:info("totalDroppedPackets: %d (%.6f%%)", totalTxPackets - totalRxPackets, 100*(totalTxPackets - totalRxPackets)/totalTxPackets)
+
 	for txDevId, v in ipairs(devs) do
 		if connections[txDevId] then
 			rxTasks[txDevId]:wait()
@@ -469,6 +552,14 @@ function devStats(devs, connections)
 			end
 		end
 	end
+
+	for txDevId, v in ipairs(devs) do
+		if connections[txDevId] then
+			rxDevId = connections[txDevId]
+			txStats[txDevId]:finalize()
+			rxStats[rxDevId]:finalize()
+		end
+	end
 end
 
 function setTxRate(txDev, txQueues, rate, txMethod, size, numTxQueues)
@@ -477,69 +568,74 @@ function setTxRate(txDev, txQueues, rate, txMethod, size, numTxQueues)
         	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
                 	txDev:setRate(rate * (size + 4) * 8)
 		else
-			local queueId
-			for _ , queueId in pairs(txQueues)  do
-				queueId:setRateMpps(rate / numTxQueues / 2, size)
+			local queue
+			for _ , queue in pairs(txQueues)  do
+				queue:setRateMpps(rate / numTxQueues, size)
 			end
 		end
 	end
 end
 
-function calibrateTx(args, taskId, txQueues, txDevId)
+function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev)
 	local txDev = txQueues[1].dev
+	local desiredRate = args.rate / txTasksPerDev
 	local frame_size_without_crc
-	local rate = args.rate
+	local rate = desiredRate / 2 -- start at half the rate and let it ramp up
 	if args.vxlanIds[txDevId] then
 		frame_size_without_crc = args.size - 4 + 50
 	else
 		frame_size_without_crc = args.size - 4
 	end
 	local bufs = getBuffers(txDevId, args)
-	log:info("tx: calibrateDev: %s  taskId: %d  rate: %.4f txQueues: %s", txDev, taskId, args.rate, dumpQueues(txQueues))
-	local packetCount = 0
+	log:info("[calibrateTx] %s taskId: %d rate: %.4f txQueues: %s", txDev, taskId, desiredRate, dumpQueues(txQueues))
+	local packetId = 0
 	local measuredRate = 0
 	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, args.numTxQueues)
-	local sendCount = 0
+	local txCount = 0
+	local calibrateRatio = 1
 	local start = libmoon.getTime()
-	while moongen.running() and args.rate - measuredRate > 0.01 and measuredRate < args.rate do
+	-- just like The-Price-Is-Right, measuredRate needs to get very very close to arge.rate, but not go over
+	while moongen.running() and (desiredRate - measuredRate > 0.2) or (measuredRate > desiredRate) do
 		bufs:alloc(frame_size_without_crc)
 		if args.flowMods then
-			packetCount = adjustHeaders(txDevId, bufs, packetCount, args, srcMacs, dstMacs)
+			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
+			
 		end
 		if (args.vlanIds[txDevId]) then
 			bufs:setVlans(args.vlanIds[txDevId])
 		end
                 bufs:offloadUdpChecksums()
 		if ( args.txMethod == "hardware" ) then
-			local queueId
-			for _, queueId in ipairs(txQueues)  do
-				queueId:send(bufs)
+			local queue
+			for _, queue in ipairs(txQueues)  do
+				txCount = txCount + queue:send(bufs)
 			end
 		else
 			for _, buf in ipairs(bufs) do
 				buf:setRate(rate)
 			end
-			local queueId
-			for _ , queueId in pairs(txQueues)  do
-				queueId:sendWithDelay(bufs)
+			local queue
+			for _ , queue in pairs(txQueues)  do
+				txCount = txCount + queue:sendWithDelay(bufs)
 			end
 		end
 		stop = libmoon.getTime()
 		elapsedTime = stop - start
-		if stop - start > 1 then
-			measuredRate = packetCount / elapsedTime / 1000000
-			log:info("rate is %f", measuredRate)
-			packetCount = 0
-			rate = rate * args.rate / measuredRate
+		if stop - start > .1 then
+			measuredRate = txCount / elapsedTime / 1000000
+			txCount = 0
+			rate = rate * desiredRate / measuredRate
+			calibrateRatio = rate / desiredRate
+			log:info("[calibrateTx] %s taskId: %d measuredrate: %f, new calbrateRatio: %f new adjusted rate: %f", txDev, taskId, measuredRate, calibrateRatio, rate)
 			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, args.numTxQueues)
 			start = libmoon.getTime()
 		end
 	end
-	log:info("calibrated rate: %f", rate)
+	log:info("[calibrateTx] %s calibrateRatio: %f", txDev, calibrateRatio)
         return rate
 end
 
-function tx(args, taskId, txQueues, txDevId)
+function tx(args, taskId, txQueues, txDevId, calibratedRate)
 	local txDev = txQueues[1].dev
 	local frame_size_without_crc
 	if args.vxlanIds[txDevId] then
@@ -548,77 +644,114 @@ function tx(args, taskId, txQueues, txDevId)
 		frame_size_without_crc = args.size - 4
 	end
 	local bufs = getBuffers(txDevId, args)
-	log:info("tx: txDev: %s  taskId: %d  rate: %.4f txQueues: %s", txDev, taskId, args.rate, dumpQueues(txQueues))
+	log:info("[tx] txDev: %s  taskId: %d  rate: %.4f calibratedRate: %.4f txQueues: %s", txDev, taskId, args.rate, calibratedRate, dumpQueues(txQueues))
 
 	if args.runTime > 0 then
 		runtime = timer:new(args.runTime)
-		log:info("tx test to run for %d seconds", args.runTime)
-	else
-		log:warn("tx args.runTime is 0")
 	end
 	
-	local pci_id = txDev:getPciId()
-	if ( args.txMethod == "hardware" ) then
-        	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
-                	txDev:setRate(args.rate * (args.size + 4) * 8)
-		else
-			local queueId
-			for _ , queueId in pairs(txQueues)  do
-				queueId:setRateMpps(args.rate / args.numTxQueues, args.size)
-			end
-		end
-	end
-	local packetCount = 0
+	setTxRate(txDev, txQueues, calibratedRate, args.txMethod, args.size, args.numTxQueues)
+	local packetId = 0
+	local txCount = 0
+	local start = libmoon.getTime()
 	while (args.runTime == 0 or runtime:running()) and moongen.running() do
 		bufs:alloc(frame_size_without_crc)
 		if args.flowMods then
-			packetCount = adjustHeaders(txDevId, bufs, packetCount, args, srcMacs, dstMacs)
+			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
 		end
 		if (args.vlanIds[txDevId]) then
 			bufs:setVlans(args.vlanIds[txDevId])
 		end
                 bufs:offloadUdpChecksums()
 		if ( args.txMethod == "hardware" ) then
-			local queueId
-			for _, queueId in ipairs(txQueues)  do
-				queueId:send(bufs)
+			local queue
+			for _, queue in ipairs(txQueues)  do
+				txCount = txCount + queue:send(bufs)
 			end
 		else
 			for _, buf in ipairs(bufs) do
-				buf:setRate(args.rate)
+				buf:setRate(calibratedRate)
 			end
-			local queueId
-			for _ , queueId in pairs(txQueues)  do
-				queueId:sendWithDelay(bufs)
+			local queue
+			for _ , queue in pairs(txQueues)  do
+				txCount = txCount + queue:sendWithDelay(bufs)
 			end
 		end
-		if args.nrPackets > 0 and packetCount > args.nrPackets then
+		if args.nrPackets > 0 and txCount > args.nrPackets then
 			break
 		end
 	end
-	log:info("tx: sent %d packets", packetCount)
-        local results = {}
-        return results
+	local stop = libmoon.getTime()
+	local elapsedTime = stop - start
+	local txRate = txCount / elapsedTime / 1000000
+	for _ , queue in pairs(txQueues)  do
+		log:info("[tx] %s packets: %d rate: %f", queue, txCount, txRate)
+	end
+        return {txCount = txCount, txRate = txRate}
 end
 
-function rx(args, perDevTaskId, queue)
+function drainRx(args, perDevTaskId, queue, rxDevId)
+	log:info("[drainRx] rxDev: %s  taskId: %d  rate: %.4f queue: %s", queue.dev, perDevTaskId, args.rate, queue)
 	local rxDev = queue.dev
 	local totalPkts = 0
 	local bufs = memory.bufArray(64)
-	while moongen.running() do
-		local numPkts = queue:recv(bufs)
-		for i = 1, numPkts do
-			local buf = bufs[i]
-			totalPkts = totalPkts + 1
-			if args.packetDumpInterval > 0 and totalPkts % args.packetDumpInterval == 1 then
-				log:info("Rx queue: %s packet number %d", queue, totalPkts)
-				buf:dump()
-			end
-		end
+
+	for j = 1, 1024 do
+		--log:info("drainRx: queue: %s calling recv", queue)
+		numPkts = queue:tryRecv(bufs,250)
 		bufs:free(numPkts)
-			
+		--log:info("drainRx: queue: %s finished recv with %d packets", queue, numPkts)
+		if numPkts == 0 then
+			log:info("[drainRx] queue %s total rx packets: %d", queue, totalPkts)
+			return totalPkts
+		end
+		totalPkts = totalPkts + numPkts
+		--log:info("drainRx: queue: %s loop count: %d num packets: %d", queue, j, numPkts)
 	end
-	log:info("queue %s total rx packets: %d", queue, totalPkts)
+	log:info("[drainRx] %s packets: %d", queue, totalPkts)
+	return totalPkts
+end
+
+function rx(args, perDevTaskId, queue, rxDevId)
+	local rxDev = queue.dev
+	local totalPkts = 0
+	local totalVxlanPkts = 0
+	local bufs = memory.bufArray(128)
+	if args.vxlanIds[rxDevId] then
+		log:info("[rx] vxlan: rxDev: %s  taskId: %d  rate: %.4f queue: %s", queue.dev, perDevTaskId, args.rate, queue)
+		while moongen.running() do
+			numPkts = queue:recv(bufs)
+			for i = 1, numPkts do
+				local buf = bufs[i]
+                        	local pkt = buf:getVxlanPacket()
+				if pkt.eth:getType() == proto.eth.TYPE_IP
+			   	and pkt.ip4:getProtocol() == proto.ip4.PROTO_UDP
+			   	and pkt.udp:getDstPort() == proto.udp.PORT_VXLAN then
+					totalVxlanPkts = totalVxlanPkts + 1
+				end
+				totalPkts = totalPkts + 1
+				if args.packetDumpInterval > 0 and totalPkts % args.packetDumpInterval == 1 then
+					log:info("[rx] queue: %s packet number %d", queue, totalPkts)
+					buf:dump()
+				end
+			end
+			bufs:free(numPkts)
+		end
+	else
+		log:info("[rx] non-vxlan: rxDev: %s  taskId: %d  rate: %.4f queue: %s", queue.dev, perDevTaskId, args.rate, queue)
+		while moongen.running() do
+			numPkts = queue:recv(bufs)
+			totalPkts = totalPkts + numPkts
+			bufs:free(numPkts)
+		end
+	end
+        if args.vxlanIds[rxDevId] then
+		log:info("[rx] %s VxLAN packets: %d, non-VxLAN packets: %d", queue, totalVxlanPkts, totalPkts - totalVxlanPkts)
+		return totalVxlanPkts
+	else
+		log:info("[rx] %s packets: %d", queue, totalPkts)
+		return totalPkts
+	end
 end
 
 
