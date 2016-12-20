@@ -464,18 +464,12 @@ function adjustHeaders(devId, bufs, packetCount, args)
 	return packetCount
 end
 
-function getBuffers(devId, args)
-	local frame_size_without_crc
-	if args.vxlanIds[txDevId] then
-		frame_size_without_crc = args.size - 4 + 50
-	else
-		frame_size_without_crc = args.size - 4
-	end
+function getBuffers(devId, args, sizeWithoutCrc)
 	local mem = memory.createMemPool(function(buf)
 		if args.vxlanIds[devId] then
 			local pkt = vxlanStack(buf)
 			pkt:fill{
-				pktLength = frame_size_without_crc,
+				pktLength = sizeWithoutCrc,
 				-- outer header for VxLAN
 				vxlanVNI = args.vxlanIds[devId],
 				ethSrc = args.srcMacsVxlan[devId],
@@ -495,7 +489,7 @@ function getBuffers(devId, args)
 			pkt.innerIp4:calculateChecksum()
 		else
 			buf:getUdpPacket():fill{
-				pktLength = frame_size_without_crc,
+				pktLength = sizeWithoutCrc,
 				ethSrc = args.srcMacs[devId],
 				ethDst = args.dstMacs[devId],
 				ip4Src = args.srcIps[devId],
@@ -590,14 +584,14 @@ end
 function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues)
 	local txDev = txQueues[1].dev
 	local desiredRate = args.rate / txTasksPerDev
-	local frame_size_without_crc
+	local sizeWithoutCrc
 	local rate = desiredRate / 2 -- start at half the rate and let it ramp up
 	if args.vxlanIds[txDevId] then
-		frame_size_without_crc = args.size - 4 + 50
+		sizeWithoutCrc = args.size - 4 + 50
 	else
-		frame_size_without_crc = args.size - 4
+		sizeWithoutCrc = args.size - 4
 	end
-	local bufs = getBuffers(txDevId, args)
+	local bufs = getBuffers(txDevId, args, sizeWithoutCrc)
 	log:info("[calibrateTx] %s taskId: %d rate: %.4f txQueues: %s", txDev, taskId, desiredRate, dumpQueues(txQueues))
 	local packetId = 0
 	local measuredRate = 0
@@ -607,7 +601,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 	local start = libmoon.getTime()
 	-- just like The-Price-Is-Right, measuredRate needs to get very very close to arge.rate, but not go over
 	while moongen.running() and (desiredRate - measuredRate > 0.2) or (measuredRate > desiredRate) do
-		bufs:alloc(frame_size_without_crc)
+		bufs:alloc(sizeWithoutCrc)
 		if args.flowMods then
 			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
 			
@@ -648,13 +642,13 @@ end
 
 function tx(args, taskId, txQueues, txDevId, calibratedRate, numTxQueues)
 	local txDev = txQueues[1].dev
-	local frame_size_without_crc
+	local sizeWithoutCrc
 	if args.vxlanIds[txDevId] then
-		frame_size_without_crc = args.size - 4 + 50
+		sizeWithoutCrc = args.size - 4 + 50
 	else
-		frame_size_without_crc = args.size - 4
+		sizeWithoutCrc = args.size - 4
 	end
-	local bufs = getBuffers(txDevId, args)
+	local bufs = getBuffers(txDevId, args, sizeWithoutCrc)
 	log:info("[tx] txDev: %s  taskId: %d  rate: %.4f calibratedRate: %.4f txQueues: %s", txDev, taskId, args.rate, calibratedRate, dumpQueues(txQueues))
 
 	if args.runTime > 0 then
@@ -666,7 +660,7 @@ function tx(args, taskId, txQueues, txDevId, calibratedRate, numTxQueues)
 	local txCount = 0
 	local start = libmoon.getTime()
 	while (args.runTime == 0 or runtime:running()) and moongen.running() do
-		bufs:alloc(frame_size_without_crc)
+		bufs:alloc(sizeWithoutCrc)
 		if args.flowMods then
 			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
 		end
