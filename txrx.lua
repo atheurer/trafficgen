@@ -93,11 +93,11 @@ end
 function master(args)
 	args.txMethod = "hardware"
 	--the number of transmit queues -not- including queues for measuring latency
-	args.numTxQueues = 1 + math.floor(args.rate / args.mppsPerTxQueue)
-	--the number of receive queues -not- including queues for measuring latency
+	local numTxQueues = 1 + math.floor(args.rate / args.mppsPerTxQueue)
+	--the number of receive queues -not- including queues for measuring latency or listening to ARP requests
 	--when using RSS, the number of queues needs to be a power of 2
 	x = args.rate
-	numRxQueues = 1
+	local numRxQueues = 1
 	x = x / args.mppsPerRxQueue
 	while x > 1 do
 		x = x / args.mppsPerRxQueue
@@ -114,20 +114,20 @@ function master(args)
 	connections = {}
 	for i, deviceNum in ipairs(args.devices) do -- devices = {a, b, c, d} a sends packets to b, c sends packets to d
 		-- initialize the devices
-		log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, args.numTxQueues, numRxQueues)
+		log:info("configuring device %d with %d tx queues and %d rx queues", deviceNum, numTxQueues, numRxQueues)
 		if args.measureLatency == true then 
 			devs[i] = device.config{
 						port = args.devices[i],
-			 			txQueues = args.numTxQueues + 1,
-			 			rxQueues = numRxQueues + 1,
+			 			txQueues = numTxQueues + 2,
+			 			rxQueues = numRxQueues + 2,
 						rxDescs = 2048,
 						rssQueues = numRxQueues
 						}
 		else
 			devs[i] = device.config{
 						port = args.devices[i],
-			 			txQueues = args.numTxQueues,
-			 			rxQueues = numRxQueues,
+			 			txQueues = numTxQueues + 1,
+			 			rxQueues = numRxQueues + 1,
 						rxDescs = 2048,
 						rssQueues = numRxQueues
 						}
@@ -153,30 +153,32 @@ function master(args)
 		if not args.vxlanIds[i] then -- when VxLANs are used, srcMacs are for the innner packet, and therefore should not be using the device's native HW MAC
 			if not args.srcMacs[i] then
 				args.srcMacs[i] = devs[i]:getMacString()
-				log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
+				--log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
 			end
 		else -- if this is VxLAN, use the srcMacsVxlan table, which will be referenced for outer packet MAC during getBuffer()
 			if not args.srcMacsVxlan[i] then
 				args.srcMacsVxlan[i] = devs[i]:getMacString()
-				log:info("device %d for VxLAN, outer packet src MAC: [%s]", deviceNum, args.srcMacsVxlan[i])
-				log:warn("This program does not reply to ARP requests.  You will need to create a static ARP entry for IP [%s] and MAC [%s] on the VxLAN endpoint", args.srcIpsVxlan[i], args.srcMacsVxlan[i])
+				--log:info("device %d for VxLAN, outer packet src MAC: [%s]", deviceNum, args.srcMacsVxlan[i])
+				--log:warn("This program does not reply to ARP requests.  You will need to create a static ARP entry for IP [%s] and MAC [%s] on the VxLAN endpoint", args.srcIpsVxlan[i], args.srcMacsVxlan[i])
 			end
 		end
 	end
 	-- assign the dst MAC addresses
 	for i, deviceNum in ipairs(args.devices) do
-		-- if VxLAN is used, this is for the inner packet
-		if not args.dstMacs[i] and connections[i] then
-			args.dstMacs[i] = args.srcMacs[connections[i]]
-			if args.vxlanIds[i] then
-				log:info("device %d when transmitting VxLAN %d packets, the inner packet will use dst MAC: [%s]", deviceNum, args.vxlanIds[i], args.dstMacs[i])
-			else
-				log:info("device %d when transmitting packets will use dst MAC: [%s]", deviceNum, args.dstMacs[i])
+		if connections[i] then
+			-- if VxLAN is used, this is for the inner packet
+			if not args.dstMacs[i] then
+				args.dstMacs[i] = args.srcMacs[connections[i]]
 			end
-		end
-		if args.vxlanIds[i] and not args.dstMacsVxlan[i] and connections[i] then
-			args.dstMacsVxlan[i] = args.srcMacsVxlan[connections[i]]
-			log:info("device %d when transmitting VxLAN packets, the outer packet will use dst MAC: [%s]", deviceNum, args.dstMacsVxlan[i])
+			if args.vxlanIds[i] then
+				log:info("device %d when transmitting VxLAN %d packets, the inner packet will use src MAC: [%s] and dst MAC: [%s]", deviceNum, args.vxlanIds[i], args.srcMacs[i], args.dstMacs[i])
+				if not args.dstMacsVxlan[i] and connections[i] then
+					args.dstMacsVxlan[i] = args.srcMacsVxlan[connections[i]]
+				end
+				log:info("device %d when transmitting VxLAN %d packets, the outer packet will use src MAC: [%s] and dst MAC: [%s]", deviceNum, args.vxlanIds[i], args.srcMacsVxlan[i], args.dstMacsVxlan[i])
+			else
+				log:info("device index %d num %d when transmitting non-VXLAN packets will use src MAC: [%s] and dst MAC: [%s]", i, deviceNum, args.srcMacs[i], args.dstMacs[i])
+			end
 		end
 	end
 	args.srcMacsU48 = convertMacs(args.srcMacs)
@@ -209,12 +211,21 @@ function master(args)
 			end
 		end
 	end
-	local txTasksPerDev = math.ceil(args.numTxQueues / args.queuesPerTxTask)
+	local txTasksPerDev = math.ceil(numTxQueues / args.queuesPerTxTask)
 	local taskId
 	local devStatsTask
 	local txTasks = {}
 	local rxTasks = {}
 	local timerTasks = {}
+
+	-- start a task for each dev to listen/respond to ARP
+	local arpQueuePairs = {}
+	for txDevId, txDev in ipairs(devs) do
+		if connections[txDevId] then
+			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { args.srcIpsVxlan[txDevId] }} )
+		end
+	end
+	moongen.startTask(proto.arp.arpTask, arpQueuePairs)
 
 	-- start single task to output all device level Tx/Rx stats
 	devStatsTask = moongen.startTask("devStats", devs, connections)
@@ -229,8 +240,8 @@ function master(args)
 			rxDevId = connections[txDevId]
 			printf("calibrating %.2f Mfps", args.rate)
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-				local txQueues = getTxQueues(args.queuesPerTxTask, args.numTxQueues, perDevTaskId, devs[txDevId])
-				txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId, txTasksPerDev)
+				local txQueues = getTxQueues(args.queuesPerTxTask, numTxQueues, perDevTaskId, devs[txDevId])
+				txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId, txTasksPerDev, numTxQueues)
 				taskId = taskId + 1
 			end
 		end
@@ -292,14 +303,14 @@ function master(args)
 			rxDevId = connections[txDevId]
 			printf("Testing %.2f Mfps", args.rate)
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-				local txQueues = getTxQueues(args.queuesPerTxTask, args.numTxQueues, perDevTaskId, devs[txDevId])
-				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId, calibratedRate[txDevId][perDevTaskId])
+				local txQueues = getTxQueues(args.queuesPerTxTask, numTxQueues, perDevTaskId, devs[txDevId])
+				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId, calibratedRate[txDevId][perDevTaskId], numTxQueues)
 				taskId = taskId + 1
 			end
 			if args.measureLatency == true then
 				-- latency measurements do not involve a dedicated task for each direction of traffic
 				if not timerTasks[connections[txDevId]] then
-					local latencyQueues = getTimerQueues(devs, txDevId, args, args.numTxQueues, numRxQueues, connections)
+					local latencyQueues = getTimerQueues(devs, txDevId, args, numTxQueues, numRxQueues, connections)
 					log:info("timer queues: %s", dumpQueues(latencyQueues))
 					timerTasks[txDevId] = moongen.startTask("timerSlave", args, latencyQueueIds)
 				end
@@ -576,7 +587,7 @@ function setTxRate(txDev, txQueues, rate, txMethod, size, numTxQueues)
 	end
 end
 
-function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev)
+function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues)
 	local txDev = txQueues[1].dev
 	local desiredRate = args.rate / txTasksPerDev
 	local frame_size_without_crc
@@ -590,7 +601,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev)
 	log:info("[calibrateTx] %s taskId: %d rate: %.4f txQueues: %s", txDev, taskId, desiredRate, dumpQueues(txQueues))
 	local packetId = 0
 	local measuredRate = 0
-	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, args.numTxQueues)
+	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues)
 	local txCount = 0
 	local calibrateRatio = 1
 	local start = libmoon.getTime()
@@ -627,7 +638,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev)
 			rate = rate * desiredRate / measuredRate
 			calibrateRatio = rate / desiredRate
 			log:info("[calibrateTx] %s taskId: %d measuredrate: %f, new calbrateRatio: %f new adjusted rate: %f", txDev, taskId, measuredRate, calibrateRatio, rate)
-			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, args.numTxQueues)
+			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues)
 			start = libmoon.getTime()
 		end
 	end
@@ -635,7 +646,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev)
         return rate
 end
 
-function tx(args, taskId, txQueues, txDevId, calibratedRate)
+function tx(args, taskId, txQueues, txDevId, calibratedRate, numTxQueues)
 	local txDev = txQueues[1].dev
 	local frame_size_without_crc
 	if args.vxlanIds[txDevId] then
@@ -650,7 +661,7 @@ function tx(args, taskId, txQueues, txDevId, calibratedRate)
 		runtime = timer:new(args.runTime)
 	end
 	
-	setTxRate(txDev, txQueues, calibratedRate, args.txMethod, args.size, args.numTxQueues)
+	setTxRate(txDev, txQueues, calibratedRate, args.txMethod, args.size, numTxQueues)
 	local packetId = 0
 	local txCount = 0
 	local start = libmoon.getTime()
@@ -663,6 +674,9 @@ function tx(args, taskId, txQueues, txDevId, calibratedRate)
 			bufs:setVlans(args.vlanIds[txDevId])
 		end
                 bufs:offloadUdpChecksums()
+		if txCount == 0 then
+					bufs[1]:dump()
+		end
 		if ( args.txMethod == "hardware" ) then
 			local queue
 			for _, queue in ipairs(txQueues)  do
