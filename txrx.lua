@@ -66,6 +66,7 @@ function configure(parser)
 	parser:option("--size", "Frame size."):default(64):convert(tonumber)
 	parser:option("--rate", "Transmit rate in Mpps"):default(1):convert(tonumber)
 	parser:option("--measureLatency", "0 or 1"):default(false):convert(intToBoolean)
+	parser:option("--calibrateTxRate", "Ensure Tx rate is calibrated before starting test.  Disable only for debugging (and usuually in combination with --nrPackets)."):default(true):convert(intToBoolean)
 	parser:option("--bidirectional", "0 or 1"):default(false):convert(intToBoolean)
 	parser:option("--nrFlows", "Number of unique network flows"):default(1024):convert(tonumber)
 	parser:option("--nrPackets", "Number of packets to send.  Actual number of packets sent can be up to 64 + nrPackets.  The runTime option will be ignored if this is used"):default(0):convert(tonumber)
@@ -233,54 +234,69 @@ function master(args)
 	-- a little time to ensure rx threads are ready
 	moongen.sleepMillis(1000)
 
-	--calibrate the Tx rate
-	taskId = 1
-	for txDevId, v in ipairs(devs) do
-		if connections[txDevId] then
-			rxDevId = connections[txDevId]
-			printf("calibrating %.2f Mfps", args.rate)
-			for perDevTaskId = 0, txTasksPerDev - 1 do
-				local txQueues = getTxQueues(args.queuesPerTxTask, numTxQueues, perDevTaskId, devs[txDevId])
-				txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId, txTasksPerDev, numTxQueues)
-				taskId = taskId + 1
-			end
-		end
-	end
-	-- wait for tx devices to finish
+	-- default the calibratedRate to args.rate
 	taskId = 1
 	local calibratedRate = {}
 	for txDevId, v in ipairs(devs) do
 		if connections[txDevId] then
 			calibratedRate[txDevId] = {}
 			for perDevTaskId = 0, txTasksPerDev - 1 do
-					calibratedRate[txDevId][perDevTaskId] = txTasks[taskId]:wait()
+					calibratedRate[txDevId][perDevTaskId] = args.rate
 				taskId = taskId + 1
 			end
 		end
 	end
 
-	-- drain the rx queues
-	taskId = 1
-	for txDevId, v in ipairs(devs) do
-		if connections[txDevId] then
-			rxDevId = connections[txDevId]
-			for perDevTaskId = 0, numRxQueues - 1 do -- always 1 rx queue per rx task
-				rxTasks[taskId] = moongen.startTask("drainRx", args, perDevTaskId, devs[rxDevId]:getRxQueue(perDevTaskId), rxDevId)
-				taskId = taskId + 1
+	--calibrate the Tx rate
+	if args.calibrateTxRate == true then
+		taskId = 1
+		for txDevId, v in ipairs(devs) do
+			if connections[txDevId] then
+				rxDevId = connections[txDevId]
+				printf("calibrating %.2f Mfps", args.rate)
+				for perDevTaskId = 0, txTasksPerDev - 1 do
+					local txQueues = getTxQueues(args.queuesPerTxTask, numTxQueues, perDevTaskId, devs[txDevId])
+					txTasks[taskId] = moongen.startTask("calibrateTx", args, perDevTaskId, txQueues, txDevId, txTasksPerDev, numTxQueues)
+					taskId = taskId + 1
+				end
 			end
 		end
-	end
-	taskId = 1
-	for txDevId, v in ipairs(devs) do
-		if connections[txDevId] then
-			for perDevTaskId = 0, numRxQueues - 1 do
-				rxTasks[taskId]:wait()
-				taskId = taskId + 1
+		-- wait for tx devices to finish
+		taskId = 1
+		--local calibratedRate = {}
+		for txDevId, v in ipairs(devs) do
+			if connections[txDevId] then
+				--calibratedRate[txDevId] = {}
+				for perDevTaskId = 0, txTasksPerDev - 1 do
+						calibratedRate[txDevId][perDevTaskId] = txTasks[taskId]:wait()
+					taskId = taskId + 1
+				end
 			end
 		end
-	end
 
-	log:info("Tx calibration finished")
+		-- drain the rx queues
+		taskId = 1
+		for txDevId, v in ipairs(devs) do
+			if connections[txDevId] then
+				rxDevId = connections[txDevId]
+				for perDevTaskId = 0, numRxQueues - 1 do -- always 1 rx queue per rx task
+					rxTasks[taskId] = moongen.startTask("drainRx", args, perDevTaskId, devs[rxDevId]:getRxQueue(perDevTaskId), rxDevId)
+					taskId = taskId + 1
+				end
+			end
+		end
+		taskId = 1
+		for txDevId, v in ipairs(devs) do
+			if connections[txDevId] then
+				for perDevTaskId = 0, numRxQueues - 1 do
+					rxTasks[taskId]:wait()
+					taskId = taskId + 1
+				end
+			end
+		end
+
+		log:info("Tx calibration finished")
+	end
 
 	-- start the rx tasks
 	taskId = 1
