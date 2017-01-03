@@ -600,7 +600,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 	local calibrateRatio = 1
 	local start = libmoon.getTime()
 	-- just like The-Price-Is-Right, measuredRate needs to get very very close to arge.rate, but not go over
-	while moongen.running() and (desiredRate - measuredRate > 0.2) or (measuredRate > desiredRate) do
+	while moongen.running() and (measuredRate/desiredRate < 0.995) or (measuredRate > desiredRate) do
 		bufs:alloc(sizeWithoutCrc)
 		if args.flowMods then
 			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
