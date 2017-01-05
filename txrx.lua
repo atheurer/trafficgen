@@ -614,9 +614,12 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues)
 	local txCount = 0
 	local calibrateRatio = 1
+	local rateDiffRatio = 0.995
+	local rateDiffDelta = 0.05
 	local start = libmoon.getTime()
+	local count = 0
 	-- just like The-Price-Is-Right, measuredRate needs to get very very close to arge.rate, but not go over
-	while moongen.running() and (measuredRate/desiredRate < 0.995) or (measuredRate > desiredRate) do
+	while moongen.running() and (measuredRate/desiredRate < rateDiffRatio) and (desiredRate - measuredRate > rateDiffDelta) or (measuredRate > desiredRate) do
 		bufs:alloc(sizeWithoutCrc)
 		if args.flowMods then
 			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
@@ -650,6 +653,13 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 			log:info("[calibrateTx] %s taskId: %d measuredrate: %f, new calbrateRatio: %f new adjusted rate: %f", txDev, taskId, measuredRate, calibrateRatio, rate)
 			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues)
 			start = libmoon.getTime()
+			count = count + 1
+			-- over time lower the threshold for an acceptable calibrated rate
+			if count % 20 == 0 then
+				log:warn("[calibrateTx] %s taskId: %d, rateDiff adjusted due to many calibration attempts", txDev, taskId)
+				rateDiffRatio = rateDiffRatio - 0.001
+				rateDiffDelta = rateDiffDelta + 0.01
+			end
 		end
 	end
 	log:info("[calibrateTx] %s calibrateRatio: %f", txDev, calibrateRatio)
