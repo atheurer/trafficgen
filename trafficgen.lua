@@ -46,6 +46,7 @@ local timer	= require "timer"
 local stats	= require "stats"
 local hist	= require "histogram"
 local log	= require "log"
+local ffi	= require "ffi"
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
 
@@ -988,12 +989,12 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, que
         return results
 end
 
-function saveSampleLog(file, samples, label)
+function saveSampleLog(file, samples, counter, label)
 	log:info("Saving sample log to '%s'", file)
 	file = io.open(file, "w+")
 	file:write("samples,", label, "\n")
-	for i,v in ipairs(samples) do
-		file:write(i, ",", v, "\n")
+	for i=1,counter do
+		file:write(i, ",", samples[i], "\n")
 	end
 	file:close()
 end
@@ -1009,9 +1010,15 @@ function timerSlave(runTime, testParams, queueIds)
 	local hist1, hist2, haveHisto1, haveHisto2, timestamper1, timestamper2
 	local transactionsPerDirection = 1 -- the number of transactions before switching direction
 	local frameSizeWithoutCrc = testParams.frameSize - 4
-	local rateLimit = timer:new(0.001) -- less than 1000 samples per second
-	local sampleLog1 = {}
-	local sampleLog2 = {}
+	local samplesPerSecond = 1000
+	local rateLimit = timer:new(1/samplesPerSecond) -- overhead will result in a lower than requested rate
+	local sampleLogElements = samplesPerSecond * runTime
+	if testParams.runBidirec then
+		sampleLogElements = sampleLogElements / 2
+	end
+	log:info("Latency test sample log size is %d", sampleLogElements)
+	local sampleLog1 = ffi.new("float[?]", sampleLogElements)
+	local sampleLog2
 
 	-- TODO: adjust headers for flows
 
@@ -1035,6 +1042,7 @@ function timerSlave(runTime, testParams, queueIds)
 			timestamper2 = ts:newUdpTimestamper(queueIds[3], queueIds[4])
 		end
 		hist2 = hist()
+		sampleLog2 = ffi.new("float[?]", sampleLogElements)
 	end
 	-- timestamping starts after and finishes before the main packet load starts/finishes
 	moongen.sleepMillis(LATENCY_TRIM)
@@ -1058,7 +1066,7 @@ function timerSlave(runTime, testParams, queueIds)
 		for count = 0, transactionsPerDirection - 1 do -- inner loop tests in one direction
 			rateLimit:wait()
 			counter = counter + 1
-			local lat = timestamper:measureLatency(testParams.frameSize);
+			local lat = timestamper:measureLatency(testParams.frameSize, nil, 1000);
 			if (lat) then
 				haveHisto = true;
                 		hist:update(lat)
@@ -1102,7 +1110,7 @@ function timerSlave(runTime, testParams, queueIds)
 		if hist_size ~= counter1 then
 		   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter1 - hist_size, (counter1 - hist_size)/counter1*100)
 		end
-		saveSampleLog("latency:samples_" .. histFile, sampleLog1, headerLabel)
+		saveSampleLog("latency:samples_" .. histFile, sampleLog1, counter1, headerLabel)
 	else
 		log:warn("no latency samples found for %s", histDesc)
 	end
@@ -1117,7 +1125,7 @@ function timerSlave(runTime, testParams, queueIds)
 			if hist_size ~= counter2 then
 			   log:warn("[%s] Lost %d samples (%.2f%%)!", histDesc, counter2 - hist_size, (counter2 - hist_size)/counter2*100) 
 			end
-			saveSampleLog("latency:samples_" .. histFile, sampleLog2, headerLabel)
+			saveSampleLog("latency:samples_" .. histFile, sampleLog2, counter2, headerLabel)
 		else
 			log:warn("no latency samples found for %s", histDesc)
 		end
