@@ -54,7 +54,9 @@ end
 function convertMacs(t)
 	local u = {}
 	for i, v in ipairs(t) do
-		table.insert(u, macToU48(v))
+		local macU48 = macToU48(v)
+		log:info("converting %s to %x", v, macU48)
+		table.insert(u, macU48)
 	end
 	return u
 end
@@ -184,8 +186,8 @@ function master(args)
 	end
 	args.srcMacsU48 = convertMacs(args.srcMacs)
 	args.dstMacsU48 = convertMacs(args.dstMacs)
-	args.srcMacsU48 = convertMacs(args.srcMacsVxlan)
-	args.dstMacsU48 = convertMacs(args.dstMacsVxlan)
+	args.srcMacsVxlanU48 = convertMacs(args.srcMacsVxlan)
+	args.dstMacsVxlanU48 = convertMacs(args.dstMacsVxlan)
 	device.waitForLinks()
 	
 	filterEther = false
@@ -320,7 +322,7 @@ function master(args)
 			printf("Testing %.2f Mfps", args.rate)
 			for perDevTaskId = 0, txTasksPerDev - 1 do
 				local txQueues = getTxQueues(args.queuesPerTxTask, numTxQueues, perDevTaskId, devs[txDevId])
-				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId, calibratedRate[txDevId][perDevTaskId], numTxQueues)
+				txTasks[taskId] = moongen.startTask("tx", args, perDevTaskId, txQueues, txDevId, calibratedRate[txDevId][perDevTaskId], txTasksPerDev, numTxQueues)
 				taskId = taskId + 1
 			end
 			if args.measureLatency == true then
@@ -455,7 +457,7 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "srcMac" ) then
-				addr = args.srcMacsU48[devId] + flowId
+				local addr = args.srcMacsU48[devId] + flowId
 				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -465,7 +467,7 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "dstMac" ) then
-				addr = args.dstMacsU48[devId] + flowId
+				local addr = args.dstMacsU48[devId] + flowId
 				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -583,15 +585,16 @@ function devStats(devs, connections)
 	end
 end
 
-function setTxRate(txDev, txQueues, rate, txMethod, size, numTxQueues)
+function setTxRate(txDev, txQueues, rate, txMethod, size, numTxQueues, numTxTasks)
 	local pci_id = txDev:getPciId()
 	if ( txMethod == "hardware" ) then
         	if pci_id == PCI_ID_X710 or pci_id == PCI_ID_XL710 then
+			log:warn("[setTxRate]setting rate for whole device to %f instead of per-queue since this device does not support per-queue rates", rate)
                 	txDev:setRate(rate * (size + 4) * 8)
 		else
 			local queue
 			for _ , queue in pairs(txQueues)  do
-				queue:setRateMpps(rate / numTxQueues, size)
+				queue:setRateMpps(rate / numTxQueues / numTxTasks, size)
 			end
 		end
 	end
@@ -599,7 +602,7 @@ end
 
 function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues)
 	local txDev = txQueues[1].dev
-	local desiredRate = args.rate / txTasksPerDev
+	local desiredRate = args.rate
 	local sizeWithoutCrc
 	local rate = desiredRate / 2 -- start at half the rate and let it ramp up
 	if args.vxlanIds[txDevId] then
@@ -611,7 +614,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 	log:info("[calibrateTx] %s taskId: %d rate: %.4f txQueues: %s", txDev, taskId, desiredRate, dumpQueues(txQueues))
 	local packetId = 0
 	local measuredRate = 0
-	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues)
+	setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues, txTasksPerDev)
 	local txCount = 0
 	local calibrateRatio = 1
 	local rateDiffRatio = 0.995
@@ -651,7 +654,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 			rate = rate * desiredRate / measuredRate
 			calibrateRatio = rate / desiredRate
 			log:info("[calibrateTx] %s taskId: %d measuredrate: %f, new calbrateRatio: %f new adjusted rate: %f", txDev, taskId, measuredRate, calibrateRatio, rate)
-			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues)
+			setTxRate(txDev, txQueues, rate, args.txMethod, args.size, numTxQueues, txTasksPerDev)
 			start = libmoon.getTime()
 			count = count + 1
 			-- over time lower the threshold for an acceptable calibrated rate
@@ -666,7 +669,7 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
         return rate
 end
 
-function tx(args, taskId, txQueues, txDevId, calibratedRate, numTxQueues)
+function tx(args, taskId, txQueues, txDevId, calibratedRate, txTasksPerDev, numTxQueues)
 	local txDev = txQueues[1].dev
 	local sizeWithoutCrc
 	if args.vxlanIds[txDevId] then
@@ -681,7 +684,7 @@ function tx(args, taskId, txQueues, txDevId, calibratedRate, numTxQueues)
 		runtime = timer:new(args.runTime)
 	end
 	
-	setTxRate(txDev, txQueues, calibratedRate, args.txMethod, args.size, numTxQueues)
+	setTxRate(txDev, txQueues, calibratedRate, args.txMethod, args.size, numTxQueues, txTasksPerDev)
 	local packetId = 0
 	local txCount = 0
 	local start = libmoon.getTime()
