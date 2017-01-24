@@ -297,18 +297,19 @@ function prepareDevs(testParams)
 	if not testParams.srcMacs then
 		testParams.srcMacs = {}
 	end
+	testParams.srcMacsUnsigned = {}
 	for i, v in ipairs(testParams.ports) do
 		devs[i] = device.config{ port = testParams.ports[i],
 				 	rxQueues = rxQueues,
 				 	txQueues = txQueues}
 		-- by default a source MAC is retrived from the actual device
 		-- if a source MAC was already provided for the device (via opnfv-vsperf-cfg.lua), then leave it alone
-		if not testParams.srcMacs[i] and testParams.connections[i] then
-			testParams.srcMacs[i] = devs[i]:getTxQueue(0)
-			--testParams.srcMacsUnsigned[i] = macToU48(testParams.srcMacs[i])
-		end
-		if testParams.srcMacs[i] and testParams.connections[i] then
+		if testParams.connections[i] then
+			if not testParams.srcMacs[i] then
+				testParams.srcMacs[i] = devs[i]:getMacString()
+			end
 			log:info("device %d src MAC: [%s]", v, testParams.srcMacs[i])
+			testParams.srcMacsUnsigned[i] = macToU48(testParams.srcMacs[i])
 		end
 	end
 
@@ -316,20 +317,24 @@ function prepareDevs(testParams)
 	if not testParams.dstMacs then
 		testParams.dstMacs = {}
 	end
+	testParams.dstMacsUnsigned = {}
 	for i, v in ipairs(testParams.ports) do
 		-- by default a destination MAC is used by looking at the source MAC in the connections[] table
 		-- if a destination MAC was already provided for the device (via opnfv-vsperf-cfg.lua), then leave it alone
-		if not testParams.dstMacs[i] and testParams.connections[i] then
+		if testParams.connections[i] then
+			if not testParams.dstMacs[i] then
 			testParams.dstMacs[i] = testParams.srcMacs[testParams.connections[i]]
-			--testParams.dstMacsUnsigned[i] = macToU48(testParams.dstMacs[i])
 		end
-		if testParams.dstMacs[i] and testParams.connections[i] then
-			log:info("device %d when transmitting will use dst MAC: [%s]", v, testParams.dstMacs[i])
-		end
-		if testParams.vlanIds and testParams.vlanIds[i] then
-			log:info("device %d when transmitting will use vlan ID: [%d]", v, testParams.vlanIds[i])
+			testParams.dstMacsUnsigned[i] = macToU48(testParams.dstMacs[i])
 		end
 	end
+
+	for i, v in ipairs(testParams.ports) do
+			if testParams.vlanIds and testParams.vlanIds[i] then
+				log:info("device %d when transmitting will use vlan ID: [%d]", v, testParams.vlanIds[i])
+			end
+	end
+
 	device.waitForLinks()
 	return devs
 end
@@ -778,7 +783,7 @@ function adjustHeaders(devId, bufs, packetCount, testParams)
 			end
 	
 			if ( v == "srcMac" ) then
-				addr = testParams.srcMacsUnsigned + flowId
+				local addr = testParams.srcMacsUnsigned[devId] + flowId
 				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
@@ -788,7 +793,7 @@ function adjustHeaders(devId, bufs, packetCount, testParams)
 			end
 	
 			if ( v == "dstMac" ) then
-				addr = testParams.dstMacsUnsigned + flowId
+				local addr = testParams.dstMacsUnsigned[devId] + flowId
 				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
 				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
 				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
