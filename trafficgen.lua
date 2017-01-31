@@ -35,6 +35,10 @@
 -- frameSize		Integer: the size of the Ethernet frame (including CRC)
 -- oneShot		true or false: set to true only if you don't want a binary search for maximum packet rate
 -- negativeLossRetry	true or false: set to false only if you want to allow negative packet loss attempts to pass
+-- loggingLevel		Integer: The minimum level to log, any logging function called with a lower level than the loggingLevel is
+--		ignored and no text is outputted or written. Possible values are
+--		0=[debug], 1=[info], 2=[warn], 3=[error], 4=[fatal]. Default logging level is 1 (info).
+
 
 local moongen	= require "moongen"
 local dpdk	= require "dpdk"
@@ -50,6 +54,7 @@ local ffi	= require "ffi"
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
 
+local LOGGING_LEVEL = log.INFO
 local REPS = 1
 local VALIDATION_RUN_TIME = 30
 local LATENCY_RUN_TIME = 1800
@@ -110,6 +115,10 @@ end
 function master(...)
 	local testParams = getTestParams()
 	dumpTestParams(testParams)
+
+	-- set logging level
+	log:setLevel(testParams.loggingLevel)
+
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
@@ -360,6 +369,7 @@ function getTestParams(testParams)
 	end
 
 	local testParams = cfg or {}
+	testParams.loggingLevel = testParams.loggingLevel or LOGGING_LEVEL
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
 	testParams.testType = testParams.testType or TEST_TYPE
 	testParams.startRate = testParams.startRate
