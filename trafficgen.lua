@@ -35,6 +35,10 @@
 -- frameSize		Integer: the size of the Ethernet frame (including CRC)
 -- oneShot		true or false: set to true only if you don't want a binary search for maximum packet rate
 -- negativeLossRetry	true or false: set to false only if you want to allow negative packet loss attempts to pass
+-- loggingLevel		Integer: The minimum level to log, any logging function called with a lower level than the loggingLevel is
+--		ignored and no text is outputted or written. Possible values are
+--		0=[debug], 1=[info], 2=[warn], 3=[error], 4=[fatal]. Default logging level is 1 (info).
+
 
 local moongen	= require "moongen"
 local dpdk	= require "dpdk"
@@ -50,6 +54,7 @@ local ffi	= require "ffi"
 -- required here because this script creates *a lot* of mempools
 -- memory.enableCache()
 
+local LOGGING_LEVEL = log.INFO
 local REPS = 1
 local VALIDATION_RUN_TIME = 30
 local LATENCY_RUN_TIME = 1800
@@ -110,6 +115,10 @@ end
 function master(...)
 	local testParams = getTestParams()
 	dumpTestParams(testParams)
+
+	-- set logging level
+	log:setLevel(testParams.loggingLevel)
+
 	local finalValidation = false
 	local prevRate = 0
 	local prevPassRate = 0
@@ -360,6 +369,7 @@ function getTestParams(testParams)
 	end
 
 	local testParams = cfg or {}
+	testParams.loggingLevel = testParams.loggingLevel or LOGGING_LEVEL
 	testParams.frameSize = testParams.frameSize or FRAME_SIZE
 	testParams.testType = testParams.testType or TEST_TYPE
 	testParams.startRate = testParams.startRate
@@ -391,6 +401,12 @@ function getTestParams(testParams)
 	testParams.queuesPerTask = testParams.queuesPerTask or QUEUES_PER_TASK
 	testParams.rxQueuesPerDev = 1
 	testParams.linkSpeed = testParams.linkSpeed or LINK_SPEED
+
+	-- print stats only when debug logging mode is enabled
+	testParams.statsFormatter = "nil"
+	if testParams.loggingLevel < log.INFO then
+		testParams.statsFormatter = "plain"
+	end
 
 	return testParams
 end
@@ -693,7 +709,7 @@ function launchTest(final, devs, testParams, txStats, rxStats)
 	-- start devices which receive
 	for devId, v in ipairs(devs) do
 		if testParams.connections[devId] then
-			rxTasks[devId] = moongen.startTask("counterSlave", devs[testParams.connections[devId]]:getRxQueue(0), runTime)
+			rxTasks[devId] = moongen.startTask("counterSlave", devs[testParams.connections[devId]]:getRxQueue(0), runTime, testParams)
 		end
 	end
 	moongen.sleepMillis(3000)
@@ -866,7 +882,7 @@ function calibrateSlave(devs, devId, calibratedRate, testParams, taskId, queueId
 	log:info("calibrateSlave: devId: %d  taskId: %d  calibratedRate: %.4f queues: %s", devId, taskId, calibratedRate, dumpQueues(queueIds))
 	-- only the first process tracks stats for the device
 	if taskId == 0 then
-		txStats = stats:newDevTxCounter(dev, "plain")
+		txStats = stats:newDevTxCounter(dev, testParams.statsFormatter)
 	end
 	if ( testParams.txMethod == "hardware"  and calibratedRate > 0 ) then
         	if id == PCI_ID_X710 or id == PCI_ID_XL710 then
@@ -917,8 +933,8 @@ function calibrateSlave(devs, devId, calibratedRate, testParams, taskId, queueId
         return results
 end
 
-function counterSlave(rxQueue, runTime)
-	local rxStats = stats:newDevRxCounter(rxQueue, "plain")
+function counterSlave(rxQueue, runTime, testParams)
+	local rxStats = stats:newDevRxCounter(rxQueue, testParams.statsFormatter)
 	if runTime > 0 then
 		-- Rx runs a bit longer than Tx to ensure all packets are received
 		runTimer = timer:new(runTime + 6)
@@ -945,7 +961,7 @@ function loadSlave(devs, devId, calibratedRate, runTime, testParams, taskId, que
 	end
 	
 	if taskId == 0 then
-		txStats = stats:newDevTxCounter(dev, "plain")
+		txStats = stats:newDevTxCounter(dev, testParams.statsFormatter)
 	end
 	local count = 0
 	local pci_id = dev:getPciId()
