@@ -332,8 +332,14 @@ function prepareDevs(testParams)
 		-- if a destination MAC was already provided for the device (via opnfv-vsperf-cfg.lua), then leave it alone
 		if testParams.connections[i] then
 			if not testParams.dstMacs[i] then
-			testParams.dstMacs[i] = testParams.srcMacs[testParams.connections[i]]
-		end
+				local dstMac = testParams.srcMacs[testParams.connections[i]]
+				if dstMac == nil then
+					dstMac = devs[testParams.connections[i]]:getMacString()
+					log:info("device %d dst MAC, getting from device %d src MAC: [%s]", v, testParams.connections[i], dstMac)
+				end
+				testParams.dstMacs[i] = dstMac
+			end
+			log:info("device %d dst MAC: [%s]", v, testParams.dstMacs[i])
 			testParams.dstMacsUnsigned[i] = macToU48(testParams.dstMacs[i])
 		end
 	end
