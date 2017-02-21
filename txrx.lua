@@ -752,7 +752,7 @@ end
 function rx(args, perDevTaskId, queue, rxDevId)
 	local rxDev = queue.dev
 	local totalPkts = 0
-	local totalVxlanPkts = 0
+	local totalTestPkts = 0
 	local bufs = memory.bufArray(128)
 	if args.vxlanIds[rxDevId] then
 		log:info("[rx] vxlan: rxDev: %s  taskId: %d  rate: %.4f queue: %s", queue.dev, perDevTaskId, args.rate, queue)
@@ -764,7 +764,7 @@ function rx(args, perDevTaskId, queue, rxDevId)
 				if pkt.eth:getType() == proto.eth.TYPE_IP
 			   	and pkt.ip4:getProtocol() == proto.ip4.PROTO_UDP
 			   	and pkt.udp:getDstPort() == proto.udp.PORT_VXLAN then
-					totalVxlanPkts = totalVxlanPkts + 1
+					totalTestPkts = totalTestPkts + 1
 				end
 				totalPkts = totalPkts + 1
 				if args.packetDumpInterval > 0 and totalPkts % args.packetDumpInterval == 1 then
@@ -778,16 +778,33 @@ function rx(args, perDevTaskId, queue, rxDevId)
 		log:info("[rx] non-vxlan: rxDev: %s  taskId: %d  rate: %.4f queue: %s", queue.dev, perDevTaskId, args.rate, queue)
 		while moongen.running() do
 			numPkts = queue:recv(bufs)
-			totalPkts = totalPkts + numPkts
+			for i = 1, numPkts do
+				local buf = bufs[i]
+                        	local pkt = buf:getUdpPacket()
+				if buf:getSize() == args.size - 4
+				and pkt.eth:getType() == proto.eth.TYPE_IP
+			   	and pkt.ip4:getProtocol() == proto.ip4.PROTO_UDP
+			   	and pkt.udp:getDstPort() == args.dstPort then
+					totalTestPkts = totalTestPkts + 1
+				--else
+					--log:info("[rx] queue: %s non-test packet:", queue)
+					--buf:dump()
+				end
+				totalPkts = totalPkts + 1
+				if args.packetDumpInterval > 0 and totalPkts % args.packetDumpInterval == 1 then
+					log:info("[rx] queue: %s packet number %d", queue, totalPkts)
+					buf:dump()
+				end
+			end
 			bufs:free(numPkts)
 		end
 	end
         if args.vxlanIds[rxDevId] then
-		log:info("[rx] %s VxLAN packets: %d, non-VxLAN packets: %d", queue, totalVxlanPkts, totalPkts - totalVxlanPkts)
-		return totalVxlanPkts
+		log:info("[rx] %s VxLAN test packets: %d, non-test packets: %d", queue, totalTestPkts, totalPkts - totalTestPkts)
+		return totalTestPkts
 	else
-		log:info("[rx] %s packets: %d", queue, totalPkts)
-		return totalPkts
+		log:info("[rx] %s test packets: %d, non-test packets: %d", queue, totalTestPkts, totalPkts - totalTestPkts)
+		return totalTestPkts
 	end
 end
 
