@@ -135,6 +135,7 @@ function master(args)
 						rssQueues = numRxQueues
 						}
 		end
+		devs[i]:setPromisc(false)
 
 		-- configure the connections
 		if ( i % 2 == 1) then -- for devices a, c
@@ -150,7 +151,7 @@ function master(args)
 		-- assign vlan IDs
 		if args.vlanIds[i] then
 			log:info("device %d will use vlan ID: [%d]", deviceNum, args.vlanIds[i])
-			devs[i]:filterVlan(args.vlanIds[i])
+			--devs[i]:filterVlan(args.vlanIds[i])
 		end
 		-- assign device's native HW MAC if user does not provide one
 		if not args.vxlanIds[i] then -- when VxLANs are used, srcMacs are for the innner packet, and therefore should not be using the device's native HW MAC
@@ -225,7 +226,18 @@ function master(args)
 	local arpQueuePairs = {}
 	for txDevId, txDev in ipairs(devs) do
 		if connections[txDevId] then
-			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { args.srcIpsVxlan[txDevId] }} )
+			local IpAddr = ""
+			if args.vxlanIds[i] then
+				IpAddr = args.srcIpsVxlan[txDevId]
+			else
+				IpAddr = ip4ToString(args.srcIps[txDevId])
+			end
+			if IpAddr == "" then
+				log:warn("could not start ARP listener because there is no IP for device %d, MAC %s", args.devices[txDevId], txDev:getMacString())
+			else
+				log:warn("starting ARP listener for device %d, IP %s, MAC %s", args.devices[txDevId], IpAddr, txDev:getMacString())
+				table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { IpAddr }} )
+			end
 		end
 	end
 	moongen.startTask(proto.arp.arpTask, arpQueuePairs)
