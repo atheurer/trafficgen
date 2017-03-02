@@ -1,18 +1,15 @@
 #!/bin/python
 
-# This script conducts a binary search for maximum packet rate while not exceeding
-# a specified percent packet loss.  This script will execute a traffic generator,
-# which may be one of: txrx.lua, trafficgen.lua (pending), and TRex (pending)
-
 import sys, getopt
 import argparse
 import subprocess
 import re
-# import stl_path # needed for TRex
-# from trex_stl_lib.api import * # needed for TRex
+# import stl_path
 import time
 import json
 import string
+# from decimal import *
+# from trex_stl_lib.api import *
 
 class t_global(object):
      args=None;
@@ -115,22 +112,27 @@ def process_options ():
                         default=""
                         )
     parser.add_argument('--dst-ips-list', 
-                        dest='dst_macs_list',
+                        dest='dst_ips_list',
                         help='comma separated list of destination IPs 1 per device',
                         default=""
                         )
     parser.add_argument('--src-ips-list', 
-                        dest='src_macs_list',
+                        dest='src_ips_list',
                         help='comma separated list of src IPs, 1 per device',
                         default=""
                         )
+    parser.add_argument('--vlan-ids-list', 
+                        dest='vlan_ids_list',
+                        help='comma separated list of VLAN IDs, 1 per device',
+                        default=""
+                        )
     parser.add_argument('--encap-dst-ips-list', 
-                        dest='encap_dst_macs_list',
+                        dest='encap_dst_ips_list',
                         help='comma separated list of destination IPs for excapsulated network, 1 per device',
                         default=""
                         )
     parser.add_argument('--encap-src-ips-list', 
-                        dest='encap_src_macs_list',
+                        dest='encap_src_ips_list',
                         help='comma separated list of src IPs for excapsulated network,, 1 per device',
                         default=""
                         )
@@ -145,7 +147,6 @@ def process_options ():
     print(t_global.args)
 
 def run_trial (trial_params):
-    # this only supports txrx.lua currently
     stats = dict()
     stats[0] = dict()
     stats[0]['tx_packets'] = 0
@@ -157,10 +158,11 @@ def run_trial (trial_params):
     print('running trial, rate', trial_params['rate'])
     #txrx_cmd = './MoonGen/build/MoonGen ../txrx.lua --rate=' + str(trial_params['rate'] + ' --measureLatency=0 --runTime=5 --devices=4,4 --size=64 --flowMods="" --vxlanIds=100,100 --srcIps=192.168.100.2 --dstIps=192.168.100.1 --srcMacs=9e:e9:96:e4:76:01 --dstMacs=52:54:00:0c:d2:bd --bidirectional=0 --dstIpsVxlan=10.0.100.1 --srcIpsVxlan=10.0.100.2 --dstMacsVxlan=68:05:ca:2a:b7:f3'
     #txrx_cmd = './MoonGen/build/MoonGen ../txrx.lua'
-    p = subprocess.Popen('./MoonGen/build/MoonGen txrx.lua --rate=' + str(trial_params['rate']) + ' --bidirectional=' + str(trial_params['run_bidirec']) + ' --measureLatency=0 --runTime=' + str(trial_params['runtime']) + ' --devices=0,1 --size=' + str(trial_params['frame_size']) + ' --flowMods=srcIp', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    cmd = './MoonGen/build/MoonGen txrx.lua --calibrateTxRate=0 --rate=' + str(trial_params['rate']) + ' --bidirectional=' + str(trial_params['run_bidirec']) + ' --measureLatency=0 --runTime=' + str(trial_params['runtime']) + ' --devices=0,1 --size=' + str(trial_params['frame_size']) + ' --flowMods=""' + ' --srcIps=' + str(trial_params['src_ips_list']) + ' --dstMacs=' + str(trial_params['dst_macs_list']) + ' --dstIps=' + str(trial_params['dst_ips_list'])  + ' --vlanIds=' + str(trial_params['vlan_ids_list'])
+    print('txrx cmd:', cmd)
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in p.stdout.readlines():
 	print(line)
-	# example output from txrx.lua
 	#[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
         #[INFO]  [0]->[1] txPackets: 10130148 rxPackets: 10130148 packetLoss: 0 txRate: 2.026430 rxRate: 2.026430 packetLossPct: 0.000000
         m = re.search(r"\[INFO\]\s+\[(\d+)\]\-\>\[(\d+)\]\s+txPackets:\s+(\d+)\s+rxPackets:\s+(\d+)\s+packetLoss:\s+(\-*\d+)\s+txRate:\s+(\d+\.\d+)\s+rxRate:\s+(\d+\.\d+)\s+packetLossPct:\s+(\-*\d+\.\d+)", line)
@@ -206,6 +208,10 @@ def main():
     print("dest-macs-list", t_global.args.dst_macs_list)
     print("encap-src-macs-list", t_global.args.encap_src_macs_list)
     print("encap-dest-macs-list", t_global.args.encap_dst_macs_list)
+    print("src-ips-list", t_global.args.src_ips_list)
+    print("dest-ips-list", t_global.args.dst_ips_list)
+    print("encap-src-ips-list", t_global.args.encap_src_ips_list)
+    print("encap-dest-ips-list", t_global.args.encap_dst_ips_list)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -218,9 +224,14 @@ def main():
     trial_params['use_ip_flows'] = t_global.args.use_ip_flows
     trial_params['use_encap_ip_flows'] = t_global.args.use_encap_ip_flows
     trial_params['src_macs_list'] = t_global.args.src_macs_list
-    trial_params['encap_src_macs_list'] = t_global.args.encap_src_macs_list
     trial_params['dst_macs_list'] = t_global.args.dst_macs_list
+    trial_params['encap_src_macs_list'] = t_global.args.encap_src_macs_list
     trial_params['encap_dst_macs_list'] = t_global.args.encap_dst_macs_list
+    trial_params['src_ips_list'] = t_global.args.src_ips_list
+    trial_params['dst_ips_list'] = t_global.args.dst_ips_list
+    trial_params['encap_src_ips_list'] = t_global.args.encap_src_ips_list
+    trial_params['encap_dst_ips_list'] = t_global.args.encap_dst_ips_list
+    trial_params['vlan_ids_list'] = t_global.args.vlan_ids_list
 
     # the actual binary search to find the maximum packet rate
     while final_validation or abs(rate - prev_rate) > rate_granularity:
