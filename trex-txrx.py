@@ -1,0 +1,216 @@
+import sys, getopt
+import argparse
+import stl_path
+import time
+import json
+import string
+from decimal import *
+from trex_stl_lib.api import *
+
+class t_global(object):
+     args=None;
+
+# simple packet creation
+def create_pkt (size, direction, num_flows, mac_flows, ip_flows):
+
+    ip_range = {'src': {'start': (256**3 *10 +1), 'end': (256**3 *10 +num_flows)}, # 10.x.y.z
+                'dst': {'start': (256**3 *8 +1),  'end': (256**3 *8 +num_flows)}}  #  8.x.y.z
+
+    if (direction == 0):
+        ip_src = ip_range['src']
+        ip_dst = ip_range['dst']
+    else:
+        ip_src = ip_range['dst']
+        ip_dst = ip_range['src']
+
+    vm = []
+    if ip_flows:
+        vm = vm + [
+            # src
+            STLVmFlowVar(name="ip_src",min_value=ip_src['start'],max_value=ip_src['end'],size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src"),
+            # dst
+            STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst"),
+            ]
+
+    if mac_flows:
+        vm = vm + [
+            # src
+            STLVmFlowVar(name="mac_src",min_value=0,max_value=num_flows,size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7),
+            # dst
+            STLVmFlowVar(name="mac_dst",min_value=0,max_value=num_flows,size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1),
+            ]
+
+    vm = vm + [STLVmFixIpv4(offset = "IP")]
+
+    base = Ether()/IP()/UDP()
+    pad = max(0, size-len(base)) * 'x'
+
+    return STLPktBuilder(pkt = base/pad,
+                         vm  = vm)
+
+def process_options ():
+    parser = argparse.ArgumentParser(usage=""" 
+    generate network traffic and report packet loss
+    """);
+
+    parser.add_argument('--size', 
+                        dest='frame_size',
+                        help='L2 frame size in bytes',
+                        default=64,
+                        type = int,
+                        )
+    parser.add_argument('--num-flows', 
+                        dest='num_flows',
+                        help='number of unique network flows',
+                        default=1024,
+                        type = int,
+                        )
+    parser.add_argument('--use-ip-flows', 
+                        dest='use_ip_flows',
+                        help='implement flows by IP',
+                        default=1, # when using ecapsulated network like VxLAN, destination IP will be fixed in order to reach single VTEP
+                        type = int,
+                        )
+    parser.add_argument('--use-mac-flows', 
+                        dest='use_mac_flows',
+                        help='implement flows by MAC',
+                        default=1, # when using ecapsulated network like VxLAN, destination MAC will be fixed in order to reach single VTEP
+                        type = int,
+                        )
+    parser.add_argument('--use-encap-ip-flows', 
+                        dest='use_encap_ip_flows',
+                        help='implement flows by IP in the encapsulated packet',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--use-encap-mac-flows', 
+                        dest="use_encap_mac_flows",
+                        help='implement flows by MAC in the encapsulated packet',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--run-bidirec', 
+                        dest='run_bidirec',
+                        help='0 = Tx on first device, 1 = Tx on both devices',
+                        default=1,
+                        type = int,
+                        )
+    parser.add_argument('--runtime', 
+                        dest='runtime',
+                        help='tiral period in seconds',
+                        default=30,
+                        type = int,
+                        )
+    parser.add_argument('--rate', 
+                        dest='rate',
+                        help='rate in millions of packets per second per device',
+                        default = 0.0,
+                        type = float
+                        )
+    parser.add_argument('--dst-macs-list', 
+                        dest='dst_macs_list',
+                        help='comma separated list of destination MACs, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--src-macs-list', 
+                        dest='src_macs_list',
+                        help='comma separated list of src MACs, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--encap-dst-macs-list', 
+                        dest='encap_dst_macs_list',
+                        help='comma separated list of destination MACs for encapulsated network, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--encap-src-macs-list', 
+                        dest='encap_src_macs_list',
+                        help='comma separated list of src MACs for encapulsated network, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--dst-ips-list', 
+                        dest='dst_macs_list',
+                        help='comma separated list of destination IPs 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--src-ips-list', 
+                        dest='src_macs_list',
+                        help='comma separated list of src IPs, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--encap-dst-ips-list', 
+                        dest='encap_dst_macs_list',
+                        help='comma separated list of destination IPs for excapsulated network, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--encap-src-ips-list', 
+                        dest='encap_src_macs_list',
+                        help='comma separated list of src IPs for excapsulated network,, 1 per device',
+                        default=""
+                        )
+    t_global.args = parser.parse_args();
+    print(t_global.args)
+
+def main():
+    process_options()
+    port_a = 0
+    port_b = 1
+
+    c = STLClient()
+    passed = True
+
+    try:
+        # turn this on for some information
+        #c.set_verbose("high")
+
+        s1 = STLStream(packet = create_pkt(frame_size - 4, 0, num_flows, use_mac_flows, use_ip_flows),
+                       mode = STLTXCont(pps = 100))
+
+	if bidirec:
+       	    s2 = STLStream(packet = create_pkt(frame_size - 4, 1, num_flows, use_mac_flows, use_ip_flows),
+                       isg = 1000,
+                       mode = STLTXCont(pps = 100))
+
+        # connect to server
+        c.connect()
+        # prepare our ports
+        c.reset(ports = [port_a, port_b])
+        c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
+
+        # add both streams to ports
+        c.add_streams(s1, ports = [port_a])
+	if bidirec:
+            c.add_streams(s2, ports = [port_b])
+
+        # clear the stats before injecting
+        c.clear_stats()
+
+        # here we multiply the traffic lineaer to whatever given in rate
+        print("Running {:} on ports {:}, {:} for {:} seconds...".format(rate, port_a, port_b, duration))
+        if bidirec:
+            c.start(ports = [port_a, port_b], mult = rate, duration = duration)
+        else:
+            c.start(ports = [port_a], mult = rate, duration = duration)
+
+        # block until done
+        if bidirec:
+            c.wait_on_traffic(ports = [port_a, port_b])
+        else:
+            c.wait_on_traffic(ports = [port_a])
+
+        stats = c.get_stats()
+        c.disconnect()
+
+    except STLError as e:
+        print(e)
+
+    finally:
+            c.disconnect()
+	    return stats
+
+if __name__ == "__main__":
+    main()
+
