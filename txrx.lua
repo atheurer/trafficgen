@@ -226,18 +226,13 @@ function master(args)
 	local arpQueuePairs = {}
 	for txDevId, txDev in ipairs(devs) do
 		if connections[txDevId] then
-			local IpAddr = ""
-			if args.vxlanIds[i] then
-				IpAddr = args.srcIpsVxlan[txDevId]
+			local ipAddr = ""
+			if args.vxlanIds[txDevId] then
+				ipAddr = args.srcIpsVxlan[txDevId]
 			else
-				IpAddr = ip4ToString(args.srcIps[txDevId])
+				ipAddr = ip4ToString(args.srcIps[txDevId])
 			end
-			if IpAddr == "" then
-				log:warn("could not start ARP listener because there is no IP for device %d, MAC %s", args.devices[txDevId], txDev:getMacString())
-			else
-				log:warn("starting ARP listener for device %d, IP %s, MAC %s", args.devices[txDevId], IpAddr, txDev:getMacString())
-				table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { IpAddr }} )
-			end
+			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { ipAddr }} )
 		end
 	end
 	moongen.startTask(proto.arp.arpTask, arpQueuePairs)
