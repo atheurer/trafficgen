@@ -45,10 +45,14 @@ function stringsToTable(instr)
 	return t
 end
 
-function parseIPAddresses(t)
-	for i, _ in ipairs(t) do
-		t[i] = parseIPAddress(t[i])
+function convertIps(t)
+	local u = {}
+	for i, v in ipairs(t) do
+		local ipU32 = parseIPAddress(v)
+		log:info("converting %s to %x", v, ipU32)
+		table.insert(u, ipU32)
 	end
+	return u
 end
 
 function convertMacs(t)
@@ -64,7 +68,7 @@ end
 function configure(parser)
 	parser:option("--devices", "A comma separated list (no spaces) of one or more Tx/Rx device pairs, for example: 0,1,2,3"):default({0,1}):convert(intsToTable)
 	parser:option("--vlanIds", "A comma separated list of one or more VLAN IDs, corresponding to each entry in deviceList.. Using this option enables VLAN tagged packets"):default({}):convert(intsToTable)
-	parser:option("--vxlanIds", "A comma separated list of one or more VxLAN IDs, corresponding to each entry in deviceList.  Using this option enables VxLAN encapsulated packets and requires at least --dstIpsVxlan and --dstMacsVxlan"):default({}):convert(intsToTable)
+	parser:option("--vxlanIds", "A comma separated list of one or more VxLAN IDs, corresponding to each entry in deviceList.  Using this option enables VxLAN encapsulated packets"):default({}):convert(intsToTable)
 	parser:option("--size", "Frame size."):default(64):convert(tonumber)
 	parser:option("--rate", "Transmit rate in Mpps"):default(1):convert(tonumber)
 	parser:option("--measureLatency", "0 or 1"):default(false):convert(intToBoolean)
@@ -73,17 +77,17 @@ function configure(parser)
 	parser:option("--nrFlows", "Number of unique network flows"):default(1024):convert(tonumber)
 	parser:option("--nrPackets", "Number of packets to send.  Actual number of packets sent can be up to 64 + nrPackets.  The runTime option will be ignored if this is used"):default(0):convert(tonumber)
 	parser:option("--runTime", "Number of seconds to run"):default(30):convert(tonumber)
-	parser:option("--flowMods", "Comma separated list (no spaces), one or more of:  srcIp,dstIp,srcMac,dstMac,srcPort,dstPort"):default({"srcIp"}):convert(stringsToTable)
-	parser:option("--srcIps", "A comma separated list (no spaces) of source IP address used"):default("10.0.0.1,192.168.0.1"):convert(stringsToTable)
-	parser:option("--dstIps", "A comma separated list (no spaces) of destination IP address used"):default("192.168.0.1,10.0.0.1"):convert(stringsToTable)
+	parser:option("--flowMods", "Comma separated list (no spaces), one or more of:  srcIp,dstIp,srcMac,dstMac,srcPort,dstPort"):default({""}):convert(stringsToTable)
+	parser:option("--srcIps", "A comma separated list (no spaces) of source IP address used"):default("10.0.100.2,10.0.101.2"):convert(stringsToTable)
+	parser:option("--dstIps", "A comma separated list (no spaces) of destination IP address used"):default("10.0.100.1,10.0.101.1"):convert(stringsToTable)
 	parser:option("--srcMacs", "A comma separated list (no spaces) of source MAC address used"):default({}):convert(stringsToTable)
 	parser:option("--dstMacs", "A comma separated list (no spaces) of destination MAC address used"):default({}):convert(stringsToTable)
 	parser:option("--srcPort", "Source port used"):default(1234):convert(tonumber)
 	parser:option("--dstPort", "Destination port used"):default(1234):convert(tonumber)
-	parser:option("--srcIpsVxlan", "A comma separated list (no spaces) of source IP address used for outer header with VxLAN"):default("10.0.101.2,10.0.102.2"):convert(stringsToTable)
-	parser:option("--dstIpsVxlan", "A comma separated list (no spaces) of destination IP address used for outer header with VxLAN"):default("10.0.101.1,10.0.102.1"):convert(stringsToTable)
-	parser:option("--srcMacsVxlan", "A comma separated list (no spaces) of source MAC address used for outer header with VxLAN"):default({}):convert(stringsToTable)
-	parser:option("--dstMacsVxlan", "A comma separated list (no spaces) of destination MAC address used for outer header with VxLAN"):default({"90:e2:ba:2c:cb:04", "90:e2:ba:01:02:05"}):convert(stringsToTable)
+	parser:option("--encapSrcIps", "A comma separated list (no spaces) of source IP addresses used for inner header (the encapsulated packet)"):default("192.168.100.2,192.168.101.2"):convert(stringsToTable)
+	parser:option("--encapDstIps", "A comma separated list (no spaces) of destination IP addresses used for inner header (the excapsulated packet)"):default("192.168.100.1,192.168.101.1"):convert(stringsToTable)
+	parser:option("--encapSrcMacs", "A comma separated list (no spaces) of source MAC addresses used for inner header (the encapsulated packet).  If you are using testpmd in a VM, the options --forward-mode=mac --eth-peer=0,A --eth-peer=1,B will need to be used, when A and B are the MACs listed in --encapSrcMacs=A.B"):default({"9e:e9:96:e4:76:01,9e:e9:96:e4:76:02"}):convert(stringsToTable)
+	parser:option("--encapDstMacs", "A comma separated list (no spaces) of destination MAC addresses used for inner header (the encapsulated packet).  If you are using testpmd in a VM, these MACs must match the 2 MACs for the two devices used by testpmd"):default({"90:e2:ba:2c:cb:04", "90:e2:ba:01:02:05"}):convert(stringsToTable)
 	parser:option("--mppsPerTxQueue", "The maximum transmit rate in Mpps for each device queue"):default(8):convert(tonumber)
 	parser:option("--mppsPerRxQueue", "The maximum receive rate in Mpps for each device queue"):default(8):convert(tonumber)
 	parser:option("--queuesPerTxTask", "The maximum transmit number of queues to use per task"):default(1):convert(tonumber)
@@ -108,8 +112,10 @@ function master(args)
 	end
 	log:info("number rx queues: %d", numRxQueues)
 	local devs = {}
-	parseIPAddresses(args.srcIps)
-	parseIPAddresses(args.dstIps)
+
+	--parseIPAddresses(args.srcIps)
+	--parseIPAddresses(args.dstIps)
+	
 	-- The connections[] table defines a relationship between te device which transmits and a device which receives the same packets.
 	-- This relationship is derived via the devices[] table, where if devices contained {a, b, c, d}, device a transmits to device b,
 	-- and device c transmits to device d.  
@@ -154,17 +160,8 @@ function master(args)
 			--devs[i]:filterVlan(args.vlanIds[i])
 		end
 		-- assign device's native HW MAC if user does not provide one
-		if not args.vxlanIds[i] then -- when VxLANs are used, srcMacs are for the innner packet, and therefore should not be using the device's native HW MAC
-			if not args.srcMacs[i] then
-				args.srcMacs[i] = devs[i]:getMacString()
-				--log:info("device %d src MAC: [%s]", deviceNum, args.srcMacs[i])
-			end
-		else -- if this is VxLAN, use the srcMacsVxlan table, which will be referenced for outer packet MAC during getBuffer()
-			if not args.srcMacsVxlan[i] then
-				args.srcMacsVxlan[i] = devs[i]:getMacString()
-				--log:info("device %d for VxLAN, outer packet src MAC: [%s]", deviceNum, args.srcMacsVxlan[i])
-				--log:warn("This program does not reply to ARP requests.  You will need to create a static ARP entry for IP [%s] and MAC [%s] on the VxLAN endpoint", args.srcIpsVxlan[i], args.srcMacsVxlan[i])
-			end
+		if not args.srcMacs[i] then
+			args.srcMacs[i] = devs[i]:getMacString()
 		end
 	end
 	-- assign the dst MAC addresses
@@ -174,21 +171,24 @@ function master(args)
 			if not args.dstMacs[i] then
 				args.dstMacs[i] = args.srcMacs[connections[i]]
 			end
+			log:info("device %d when transmitting packets will use src MAC: [%s] src IP [%s] dst MAC: [%s] dst IP [%s]", deviceNum, args.srcMacs[i], args.srcIps[i], args.dstMacs[i], args.dstIps[i])
 			if args.vxlanIds[i] then
-				log:info("device %d when transmitting VxLAN %d packets, the inner packet will use src MAC: [%s] and dst MAC: [%s]", deviceNum, args.vxlanIds[i], args.srcMacs[i], args.dstMacs[i])
-				if not args.dstMacsVxlan[i] and connections[i] then
-					args.dstMacsVxlan[i] = args.srcMacsVxlan[connections[i]]
+				if not args.encapDstMacs[i] and connections[i] then
+					args.encapDstMacs[i] = args.encapSrcMacs[connections[i]]
 				end
-				log:info("device %d when transmitting VxLAN %d packets, the outer packet will use src MAC: [%s] and dst MAC: [%s]", deviceNum, args.vxlanIds[i], args.srcMacsVxlan[i], args.dstMacsVxlan[i])
+				log:info("device %d when transmitting encapsulated packets over VxLAN ID %d, the inner packet will use src MAC: [%s] src IP [%s] dst MAC: [%s] dst IP [%s]", deviceNum, args.vxlanIds[i], args.encapSrcMacs[i], args.encapSrcIps[i], args.encapDstMacs[i], args.encapDstIps[i])
 			else
-				log:info("device index %d num %d when transmitting non-VXLAN packets will use src MAC: [%s] and dst MAC: [%s]", i, deviceNum, args.srcMacs[i], args.dstMacs[i])
 			end
 		end
 	end
 	args.srcMacsU48 = convertMacs(args.srcMacs)
 	args.dstMacsU48 = convertMacs(args.dstMacs)
-	args.srcMacsVxlanU48 = convertMacs(args.srcMacsVxlan)
-	args.dstMacsVxlanU48 = convertMacs(args.dstMacsVxlan)
+	args.encapSrcMacsU48 = convertMacs(args.encapSrcMacs)
+	args.encapDstMacsU48 = convertMacs(args.encapDstMacs)
+	args.srcIpsU32 = convertIps(args.srcIps)
+	args.dstIpsU32 = convertIps(args.dstIps)
+	args.encapSrcIpsU32 = convertIps(args.encapSrcIps)
+	args.encapDstIpsU32 = convertIps(args.encapDstIps)
 	device.waitForLinks()
 	
 	filterEther = false
@@ -205,11 +205,11 @@ function master(args)
 				devs[rxDevId]:filterUdpTimestamps(devs[rxDevId]:getRxQueue(1))
 			end
 			if filterTuple == true then
-				log:info("filter srcIp: %s", ip4ToString(args.srcIps[i]))
-				log:info("filter dstIp: %s", ip4ToString(args.dstIps[i]))
+				log:info("filter srcIp: %s", args.srcIps[i])
+				log:info("filter dstIp: %s", args.dstIps[i])
 				devs[rxDevId]:fiveTupleFilter({
-								dstIp = ip4ToString(args.dstIps[i]),
-								srcIp = ip4ToString(args.srcIps[i]),
+								dstIp = args.dstIps[i],
+								srcIp = args.srcIps[i],
 								srcPort = 1234, dstPort = 1234,
 								proto = 0x11}, devs[rxDevId]:getRxQueue(1))
 			end
@@ -226,13 +226,7 @@ function master(args)
 	local arpQueuePairs = {}
 	for txDevId, txDev in ipairs(devs) do
 		if connections[txDevId] then
-			local ipAddr = ""
-			if args.vxlanIds[txDevId] then
-				ipAddr = args.srcIpsVxlan[txDevId]
-			else
-				ipAddr = ip4ToString(args.srcIps[txDevId])
-			end
-			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { ipAddr }} )
+			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { args.srcIps[txDevId] }} )
 		end
 	end
 	moongen.startTask(proto.arp.arpTask, arpQueuePairs)
@@ -497,17 +491,17 @@ function getBuffers(devId, args, sizeWithoutCrc)
 				pktLength = sizeWithoutCrc,
 				-- outer header for VxLAN
 				vxlanVNI = args.vxlanIds[devId],
-				ethSrc = args.srcMacsVxlan[devId],
-				ethDst = args.dstMacsVxlan[devId],
-				ip4Src = args.srcIpsVxlan[devId],
-				ip4Dst = args.dstIpsVxlan[devId],
+				ethSrc = args.srcMacs[devId],
+				ethDst = args.dstMacs[devId],
+				ip4Src = args.srcIps[devId],
+				ip4Dst = args.dstIps[devId],
 				udpSrc = proto.udp.PORT_VXLAN,
 				udpDst = proto.udp.PORT_VXLAN,
 				-- inner header for VxLAN
-				innerEthSrc = args.srcMacs[devId],
-				innerEthDst = args.dstMacs[devId],
-				innerIp4Src = args.srcIps[devId],
-				innerIp4Dst = args.dstIps[devId],
+				innerEthSrc = args.encapSrcMacs[devId],
+				innerEthDst = args.encapDstMacs[devId],
+				innerIp4Src = args.encapSrcIps[devId],
+				innerIp4Dst = args.encapDstIps[devId],
 				innerUdpSrc = args.srcPort,
 				innerUdpDst = args.dstPort,
 			}
