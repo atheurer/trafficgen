@@ -31,27 +31,51 @@ def process_options ():
                         default=1024,
                         type = int,
                         )
-    parser.add_argument('--use-ip-flows', 
-                        dest='use_ip_flows',
-                        help='implement flows by IP',
-                        default=1, # when using ecapsulated network like VxLAN, destination IP will be fixed in order to reach single VTEP
+    parser.add_argument('--use-src-ip-flows', 
+                        dest='use_src_ip_flows',
+                        help='implement flows by source IP',
+                        default=1,
                         type = int,
                         )
-    parser.add_argument('--use-mac-flows', 
-                        dest='use_mac_flows',
-                        help='implement flows by MAC',
-                        default=1, # when using ecapsulated network like VxLAN, destination MAC will be fixed in order to reach single VTEP
+    parser.add_argument('--use-dst-ip-flows', 
+                        dest='use_dst_ip_flows',
+                        help='implement flows by destination IP',
+                        default=1,
                         type = int,
                         )
-    parser.add_argument('--use-encap-ip-flows', 
-                        dest='use_encap_ip_flows',
-                        help='implement flows by IP in the encapsulated packet',
+    parser.add_argument('--use-src-mac-flows', 
+                        dest='use_src_mac_flows',
+                        help='implement flows by source MAC',
+                        default=1,
+                        type = int,
+                        )
+    parser.add_argument('--use-dst-mac-flows', 
+                        dest='use_dst_mac_flows',
+                        help='implement flows by destination MAC',
+                        default=1,
+                        type = int,
+                        )
+    parser.add_argument('--use-encap-src-ip-flows', 
+                        dest='use_encap_src_ip_flows',
+                        help='implement flows by source IP in the encapsulated packet',
                         default=0,
                         type = int,
                         )
-    parser.add_argument('--use-encap-mac-flows', 
-                        dest="use_encap_mac_flows",
-                        help='implement flows by MAC in the encapsulated packet',
+    parser.add_argument('--use-encap-dst-ip-flows', 
+                        dest='use_encap_dst_ip_flows',
+                        help='implement flows by destination IP in the encapsulated packet',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--use-encap-src-mac-flows', 
+                        dest="use_encap_src_mac_flows",
+                        help='implement flows by source MAC in the encapsulated packet',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--use-encap-dst-mac-flows', 
+                        dest="use_encap_dst_mac_flows",
+                        help='implement flows by destination MAC in the encapsulated packet',
                         default=0,
                         type = int,
                         )
@@ -121,6 +145,11 @@ def process_options ():
                         help='comma separated list of src IPs, 1 per device',
                         default=""
                         )
+    parser.add_argument('--vxlan-ids-list', 
+                        dest='vxlan_ids_list',
+                        help='comma separated list of VxLAN IDs, 1 per device',
+                        default=""
+                        )
     parser.add_argument('--vlan-ids-list', 
                         dest='vlan_ids_list',
                         help='comma separated list of VLAN IDs, 1 per device',
@@ -138,8 +167,8 @@ def process_options ():
                         )
     parser.add_argument('--traffic-generator', 
                         dest='traffic_generator',
-                        help='name of traffic generator: trex, txrx',
-                        default="txrx"
+                        help='name of traffic generator: trex-txrx or moongen-txrx',
+                        default="moongen-txrx"
                         )
 
 
@@ -155,11 +184,57 @@ def run_trial (trial_params):
     stats[1]['tx_packets'] = 0
     stats[1]['rx_packets'] = 0
 
+    if trial_params['traffic_generator'] == 'moongen-txrx':
+        cmd = './MoonGen/build/MoonGen txrx.lua'
+        cmd = cmd + ' --devices=0,1' # fix to allow different devices
+        cmd = cmd + ' --measureLatency=0' # fix to allow latency measurment (whern txrx supports)
+        cmd = cmd + ' --rate=' + str(trial_params['rate'])
+	cmd = cmd + ' --size=' + str(trial_params['frame_size'])
+	cmd = cmd + ' --runTime=' + str(trial_params['runtime'])
+	cmd = cmd + ' --bidirectional=' + str(trial_params['run_bidirec'])
+        if trial_params['vlan_ids_list'] != '':
+            cmd = cmd + ' --vlanIds=' + str(trial_params['vlan_ids_list'])
+        if trial_params['vxlan_ids_list'] != '':
+            cmd = cmd + ' --vxlanIds=' + str(trial_params['vxlan_ids_list'])
+        if trial_params['src_ips_list'] != '':
+            cmd = cmd + ' --srcIps=' + str(trial_params['src_ips_list'])
+        if trial_params['dst_ips_list'] != '':
+            cmd = cmd + ' --dstIps=' + str(trial_params['dst_ips_list'])
+        if trial_params['src_macs_list'] != '':
+            cmd = cmd + ' --srcMacs=' + str(trial_params['src_macs_list'])
+        if trial_params['dst_macs_list'] != '':
+            cmd = cmd + ' --dstMacs=' + str(trial_params['dst_macs_list'])
+        if trial_params['encap_src_ips_list'] != '':
+            cmd = cmd + ' --encapSrcIps=' + str(trial_params['encap_src_ips_list'])
+        if trial_params['encap_dst_ips_list'] != '':
+            cmd = cmd + ' --encapDstIps=' + str(trial_params['encap_dst_ips_list'])
+        if trial_params['encap_src_macs_list'] != '':
+            cmd = cmd + ' --encapSrcMacs=' + str(trial_params['encap_src_macs_list'])
+        if trial_params['encap_dst_macs_list'] != '':
+            cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs_list'])
+        flow_mods_opt = '--flowMods=\"'
+        if trial_params['use_src_ip_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',srcIps'
+        if trial_params['use_dst_ip_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',dstIps'
+        if trial_params['use_encap_src_ip_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',encapSrcIps'
+        if trial_params['use_encap_dst_ip_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',encapDstIps'
+        if trial_params['use_src_mac_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',srcMacs'
+        if trial_params['use_dst_mac_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',dstMacs'
+        if trial_params['use_encap_src_mac_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',encapSrcMacs'
+        if trial_params['use_encap_dst_mac_flows'] == 1:
+	    flow_mods_opt = flow_mods_opt + ',encapDstMacs'
+        flow_mods_opt = flow_mods_opt + '\"'
+        re.sub(r"^,", "", flow_mods_opt)
+        cmd = cmd + flow_mods_opt
+
     print('running trial, rate', trial_params['rate'])
-    #txrx_cmd = './MoonGen/build/MoonGen ../txrx.lua --rate=' + str(trial_params['rate'] + ' --measureLatency=0 --runTime=5 --devices=4,4 --size=64 --flowMods="" --vxlanIds=100,100 --srcIps=192.168.100.2 --dstIps=192.168.100.1 --srcMacs=9e:e9:96:e4:76:01 --dstMacs=52:54:00:0c:d2:bd --bidirectional=0 --dstIpsVxlan=10.0.100.1 --srcIpsVxlan=10.0.100.2 --dstMacsVxlan=68:05:ca:2a:b7:f3'
-    #txrx_cmd = './MoonGen/build/MoonGen ../txrx.lua'
-    cmd = './MoonGen/build/MoonGen txrx.lua --calibrateTxRate=0 --rate=' + str(trial_params['rate']) + ' --bidirectional=' + str(trial_params['run_bidirec']) + ' --measureLatency=0 --runTime=' + str(trial_params['runtime']) + ' --devices=0,1 --size=' + str(trial_params['frame_size']) + ' --flowMods=""' + ' --srcIps=' + str(trial_params['src_ips_list']) + ' --dstMacs=' + str(trial_params['dst_macs_list']) + ' --dstIps=' + str(trial_params['dst_ips_list'])  + ' --vlanIds=' + str(trial_params['vlan_ids_list'])
-    print('txrx cmd:', cmd)
+    print('cmd:', cmd)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in p.stdout.readlines():
 	print(line)
@@ -192,7 +267,7 @@ def main():
     prev_fail_rate = rate
 
     # be verbose, dump all options to binary-search
-    print("traffic-generator", t_global.args.traffic_generator)
+    print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
     print("frame_size", t_global.args.frame_size)
     print("max_loss_pct", t_global.args.max_loss_pct)
@@ -200,10 +275,14 @@ def main():
     print("search-runtime", t_global.args.search_runtime)
     print("run-bidirec", t_global.args.run_bidirec)
     print("use-num-flows", t_global.args.num_flows)
-    print("use-mac-flows", t_global.args.use_mac_flows)
-    print("ip-flows", t_global.args.use_ip_flows)
-    print("use-encap-mac-flows", t_global.args.use_encap_mac_flows)
-    print("use-encap-ip-flows", t_global.args.use_encap_ip_flows)
+    print("use-src-mac-flows", t_global.args.use_src_mac_flows)
+    print("use-dst-mac-flows", t_global.args.use_dst_mac_flows)
+    print("use-src-ip-flows", t_global.args.use_src_ip_flows)
+    print("use-dst-ip-flows", t_global.args.use_dst_ip_flows)
+    print("use-encap-src-mac-flows", t_global.args.use_encap_src_mac_flows)
+    print("use-encap-dst-mac-flows", t_global.args.use_encap_dst_mac_flows)
+    print("use-encap-src-ip-flows", t_global.args.use_encap_src_ip_flows)
+    print("use-encap-dst-ip-flows", t_global.args.use_encap_dst_ip_flows)
     print("src-macs-list", t_global.args.src_macs_list)
     print("dest-macs-list", t_global.args.dst_macs_list)
     print("encap-src-macs-list", t_global.args.encap_src_macs_list)
@@ -219,10 +298,14 @@ def main():
     trial_params['frame_size'] = t_global.args.frame_size
     trial_params['run_bidirec'] = t_global.args.run_bidirec
     trial_params['num_flows'] = t_global.args.num_flows
-    trial_params['use_mac_flows']= t_global.args.use_mac_flows
-    trial_params['use_encap_mac_flows'] = t_global.args.use_encap_mac_flows
-    trial_params['use_ip_flows'] = t_global.args.use_ip_flows
-    trial_params['use_encap_ip_flows'] = t_global.args.use_encap_ip_flows
+    trial_params['use_src_mac_flows']= t_global.args.use_src_mac_flows
+    trial_params['use_dst_mac_flows']= t_global.args.use_dst_mac_flows
+    trial_params['use_encap_src_mac_flows'] = t_global.args.use_encap_src_mac_flows
+    trial_params['use_encap_dst_mac_flows'] = t_global.args.use_encap_dst_mac_flows
+    trial_params['use_src_ip_flows'] = t_global.args.use_src_ip_flows
+    trial_params['use_dst_ip_flows'] = t_global.args.use_dst_ip_flows
+    trial_params['use_encap_src_ip_flows'] = t_global.args.use_encap_src_ip_flows
+    trial_params['use_encap_dst_ip_flows'] = t_global.args.use_encap_dst_ip_flows
     trial_params['src_macs_list'] = t_global.args.src_macs_list
     trial_params['dst_macs_list'] = t_global.args.dst_macs_list
     trial_params['encap_src_macs_list'] = t_global.args.encap_src_macs_list
@@ -232,6 +315,8 @@ def main():
     trial_params['encap_src_ips_list'] = t_global.args.encap_src_ips_list
     trial_params['encap_dst_ips_list'] = t_global.args.encap_dst_ips_list
     trial_params['vlan_ids_list'] = t_global.args.vlan_ids_list
+    trial_params['vxlan_ids_list'] = t_global.args.vxlan_ids_list
+    trial_params['traffic_generator'] = t_global.args.traffic_generator
 
     # the actual binary search to find the maximum packet rate
     while final_validation or abs(rate - prev_rate) > rate_granularity:
