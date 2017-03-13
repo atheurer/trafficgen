@@ -183,6 +183,7 @@ def run_trial (trial_params):
     stats[1] = dict()
     stats[1]['tx_packets'] = 0
     stats[1]['rx_packets'] = 0
+    cmd = ""
 
     if trial_params['traffic_generator'] == 'moongen-txrx':
         cmd = './MoonGen/build/MoonGen txrx.lua'
