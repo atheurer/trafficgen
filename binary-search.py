@@ -213,7 +213,7 @@ def run_trial (trial_params):
             cmd = cmd + ' --encapSrcMacs=' + str(trial_params['encap_src_macs_list'])
         if trial_params['encap_dst_macs_list'] != '':
             cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs_list'])
-        flow_mods_opt = '--flowMods=\"'
+        flow_mods_opt = ' --flowMods=\"'
         if trial_params['use_src_ip_flows'] == 1:
 	    flow_mods_opt = flow_mods_opt + ',srcIps'
         if trial_params['use_dst_ip_flows'] == 1:
