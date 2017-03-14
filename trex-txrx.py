@@ -6,6 +6,7 @@ import stl_path
 import time
 import json
 import string
+import datetime
 from decimal import *
 from trex_stl_lib.api import *
 
@@ -192,6 +193,9 @@ def main():
         # clear the stats before injecting
         c.clear_stats()
 
+        # log start of test
+        print("Starting test at %s" % datetime.datetime.now().strftime("%H:%M:%S on %Y-%m-%d"))
+
         # here we multiply the traffic lineaer to whatever given in rate
         print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_a, port_b, t_global.args.runtime))
         if t_global.args.run_bidirec:
@@ -205,6 +209,9 @@ def main():
             c.wait_on_traffic(ports = [port_a, port_b])
         else:
             c.wait_on_traffic(ports = [port_a])
+
+        # log end of test
+        print("Finished test at %s" % datetime.datetime.now().strftime("%H:%M:%S on %Y-%m-%d"))
 
         stats = c.get_stats()
         c.disconnect()
