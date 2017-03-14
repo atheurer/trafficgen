@@ -1,4 +1,6 @@
 import sys, getopt
+sys.path.append('/opt/trex-core/scripts/automation/trex_control_plane/stl/examples')
+sys.path.append('/opt/trex-core/scripts/automation/trex_control_plane/stl')
 import argparse
 import stl_path
 import time
@@ -162,15 +164,17 @@ def main():
     c = STLClient()
     passed = True
 
+    stats = 0
+
     try:
         # turn this on for some information
         #c.set_verbose("high")
 
-        s1 = STLStream(packet = create_pkt(frame_size - 4, 0, num_flows, use_mac_flows, use_ip_flows),
+        s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
                        mode = STLTXCont(pps = 100))
 
-	if bidirec:
-       	    s2 = STLStream(packet = create_pkt(frame_size - 4, 1, num_flows, use_mac_flows, use_ip_flows),
+	if t_global.args.run_bidirec:
+            s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
                        isg = 1000,
                        mode = STLTXCont(pps = 100))
 
@@ -182,21 +186,22 @@ def main():
 
         # add both streams to ports
         c.add_streams(s1, ports = [port_a])
-	if bidirec:
+	if t_global.args.run_bidirec:
             c.add_streams(s2, ports = [port_b])
 
         # clear the stats before injecting
         c.clear_stats()
 
         # here we multiply the traffic lineaer to whatever given in rate
-        print("Running {:} on ports {:}, {:} for {:} seconds...".format(rate, port_a, port_b, duration))
-        if bidirec:
-            c.start(ports = [port_a, port_b], mult = rate, duration = duration)
+        print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_a, port_b, t_global.args.runtime))
+        if t_global.args.run_bidirec:
+            print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_b, port_a, t_global.args.runtime))
+            c.start(ports = [port_a, port_b], mult = (str(t_global.args.rate) + 'mpps'), duration = t_global.args.runtime, total = False)
         else:
-            c.start(ports = [port_a], mult = rate, duration = duration)
+            c.start(ports = [port_a], mult = (str(t_global.args.rate) + 'mpps'), duration = t_global.args.runtime, total = False)
 
         # block until done
-        if bidirec:
+        if t_global.args.run_bidirec:
             c.wait_on_traffic(ports = [port_a, port_b])
         else:
             c.wait_on_traffic(ports = [port_a])
@@ -209,7 +214,9 @@ def main():
 
     finally:
             c.disconnect()
-	    return stats
+            print("READABLE RESULT:")
+            print(json.dumps(stats, indent = 4, separators=(',', ': '), sort_keys = True))
+            print("PARSABLE RESULT: %s" % stats)
 
 if __name__ == "__main__":
     main()
