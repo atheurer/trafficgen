@@ -343,7 +343,7 @@ def main():
 	    print('binary search failed because no packets were received')
             quit() # abort immediately because nothing works
         else:
-	    print('total_tx_packets', total_tx_packets)
+	    print('total_rx_packets', total_rx_packets)
         total_lost_packets = total_tx_packets - total_rx_packets
 	print('total_lost_packets', total_lost_packets)
         pct_lost_packets = 100.0 * (total_tx_packets - total_rx_packets) / total_tx_packets

@@ -223,7 +223,7 @@ def main():
             c.disconnect()
             print("READABLE RESULT:")
             print(json.dumps(stats, indent = 4, separators=(',', ': '), sort_keys = True))
-            print("PARSABLE RESULT: %s" % stats)
+            print("PARSABLE RESULT: %s" % json.dumps(stats, separators=(',', ':')))
 
 if __name__ == "__main__":
     main()
