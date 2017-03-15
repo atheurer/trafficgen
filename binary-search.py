@@ -408,8 +408,11 @@ def main():
         print(']')
     else:
        if t_global.args.one_shot == 1:
+            print('[')
     	    print(json.dumps(stats[0], indent = 4, separators=(',', ': '), sort_keys = True))
+            print(',')
     	    print(json.dumps(stats[1], indent = 4, separators=(',', ': '), sort_keys = True))
+            print(']')
        else:    
            print("There is no trial which passed")
 
