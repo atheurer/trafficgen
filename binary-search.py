@@ -233,22 +233,46 @@ def run_trial (trial_params):
         flow_mods_opt = flow_mods_opt + '\"'
         re.sub(r"^,", "", flow_mods_opt)
         cmd = cmd + flow_mods_opt
+    elif trial_params['traffic_generator'] == 'trex-txrx':
+        cmd = 'python trex-txrx.py'
+        #cmd = cmd + ' --devices=0,1' # fix to allow different devices
+        #cmd = cmd + ' --measureLatency=0' # fix to allow latency measurment (whern txrx supports)
+        cmd = cmd + ' --rate=' + str(trial_params['rate'])
+        cmd = cmd + ' --size=' + str(trial_params['frame_size'])
+        cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
+        cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
+        cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
 
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     for line in p.stdout.readlines():
-	print(line)
-	#[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
-        #[INFO]  [0]->[1] txPackets: 10130148 rxPackets: 10130148 packetLoss: 0 txRate: 2.026430 rxRate: 2.026430 packetLossPct: 0.000000
-        m = re.search(r"\[INFO\]\s+\[(\d+)\]\-\>\[(\d+)\]\s+txPackets:\s+(\d+)\s+rxPackets:\s+(\d+)\s+packetLoss:\s+(\-*\d+)\s+txRate:\s+(\d+\.\d+)\s+rxRate:\s+(\d+\.\d+)\s+packetLossPct:\s+(\-*\d+\.\d+)", line)
-        if m:
-            print('tx_packets, tx_rate, device', m.group(3), m.group(6), int(m.group(1)))
-            print('rx_packets, rx_rate, device', m.group(4), m.group(7), int(m.group(2)))
-            #stats[0] = {'rx_packets':int(m.group(4)), 'tx_packets':int(m.group(3)), 'tx_rate':float(m.group(6)), 'rx_rate':float(m.group(7))}
-            #stats[1] = {'rx_packets':0, 'tx_packets':0, 'tx_rate':0, 'rx_rate':0}
-            stats[int(m.group(1))]['tx_packets'] = int(m.group(3))
-            stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
+	print(line.rstrip('\n'))
+        if trial_params['traffic_generator'] == 'moongen-txrx':
+             #[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
+             #[INFO]  [0]->[1] txPackets: 10130148 rxPackets: 10130148 packetLoss: 0 txRate: 2.026430 rxRate: 2.026430 packetLossPct: 0.000000
+             m = re.search(r"\[INFO\]\s+\[(\d+)\]\-\>\[(\d+)\]\s+txPackets:\s+(\d+)\s+rxPackets:\s+(\d+)\s+packetLoss:\s+(\-*\d+)\s+txRate:\s+(\d+\.\d+)\s+rxRate:\s+(\d+\.\d+)\s+packetLossPct:\s+(\-*\d+\.\d+)", line)
+             if m:
+                  print('tx_packets, tx_rate, device', m.group(3), m.group(6), int(m.group(1)))
+                  print('rx_packets, rx_rate, device', m.group(4), m.group(7), int(m.group(2)))
+                  #stats[0] = {'rx_packets':int(m.group(4)), 'tx_packets':int(m.group(3)), 'tx_rate':float(m.group(6)), 'rx_rate':float(m.group(7))}
+                  #stats[1] = {'rx_packets':0, 'tx_packets':0, 'tx_rate':0, 'rx_rate':0}
+                  stats[int(m.group(1))]['tx_packets'] = int(m.group(3))
+                  stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
+        elif trial_params['traffic_generator'] == 'trex-txrx':
+             #PARSABLE RESULT: {"0":{"tx_util":59.41563584,"rx_bps":15429310464.0,"obytes":135936221056,"rx_pps":30135356.0,"ipackets":1810243014,"oerrors":0,"rx_util":50.62741856,"opackets":2124003454,"tx_pps":35366456.0,"tx_bps":18107621376.0,"ierrors":0,"rx_bps_L1":20250967424.0,"tx_bps_L1":23766254336.0,"ibytes":115855552896},"1":{"tx_util":59.41578208,"rx_bps":15124001792.0,"obytes":135933955456,"rx_pps":29539068.0,"ipackets":1774039472,"oerrors":0,"rx_util":49.62563168,"opackets":2123968054,"tx_pps":35366540.0,"tx_bps":18107666432.0,"ierrors":0,"rx_bps_L1":19850252672.0,"tx_bps_L1":23766312832.0,"ibytes":113538526208},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":30553313280.0,"bw_per_core":7.512,"rx_cpu_util":0.0,"rx_pps":59674424.0,"queue_full":0,"cpu_util":96.4,"tx_pps":70732992.0,"tx_bps":36215287808.0,"rx_drop_bps":5661976576.0},"total":{"tx_util":118.83141792,"rx_bps":30553312256.0,"obytes":271870176512,"ipackets":3584282486,"rx_pps":59674424.0,"rx_util":100.25305024,"oerrors":0,"opackets":4247971508,"tx_pps":70732996.0,"tx_bps":36215287808.0,"ierrors":0,"rx_bps_L1":40101220096.0,"tx_bps_L1":47532567168.0,"ibytes":229394079104},"flow_stats":{"global":{"rx_err":{},"tx_err":{}}}}
+             m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
+             if m:
+                  results = json.loads(m.group(1))
+                  print('tx_packets, tx_rate, device', results["0"]["opackets"], results["0"]["tx_pps"], 0)
+                  stats[0]['tx_packets'] = int(results["0"]["opackets"])
+                  print('rx_packets, rx_rate, device', results["1"]["ipackets"], results["1"]["rx_pps"], 1)
+                  stats[1]['rx_packets'] = int(results["1"]["ipackets"])
+                  if trial_params['run_bidirec']:
+                       print('tx_packets, tx_rate, device', results["1"]["opackets"], results["1"]["tx_pps"], 1)
+                       stats[1]['tx_packets'] = int(results["1"]["opackets"])
+                       print('rx_packets, rx_rate, device', results["0"]["ipackets"], results["0"]["rx_pps"], 0)
+                       stats[0]['rx_packets'] = int(results["0"]["ipackets"])
     retval = p.wait()
     return stats
 
