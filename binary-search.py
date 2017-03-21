@@ -1,4 +1,4 @@
-#!/bin/python
+#!/bin/python -u
 
 import sys, getopt
 import argparse
@@ -274,7 +274,9 @@ def run_trial (trial_params):
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    for line in p.stdout.readlines():
+    while p.poll() is None:
+        p.stdout.flush()
+        line = p.stdout.readline()
 	print(line.rstrip('\n'))
         if trial_params['traffic_generator'] == 'moongen-txrx':
              #[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
