@@ -172,12 +172,14 @@ def main():
         #c.set_verbose("high")
 
         s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+                       flow_stats = STLFlowStats(pg_id = 1),
                        mode = STLTXCont(pps = 100))
 
 	if t_global.args.run_bidirec:
             s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
-                       isg = 1000,
-                       mode = STLTXCont(pps = 100))
+                           flow_stats = STLFlowStats(pg_id = 2),
+                           isg = 1000,
+                           mode = STLTXCont(pps = 100))
 
         # connect to server
         c.connect()

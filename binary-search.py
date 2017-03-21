@@ -290,23 +290,29 @@ def run_trial (trial_params):
                   stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
                   stats[int(m.group(2))]['rx_pps'] = float(m.group(4) / trial_params['runtime'])
         elif trial_params['traffic_generator'] == 'trex-txrx':
-             #PARSABLE RESULT: {"0":{"tx_util":59.41563584,"rx_bps":15429310464.0,"obytes":135936221056,"rx_pps":30135356.0,"ipackets":1810243014,"oerrors":0,"rx_util":50.62741856,"opackets":2124003454,"tx_pps":35366456.0,"tx_bps":18107621376.0,"ierrors":0,"rx_bps_L1":20250967424.0,"tx_bps_L1":23766254336.0,"ibytes":115855552896},"1":{"tx_util":59.41578208,"rx_bps":15124001792.0,"obytes":135933955456,"rx_pps":29539068.0,"ipackets":1774039472,"oerrors":0,"rx_util":49.62563168,"opackets":2123968054,"tx_pps":35366540.0,"tx_bps":18107666432.0,"ierrors":0,"rx_bps_L1":19850252672.0,"tx_bps_L1":23766312832.0,"ibytes":113538526208},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":30553313280.0,"bw_per_core":7.512,"rx_cpu_util":0.0,"rx_pps":59674424.0,"queue_full":0,"cpu_util":96.4,"tx_pps":70732992.0,"tx_bps":36215287808.0,"rx_drop_bps":5661976576.0},"total":{"tx_util":118.83141792,"rx_bps":30553312256.0,"obytes":271870176512,"ipackets":3584282486,"rx_pps":59674424.0,"rx_util":100.25305024,"oerrors":0,"opackets":4247971508,"tx_pps":70732996.0,"tx_bps":36215287808.0,"ierrors":0,"rx_bps_L1":40101220096.0,"tx_bps_L1":47532567168.0,"ibytes":229394079104},"flow_stats":{"global":{"rx_err":{},"tx_err":{}}}}
+             #PARSABLE RESULT: {"0":{"tx_util":37.68943472,"rx_bps":11472348160.0,"obytes":43064997504,"rx_pps":22406932.0,"ipackets":672312848,"oerrors":0,"rx_util":37.6436432,"opackets":672890586,"tx_pps":22434198.0,"tx_bps":11486302208.0,"ierrors":0,"rx_bps_L1":15057457280.0,"tx_bps_L1":15075773888.0,"ibytes":43028022272},"1":{"tx_util":37.6893712,"rx_bps":11486310400.0,"obytes":43063561984,"rx_pps":22434204.0,"ipackets":672890586,"oerrors":0,"rx_util":37.6894576,"opackets":672868156,"tx_pps":22434148.0,"tx_bps":11486284800.0,"ierrors":0,"rx_bps_L1":15075783040.0,"tx_bps_L1":15075748480.0,"ibytes":43064997504},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":22958659584.0,"bw_per_core":7.34,"rx_cpu_util":0.0,"rx_pps":44841136.0,"queue_full":0,"cpu_util":62.6,"tx_pps":44868344.0,"tx_bps":22972585984.0,"rx_drop_bps":0.0},"total":{"tx_util":75.37880591999999,"rx_bps":22958658560.0,"obytes":86128559488,"ipackets":1345203434,"rx_pps":44841136.0,"rx_util":75.3331008,"oerrors":0,"opackets":1345758742,"tx_pps":44868346.0,"tx_bps":22972587008.0,"ierrors":0,"rx_bps_L1":30133240320.0,"tx_bps_L1":30151522368.0,"ibytes":86093019776},"flow_stats":{"1":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":"N/A","1":20884464.286073223,"total":20884464.286073223},"rx_pkts":{"0":0,"1":672890586,"total":672890586},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":43064997504,"1":0,"total":43064997504},"tx_pps":{"0":20898314.26218906,"1":"N/A","total":20898314.26218906},"tx_bps":{"0":10699936902.240799,"1":"N/A","total":10699936902.240799},"tx_pkts":{"0":672890586,"1":0,"total":672890586},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":14043667184.191048,"1":"N/A","total":14043667184.191048}},"2":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":20884967.481241994,"1":"N/A","total":20884967.481241994},"rx_pkts":{"0":672312848,"1":0,"total":672312848},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":0,"1":43063561984,"total":43063561984},"tx_pps":{"0":"N/A","1":20898728.6582104,"total":20898728.6582104},"tx_bps":{"0":"N/A","1":10700149073.003725,"total":10700149073.003725},"tx_pkts":{"0":0,"1":672868156,"total":672868156},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":"N/A","1":14043945658.317389,"total":14043945658.317389}},"global":{"rx_err":{},"tx_err":{}}}}
              m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
              if m:
                   results = json.loads(m.group(1))
-                  print('tx_packets, tx_rate, device', results["0"]["opackets"], results["0"]["tx_pps"], 0)
-                  stats[0]['tx_packets'] = int(results["0"]["opackets"])
-                  stats[0]['tx_pps'] = int(results["0"]["tx_pps"])
-                  print('rx_packets, rx_rate, device', results["1"]["ipackets"], results["1"]["rx_pps"], 1)
-                  stats[1]['rx_packets'] = int(results["1"]["ipackets"])
-                  stats[1]['rx_pps'] = int(results["1"]["rx_pps"])
+
+                  stats[0]['tx_packets'] = int(results["flow_stats"]["1"]["tx_pkts"]["total"])
+                  stats[0]['tx_pps'] = float(results["flow_stats"]["1"]["tx_pkts"]["total"] / trial_params['runtime'])
+
+                  stats[1]['rx_packets'] = int(results["flow_stats"]["1"]["rx_pkts"]["total"])
+                  stats[1]['rx_pps'] = float(results["flow_stats"]["1"]["rx_pkts"]["total"] / trial_params['runtime'])
+
+                  print('tx_packets, tx_rate, device', stats[0]['tx_packets'], stats[0]['tx_pps'], 0)
+                  print('rx_packets, rx_rate, device', stats[1]['rx_packets'], stats[1]['rx_pps'], 1)
+
                   if trial_params['run_bidirec']:
-                       print('tx_packets, tx_rate, device', results["1"]["opackets"], results["1"]["tx_pps"], 1)
-                       stats[1]['tx_packets'] = int(results["1"]["opackets"])
-                       stats[1]['tx_pps'] = int(results["1"]["tx_pps"])
-                       print('rx_packets, rx_rate, device', results["0"]["ipackets"], results["0"]["rx_pps"], 0)
-                       stats[0]['rx_packets'] = int(results["0"]["ipackets"])
-                       stats[0]['rx_pps'] = int(results["0"]["rx_pps"])
+                       stats[1]['tx_packets'] = int(results["flow_stats"]["2"]["tx_pkts"]["total"])
+                       stats[1]['tx_pps'] = float(results["flow_stats"]["2"]["tx_pkts"]["total"] / trial_params['runtime'])
+
+                       stats[0]['rx_packets'] = int(results["flow_stats"]["2"]["rx_pkts"]["total"])
+                       stats[0]['rx_pps'] = float(results["flow_stats"]["2"]["rx_pkts"]["total"] / trial_params['runtime'])
+
+                       print('tx_packets, tx_rate, device', stats[1]['tx_packets'], stats[1]['tx_pps'], 1)
+                       print('rx_packets, rx_rate, device', stats[0]['rx_packets'], stats[0]['rx_pps'], 0)
     retval = p.wait()
     return stats
 
