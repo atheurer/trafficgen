@@ -154,6 +154,12 @@ def process_options ():
                         help='comma separated list of src IPs for excapsulated network,, 1 per device',
                         default=""
                         )
+    parser.add_argument('--measure-latency',
+                        dest='measure_latency',
+                        help='Collect latency statistics or not',
+                        default = 1,
+                        type = int
+                        )
     t_global.args = parser.parse_args();
     print(t_global.args)
 
@@ -181,6 +187,16 @@ def main():
                            isg = 1000,
                            mode = STLTXCont(pps = 100))
 
+        if t_global.args.measure_latency:
+            ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+                            flow_stats = STLFlowLatencyStats(pg_id = 3),
+                            mode = STLTXCont(pps = 1000))
+            if t_global.args.run_bidirec:
+                ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+                                flow_stats = STLFlowLatencyStats(pg_id = 4),
+                                isg = 1000,
+                                mode = STLTXCont(pps = 1000))
+
         # connect to server
         c.connect()
         # prepare our ports
@@ -191,6 +207,11 @@ def main():
         c.add_streams(s1, ports = [port_a])
 	if t_global.args.run_bidirec:
             c.add_streams(s2, ports = [port_b])
+
+        if t_global.args.measure_latency:
+            c.add_streams(ls1, ports = [port_a])
+            if t_global.args.run_bidirec:
+                c.add_streams(ls2, ports = [port_b])
 
         # clear the stats before injecting
         c.clear_stats()

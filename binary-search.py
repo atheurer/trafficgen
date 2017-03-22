@@ -170,7 +170,12 @@ def process_options ():
                         help='name of traffic generator: trex-txrx or moongen-txrx',
                         default="moongen-txrx"
                         )
-
+    parser.add_argument('--measure-latency',
+                        dest='measure_latency',
+                        help='Collect latency statistics or not',
+                        default = 1,
+                        type = int
+                        )
 
     t_global.args = parser.parse_args();
     print(t_global.args)
@@ -236,7 +241,7 @@ def run_trial (trial_params):
     elif trial_params['traffic_generator'] == 'trex-txrx':
         cmd = 'python trex-txrx.py'
         #cmd = cmd + ' --devices=0,1' # fix to allow different devices
-        #cmd = cmd + ' --measureLatency=0' # fix to allow latency measurment (whern txrx supports)
+        cmd = cmd + ' --measure-latency=' + str(trial_params['measure_latency'])
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
         cmd = cmd + ' --size=' + str(trial_params['frame_size'])
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
@@ -298,20 +303,28 @@ def run_trial (trial_params):
                   results = json.loads(m.group(1))
 
                   stats[0]['tx_packets'] = int(results["flow_stats"]["1"]["tx_pkts"]["total"])
-                  stats[0]['tx_pps'] = float(results["flow_stats"]["1"]["tx_pkts"]["total"] / trial_params['runtime'])
-
                   stats[1]['rx_packets'] = int(results["flow_stats"]["1"]["rx_pkts"]["total"])
-                  stats[1]['rx_pps'] = float(results["flow_stats"]["1"]["rx_pkts"]["total"] / trial_params['runtime'])
+
+                  if trial_params['measure_latency']:
+                       stats[0]['tx_packets'] += int(results["flow_stats"]["3"]["tx_pkts"]["total"])
+                       stats[1]['rx_packets'] += int(results["flow_stats"]["3"]["rx_pkts"]["total"])
+
+                  stats[0]['tx_pps'] = float(stats[0]['tx_packets'] / trial_params['runtime'])
+                  stats[1]['rx_pps'] = float(stats[1]['rx_packets'] / trial_params['runtime'])
 
                   print('tx_packets, tx_rate, device', stats[0]['tx_packets'], stats[0]['tx_pps'], 0)
                   print('rx_packets, rx_rate, device', stats[1]['rx_packets'], stats[1]['rx_pps'], 1)
 
                   if trial_params['run_bidirec']:
                        stats[1]['tx_packets'] = int(results["flow_stats"]["2"]["tx_pkts"]["total"])
-                       stats[1]['tx_pps'] = float(results["flow_stats"]["2"]["tx_pkts"]["total"] / trial_params['runtime'])
-
                        stats[0]['rx_packets'] = int(results["flow_stats"]["2"]["rx_pkts"]["total"])
-                       stats[0]['rx_pps'] = float(results["flow_stats"]["2"]["rx_pkts"]["total"] / trial_params['runtime'])
+
+                       if trial_params['measure_latency']:
+                            stats[1]['tx_packets'] += int(results["flow_stats"]["4"]["tx_pkts"]["total"])
+                            stats[0]['rx_packets'] += int(results["flow_stats"]["4"]["rx_pkts"]["total"])
+
+                       stats[1]['tx_pps'] = float(stats[1]['tx_packets'] / trial_params['runtime'])
+                       stats[0]['rx_pps'] = float(stats[0]['rx_packets'] / trial_params['runtime'])
 
                        print('tx_packets, tx_rate, device', stats[1]['tx_packets'], stats[1]['tx_pps'], 1)
                        print('rx_packets, rx_rate, device', stats[0]['rx_packets'], stats[0]['rx_pps'], 0)
@@ -337,6 +350,7 @@ def main():
     print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
     print("frame_size", t_global.args.frame_size)
+    print("measure_latency", t_global.args.measure_latency)
     print("max_loss_pct", t_global.args.max_loss_pct)
     print("one_shot", t_global.args.one_shot)
     print("search-runtime", t_global.args.search_runtime)
@@ -361,6 +375,7 @@ def main():
 
     trial_params = {} 
     # trial parameters which do not change during binary search
+    trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['device_list'] = [0,1]
     trial_params['frame_size'] = t_global.args.frame_size
     trial_params['run_bidirec'] = t_global.args.run_bidirec
