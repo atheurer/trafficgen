@@ -114,16 +114,16 @@ def process_options ():
                         default = 0.0,
                         type = float
                         )
-    parser.add_argument('--dst-macs-list', 
-                        dest='dst_macs_list',
-                        help='comma separated list of destination MACs, 1 per device',
-                        default=""
-                        )
-    parser.add_argument('--src-macs-list', 
-                        dest='src_macs_list',
-                        help='comma separated list of src MACs, 1 per device',
-                        default=""
-                        )
+    #parser.add_argument('--dst-macs-list',
+    #                    dest='dst_macs_list',
+    #                    help='comma separated list of destination MACs, 1 per device',
+    #                    default=""
+    #                    )
+    #parser.add_argument('--src-macs-list',
+    #                    dest='src_macs_list',
+    #                    help='comma separated list of src MACs, 1 per device',
+    #                    default=""
+    #                    )
     #parser.add_argument('--encap-dst-macs-list',
     #                    dest='encap_dst_macs_list',
     #                    help='comma separated list of destination MACs for encapulsated network, 1 per device',
@@ -134,16 +134,16 @@ def process_options ():
     #                    help='comma separated list of src MACs for encapulsated network, 1 per device',
     #                    default=""
     #                    )
-    parser.add_argument('--dst-ips-list', 
-                        dest='dst_macs_list',
-                        help='comma separated list of destination IPs 1 per device',
-                        default=""
-                        )
-    parser.add_argument('--src-ips-list', 
-                        dest='src_macs_list',
-                        help='comma separated list of src IPs, 1 per device',
-                        default=""
-                        )
+    #parser.add_argument('--dst-ips-list',
+    #                    dest='dst_macs_list',
+    #                    help='comma separated list of destination IPs 1 per device',
+    #                    default=""
+    #                    )
+    #parser.add_argument('--src-ips-list',
+    #                    dest='src_macs_list',
+    #                    help='comma separated list of src IPs, 1 per device',
+    #                    default=""
+    #                    )
     #parser.add_argument('--encap-dst-ips-list',
     #                    dest='encap_dst_macs_list',
     #                    help='comma separated list of destination IPs for excapsulated network, 1 per device',
