@@ -84,18 +84,18 @@ def process_options ():
                         default=1, # when using ecapsulated network like VxLAN, destination MAC will be fixed in order to reach single VTEP
                         type = int,
                         )
-    parser.add_argument('--use-encap-ip-flows', 
-                        dest='use_encap_ip_flows',
-                        help='implement flows by IP in the encapsulated packet',
-                        default=0,
-                        type = int,
-                        )
-    parser.add_argument('--use-encap-mac-flows', 
-                        dest="use_encap_mac_flows",
-                        help='implement flows by MAC in the encapsulated packet',
-                        default=0,
-                        type = int,
-                        )
+    #parser.add_argument('--use-encap-ip-flows',
+    #                    dest='use_encap_ip_flows',
+    #                    help='implement flows by IP in the encapsulated packet',
+    #                    default=0,
+    #                    type = int,
+    #                    )
+    #parser.add_argument('--use-encap-mac-flows',
+    #                    dest="use_encap_mac_flows",
+    #                    help='implement flows by MAC in the encapsulated packet',
+    #                    default=0,
+    #                    type = int,
+    #                    )
     parser.add_argument('--run-bidirec', 
                         dest='run_bidirec',
                         help='0 = Tx on first device, 1 = Tx on both devices',
@@ -124,16 +124,16 @@ def process_options ():
                         help='comma separated list of src MACs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--encap-dst-macs-list', 
-                        dest='encap_dst_macs_list',
-                        help='comma separated list of destination MACs for encapulsated network, 1 per device',
-                        default=""
-                        )
-    parser.add_argument('--encap-src-macs-list', 
-                        dest='encap_src_macs_list',
-                        help='comma separated list of src MACs for encapulsated network, 1 per device',
-                        default=""
-                        )
+    #parser.add_argument('--encap-dst-macs-list',
+    #                    dest='encap_dst_macs_list',
+    #                    help='comma separated list of destination MACs for encapulsated network, 1 per device',
+    #                    default=""
+    #                    )
+    #parser.add_argument('--encap-src-macs-list',
+    #                    dest='encap_src_macs_list',
+    #                    help='comma separated list of src MACs for encapulsated network, 1 per device',
+    #                    default=""
+    #                    )
     parser.add_argument('--dst-ips-list', 
                         dest='dst_macs_list',
                         help='comma separated list of destination IPs 1 per device',
@@ -144,16 +144,16 @@ def process_options ():
                         help='comma separated list of src IPs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--encap-dst-ips-list', 
-                        dest='encap_dst_macs_list',
-                        help='comma separated list of destination IPs for excapsulated network, 1 per device',
-                        default=""
-                        )
-    parser.add_argument('--encap-src-ips-list', 
-                        dest='encap_src_macs_list',
-                        help='comma separated list of src IPs for excapsulated network,, 1 per device',
-                        default=""
-                        )
+    #parser.add_argument('--encap-dst-ips-list',
+    #                    dest='encap_dst_macs_list',
+    #                    help='comma separated list of destination IPs for excapsulated network, 1 per device',
+    #                    default=""
+    #                    )
+    #parser.add_argument('--encap-src-ips-list',
+    #                    dest='encap_src_macs_list',
+    #                    help='comma separated list of src IPs for excapsulated network,, 1 per device',
+    #                    default=""
+    #                    )
     parser.add_argument('--measure-latency',
                         dest='measure_latency',
                         help='Collect latency statistics or not',

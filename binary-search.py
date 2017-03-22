@@ -255,14 +255,14 @@ def run_trial (trial_params):
              cmd = cmd + ' --src-macs-list=' + str(trial_params['src_macs_list'])
         if trial_params['dst_macs_list'] != '':
              cmd = cmd + ' --dst-macs-list=' + str(trial_params['dst_macs_list'])
-        if trial_params['encap_src_ips_list'] != '':
-             cmd = cmd + ' --encap-src-ips-list=' + str(trial_params['encap_src_ips_list'])
-        if trial_params['encap_dst_ips_list'] != '':
-             cmd = cmd + ' --encap-dst-ips-list=' + str(trial_params['encap_dst_ips_list'])
-        if trial_params['encap_src_macs_list'] != '':
-             cmd = cmd + ' --encap-src-macs-list=' + str(trial_params['encap_src_macs_list'])
-        if trial_params['encap_dst_macs_list'] != '':
-             cmd = cmd + ' --encap-dst-macs-list=' + str(trial_params['encap_dst_macs_list'])
+        #if trial_params['encap_src_ips_list'] != '':
+        #     cmd = cmd + ' --encap-src-ips-list=' + str(trial_params['encap_src_ips_list'])
+        #if trial_params['encap_dst_ips_list'] != '':
+        #     cmd = cmd + ' --encap-dst-ips-list=' + str(trial_params['encap_dst_ips_list'])
+        #if trial_params['encap_src_macs_list'] != '':
+        #     cmd = cmd + ' --encap-src-macs-list=' + str(trial_params['encap_src_macs_list'])
+        #if trial_params['encap_dst_macs_list'] != '':
+        #     cmd = cmd + ' --encap-dst-macs-list=' + str(trial_params['encap_dst_macs_list'])
         # currently trex-txrx.py does not seperate src and dst ip flow
         # enablement so if either is enabled they both are
         if trial_params['use_src_ip_flows'] == 1 or trial_params['use_dst_ip_flows'] == 1:
