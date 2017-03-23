@@ -14,7 +14,7 @@ class t_global(object):
      args=None;
 
 # simple packet creation
-def create_pkt (size, direction, num_flows, mac_flows, ip_flows):
+def create_pkt (size, direction, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows):
 
     ip_range = {'src': {'start': (256**3 *10 +1), 'end': (256**3 *10 +num_flows)}, # 10.x.y.z
                 'dst': {'start': (256**3 *8 +1),  'end': (256**3 *8 +num_flows)}}  #  8.x.y.z
@@ -27,33 +27,40 @@ def create_pkt (size, direction, num_flows, mac_flows, ip_flows):
         ip_dst = ip_range['src']
 
     vm = []
-    if ip_flows:
+    if src_ip_flows:
         vm = vm + [
-            # src
             STLVmFlowVar(name="ip_src",min_value=ip_src['start'],max_value=ip_src['end'],size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src"),
-            # dst
-            STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst"),
-            ]
+            STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src")
+        ]
 
-    if mac_flows:
+    if dst_ip_flows:
         vm = vm + [
-            # src
+            STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst")
+        ]
+
+    if src_mac_flows:
+        vm = vm + [
             STLVmFlowVar(name="mac_src",min_value=0,max_value=num_flows,size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7),
-            # dst
+            STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7)
+        ]
+
+    if dst_mac_flows:
+        vm = vm + [
             STLVmFlowVar(name="mac_dst",min_value=0,max_value=num_flows,size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1),
-            ]
+            STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1)
+        ]
 
-    vm = vm + [STLVmFixIpv4(offset = "IP")]
-
-    base = Ether()/IP()/UDP()
+    base = Ether()/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))/UDP()
     pad = max(0, size-len(base)) * 'x'
 
-    return STLPktBuilder(pkt = base/pad,
-                         vm  = vm)
+    if src_ip_flows or dst_ip_flows or src_mac_flows or dst_mac_flows:
+         vm = vm + [STLVmFixIpv4(offset = "IP")]
+         return STLPktBuilder(pkt = base/pad,
+                              vm  = vm)
+    else:
+         return STLPktBuilder(pkt = base/pad)
+
 
 def process_options ():
     parser = argparse.ArgumentParser(usage=""" 
@@ -72,16 +79,28 @@ def process_options ():
                         default=1024,
                         type = int,
                         )
-    parser.add_argument('--use-ip-flows', 
-                        dest='use_ip_flows',
-                        help='implement flows by IP',
-                        default=1, # when using ecapsulated network like VxLAN, destination IP will be fixed in order to reach single VTEP
+    parser.add_argument('--use-src-ip-flows',
+                        dest='use_src_ip_flows',
+                        help='implement flows by source IP',
+                        default=1,
                         type = int,
                         )
-    parser.add_argument('--use-mac-flows', 
-                        dest='use_mac_flows',
-                        help='implement flows by MAC',
-                        default=1, # when using ecapsulated network like VxLAN, destination MAC will be fixed in order to reach single VTEP
+    parser.add_argument('--use-dst-ip-flows',
+                        dest='use_dst_ip_flows',
+                        help='implement flows by destination IP',
+                        default=1,
+                        type = int,
+                        )
+    parser.add_argument('--use-src-mac-flows',
+                        dest='use_src_mac_flows',
+                        help='implement flows by source MAC',
+                        default=1,
+                        type = int,
+                        )
+    parser.add_argument('--use-dst-mac-flows',
+                        dest='use_dst_mac_flows',
+                        help='implement flows by dst MAC',
+                        default=1,
                         type = int,
                         )
     #parser.add_argument('--use-encap-ip-flows',
@@ -177,22 +196,22 @@ def main():
         # turn this on for some information
         #c.set_verbose("high")
 
-        s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+        s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
                        flow_stats = STLFlowStats(pg_id = 1),
                        mode = STLTXCont(pps = 100))
 
 	if t_global.args.run_bidirec:
-            s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+            s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
                            flow_stats = STLFlowStats(pg_id = 2),
                            isg = 1000,
                            mode = STLTXCont(pps = 100))
 
         if t_global.args.measure_latency:
-            ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+            ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
                             flow_stats = STLFlowLatencyStats(pg_id = 3),
                             mode = STLTXCont(pps = 1000))
             if t_global.args.run_bidirec:
-                ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_mac_flows, t_global.args.use_ip_flows),
+                ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
                                 flow_stats = STLFlowLatencyStats(pg_id = 4),
                                 isg = 1000,
                                 mode = STLTXCont(pps = 1000))
