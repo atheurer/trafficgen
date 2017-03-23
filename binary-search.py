@@ -247,34 +247,26 @@ def run_trial (trial_params):
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
         cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
         cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
-        if trial_params['src_ips_list'] != '':
-             cmd = cmd + ' --src-ips-list=' + str(trial_params['src_ips_list'])
-        if trial_params['dst_ips_list'] != '':
-             cmd = cmd + ' --dst-ips-list=' + str(trial_params['dst_ips_list'])
-        if trial_params['src_macs_list'] != '':
-             cmd = cmd + ' --src-macs-list=' + str(trial_params['src_macs_list'])
-        if trial_params['dst_macs_list'] != '':
-             cmd = cmd + ' --dst-macs-list=' + str(trial_params['dst_macs_list'])
-        if trial_params['encap_src_ips_list'] != '':
-             cmd = cmd + ' --encap-src-ips-list=' + str(trial_params['encap_src_ips_list'])
-        if trial_params['encap_dst_ips_list'] != '':
-             cmd = cmd + ' --encap-dst-ips-list=' + str(trial_params['encap_dst_ips_list'])
-        if trial_params['encap_src_macs_list'] != '':
-             cmd = cmd + ' --encap-src-macs-list=' + str(trial_params['encap_src_macs_list'])
-        if trial_params['encap_dst_macs_list'] != '':
-             cmd = cmd + ' --encap-dst-macs-list=' + str(trial_params['encap_dst_macs_list'])
-        # currently trex-txrx.py does not seperate src and dst ip flow
-        # enablement so if either is enabled they both are
-        if trial_params['use_src_ip_flows'] == 1 or trial_params['use_dst_ip_flows'] == 1:
-             cmd = cmd + ' --use-ip-flows=1'
-        else:
-             cmd = cmd + ' --use-ip-flows=0'
-        # currently trex-txrx.py does not seperate src and dst mac flow
-        # enablement so if either is enabled they both are
-        if trial_params['use_src_mac_flows'] == 1 or trial_params['use_dst_mac_flows'] == 1:
-             cmd = cmd + ' --use-mac-flows=1'
-        else:
-             cmd = cmd + ' --use-mac-flows=0'
+        #if trial_params['src_ips_list'] != '':
+        #     cmd = cmd + ' --src-ips-list=' + str(trial_params['src_ips_list'])
+        #if trial_params['dst_ips_list'] != '':
+        #     cmd = cmd + ' --dst-ips-list=' + str(trial_params['dst_ips_list'])
+        #if trial_params['src_macs_list'] != '':
+        #     cmd = cmd + ' --src-macs-list=' + str(trial_params['src_macs_list'])
+        #if trial_params['dst_macs_list'] != '':
+        #     cmd = cmd + ' --dst-macs-list=' + str(trial_params['dst_macs_list'])
+        #if trial_params['encap_src_ips_list'] != '':
+        #     cmd = cmd + ' --encap-src-ips-list=' + str(trial_params['encap_src_ips_list'])
+        #if trial_params['encap_dst_ips_list'] != '':
+        #     cmd = cmd + ' --encap-dst-ips-list=' + str(trial_params['encap_dst_ips_list'])
+        #if trial_params['encap_src_macs_list'] != '':
+        #     cmd = cmd + ' --encap-src-macs-list=' + str(trial_params['encap_src_macs_list'])
+        #if trial_params['encap_dst_macs_list'] != '':
+        #     cmd = cmd + ' --encap-dst-macs-list=' + str(trial_params['encap_dst_macs_list'])
+        cmd = cmd + ' --use-src-ip-flows=' + str(trial_params['use_src_ip_flows'])
+        cmd = cmd + ' --use-dst-ip-flows=' + str(trial_params['use_dst_ip_flows'])
+        cmd = cmd + ' --use-src-mac-flows=' + str(trial_params['use_src_mac_flows'])
+        cmd = cmd + ' --use-dst-mac-flows=' + str(trial_params['use_dst_mac_flows'])
 
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
