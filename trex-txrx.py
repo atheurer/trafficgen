@@ -179,6 +179,12 @@ def process_options ():
                         default = 1,
                         type = int
                         )
+    parser.add_argument('--latency-rate',
+                        dest='latency_rate',
+                        help='Rate to send latency packets per second',
+                        default = 1000,
+                        type = int
+                   )
     t_global.args = parser.parse_args();
     print(t_global.args)
 
@@ -209,12 +215,12 @@ def main():
         if t_global.args.measure_latency:
             ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
                             flow_stats = STLFlowLatencyStats(pg_id = 3),
-                            mode = STLTXCont(pps = 1000))
+                            mode = STLTXCont(pps = t_global.args.latency_rate))
             if t_global.args.run_bidirec:
                 ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
                                 flow_stats = STLFlowLatencyStats(pg_id = 4),
                                 isg = 1000,
-                                mode = STLTXCont(pps = 1000))
+                                mode = STLTXCont(pps = t_global.args.latency_rate))
 
         # connect to server
         c.connect()
@@ -235,6 +241,12 @@ def main():
         # clear the stats before injecting
         c.clear_stats()
 
+        # if latency is enabled the requested packet rate needs to be
+        # adjusted to account for the latency streams
+        rate_multiplier = t_global.args.rate
+        if t_global.args.measure_latency:
+             rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
+
         # log start of test
         print("Starting test at %s" % datetime.datetime.now().strftime("%H:%M:%S on %Y-%m-%d"))
 
@@ -242,9 +254,9 @@ def main():
         print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_a, port_b, t_global.args.runtime))
         if t_global.args.run_bidirec:
             print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_b, port_a, t_global.args.runtime))
-            c.start(ports = [port_a, port_b], mult = (str(t_global.args.rate) + 'mpps'), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a, port_b], mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
         else:
-            c.start(ports = [port_a], mult = (str(t_global.args.rate) + 'mpps'), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a], mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
 
         # block until done
         if t_global.args.run_bidirec:
