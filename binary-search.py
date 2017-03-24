@@ -251,10 +251,10 @@ def run_trial (trial_params):
         #     cmd = cmd + ' --src-ips-list=' + str(trial_params['src_ips_list'])
         #if trial_params['dst_ips_list'] != '':
         #     cmd = cmd + ' --dst-ips-list=' + str(trial_params['dst_ips_list'])
-        #if trial_params['src_macs_list'] != '':
-        #     cmd = cmd + ' --src-macs-list=' + str(trial_params['src_macs_list'])
-        #if trial_params['dst_macs_list'] != '':
-        #     cmd = cmd + ' --dst-macs-list=' + str(trial_params['dst_macs_list'])
+        if trial_params['src_macs_list'] != '':
+             cmd = cmd + ' --src-macs-list=' + str(trial_params['src_macs_list'])
+        if trial_params['dst_macs_list'] != '':
+             cmd = cmd + ' --dst-macs-list=' + str(trial_params['dst_macs_list'])
         #if trial_params['encap_src_ips_list'] != '':
         #     cmd = cmd + ' --encap-src-ips-list=' + str(trial_params['encap_src_ips_list'])
         #if trial_params['encap_dst_ips_list'] != '':
