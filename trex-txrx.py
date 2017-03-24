@@ -230,17 +230,19 @@ def main():
 
         if len(t_global.args.src_macs_list):
              src_macs = t_global.args.src_macs_list.split(",")
-             if len(src_macs) != 2:
-                  raise ValueError("--src-macs-list should be a comma separated list of 2 MAC addresses")
+             if len(src_macs) < active_ports:
+                  raise ValueError("--src-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
              mac_a_src = src_macs[0]
-             mac_b_src = src_macs[1]
+             if t_global.args.run_bidirec:
+                  mac_b_src = src_macs[1]
 
         if len(t_global.args.dst_macs_list):
              dst_macs = t_global.args.dst_macs_list.split(",")
-             if len(dst_macs) != 2:
-                  raise ValueError("--dst-macs-list should be a comma separated list of 2 MAC addresses")
+             if len(dst_macs) < active_ports:
+                  raise ValueError("--dst-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
              mac_a_dst = dst_macs[0]
-             mac_b_dst = dst_macs[1]
+             if t_global.args.run_bidirec:
+                  mac_b_dst = dst_macs[1]
 
         if len(t_global.args.src_ips_list):
              src_ips = t_global.args.src_ips_list.split(",")
