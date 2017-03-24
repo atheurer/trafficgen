@@ -13,18 +13,17 @@ from trex_stl_lib.api import *
 class t_global(object):
      args=None;
 
+def ip_to_int (ip):
+    ip_fields = ip.split(".")
+    if len(ip_fields) != 4:
+         raise ValueError("IP addresses should be in the form of W.X.Y.Z")
+    ip_int = 256**3 * int(ip_fields[0]) + 256**2 * int(ip_fields[1]) + 256**1 * int(ip_fields[2]) + int(ip_fields[3])
+    return ip_int
+
 # simple packet creation
-def create_pkt (size, direction, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows):
-
-    ip_range = {'src': {'start': (256**3 *10 +1), 'end': (256**3 *10 +num_flows)}, # 10.x.y.z
-                'dst': {'start': (256**3 *8 +1),  'end': (256**3 *8 +num_flows)}}  #  8.x.y.z
-
-    if (direction == 0):
-        ip_src = ip_range['src']
-        ip_dst = ip_range['dst']
-    else:
-        ip_src = ip_range['dst']
-        ip_dst = ip_range['src']
+def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst):
+    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
+    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
 
     vm = []
     if src_ip_flows:
@@ -51,7 +50,7 @@ def create_pkt (size, direction, num_flows, src_mac_flows, dst_mac_flows, src_ip
             STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1)
         ]
 
-    base = Ether()/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))/UDP()
+    base = Ether(src = mac_src, dst = mac_dst)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))/UDP()
     pad = max(0, size-len(base)) * 'x'
 
     if src_ip_flows or dst_ip_flows or src_mac_flows or dst_mac_flows:
@@ -133,16 +132,16 @@ def process_options ():
                         default = 0.0,
                         type = float
                         )
-    #parser.add_argument('--dst-macs-list',
-    #                    dest='dst_macs_list',
-    #                    help='comma separated list of destination MACs, 1 per device',
-    #                    default=""
-    #                    )
-    #parser.add_argument('--src-macs-list',
-    #                    dest='src_macs_list',
-    #                    help='comma separated list of src MACs, 1 per device',
-    #                    default=""
-    #                    )
+    parser.add_argument('--dst-macs-list',
+                        dest='dst_macs_list',
+                        help='comma separated list of destination MACs, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--src-macs-list',
+                        dest='src_macs_list',
+                        help='comma separated list of src MACs, 1 per device',
+                        default=""
+                        )
     #parser.add_argument('--encap-dst-macs-list',
     #                    dest='encap_dst_macs_list',
     #                    help='comma separated list of destination MACs for encapulsated network, 1 per device',
@@ -153,16 +152,16 @@ def process_options ():
     #                    help='comma separated list of src MACs for encapulsated network, 1 per device',
     #                    default=""
     #                    )
-    #parser.add_argument('--dst-ips-list',
-    #                    dest='dst_macs_list',
-    #                    help='comma separated list of destination IPs 1 per device',
-    #                    default=""
-    #                    )
-    #parser.add_argument('--src-ips-list',
-    #                    dest='src_macs_list',
-    #                    help='comma separated list of src IPs, 1 per device',
-    #                    default=""
-    #                    )
+    parser.add_argument('--dst-ips-list',
+                        dest='dst_ips_list',
+                        help='comma separated list of destination IPs 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--src-ips-list',
+                        dest='src_ips_list',
+                        help='comma separated list of src IPs, 1 per device',
+                        default=""
+                        )
     #parser.add_argument('--encap-dst-ips-list',
     #                    dest='encap_dst_macs_list',
     #                    help='comma separated list of destination IPs for excapsulated network, 1 per device',
@@ -198,35 +197,88 @@ def main():
 
     stats = 0
 
+    active_ports = 1
+    if t_global.args.run_bidirec:
+         active_ports += 1
+
     try:
         # turn this on for some information
         #c.set_verbose("high")
 
-        s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
+        # connect to server
+        c.connect()
+
+        # prepare our ports
+        c.reset(ports = [port_a, port_b])
+        c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
+
+        port_info = c.get_port_info(ports = [port_a, port_b])
+        print("Port %d Info:" % port_a)
+        print(json.dumps(port_info[port_a], indent = 4, separators=(',', ': '), sort_keys = True))
+        print("Port %d Info:" % port_b)
+        print(json.dumps(port_info[port_b], indent = 4, separators=(',', ': '), sort_keys = True))
+
+        mac_a_src = port_info[port_a]["src_mac"]
+        mac_a_dst = port_info[port_b]["src_mac"]
+        mac_b_src = port_info[port_b]["src_mac"]
+        mac_b_dst = port_info[port_a]["src_mac"]
+
+        ip_a_src = "10.0.0.1"
+        ip_a_dst = "8.0.0.1"
+        ip_b_src = ip_a_dst
+        ip_b_dst = ip_a_src
+
+        if len(t_global.args.src_macs_list):
+             src_macs = t_global.args.src_macs_list.split(",")
+             if len(src_macs) < active_ports:
+                  raise ValueError("--src-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
+             mac_a_src = src_macs[0]
+             if t_global.args.run_bidirec:
+                  mac_b_src = src_macs[1]
+
+        if len(t_global.args.dst_macs_list):
+             dst_macs = t_global.args.dst_macs_list.split(",")
+             if len(dst_macs) < active_ports:
+                  raise ValueError("--dst-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
+             mac_a_dst = dst_macs[0]
+             if t_global.args.run_bidirec:
+                  mac_b_dst = dst_macs[1]
+
+        if len(t_global.args.src_ips_list):
+             src_ips = t_global.args.src_ips_list.split(",")
+             if len(src_ips) < active_ports:
+                  raise ValueError("--src-ips-list should be a comma separated list of at least %d IP address(es)" % active_ports)
+             ip_a_src = src_ips[0]
+             if t_global.args.run_bidirec:
+                  ip_b_src = src_ips[1]
+
+        if len(t_global.args.dst_ips_list):
+             dst_ips = t_global.args.dst_ips_list.split(",")
+             if len(dst_ips) < active_ports:
+                  raise ValueError("--dst-ips-list should be a comma separated list of at least %d IP address(es)" % active_ports)
+             ip_a_dst = dst_ips[0]
+             if t_global.args.run_bidirec:
+                  ip_b_dst = dst_ips[1]
+
+        s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst),
                        flow_stats = STLFlowStats(pg_id = 1),
                        mode = STLTXCont(pps = 100))
 
 	if t_global.args.run_bidirec:
-            s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
+            s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst),
                            flow_stats = STLFlowStats(pg_id = 2),
                            isg = 1000,
                            mode = STLTXCont(pps = 100))
 
         if t_global.args.measure_latency:
-            ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 0, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
+            ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst),
                             flow_stats = STLFlowLatencyStats(pg_id = 3),
                             mode = STLTXCont(pps = t_global.args.latency_rate))
             if t_global.args.run_bidirec:
-                ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, 1, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows),
+                ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst),
                                 flow_stats = STLFlowLatencyStats(pg_id = 4),
                                 isg = 1000,
                                 mode = STLTXCont(pps = t_global.args.latency_rate))
-
-        # connect to server
-        c.connect()
-        # prepare our ports
-        c.reset(ports = [port_a, port_b])
-        c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
 
         # add both streams to ports
         c.add_streams(s1, ports = [port_a])
@@ -270,14 +322,18 @@ def main():
         stats = c.get_stats()
         c.disconnect()
 
+        print("READABLE RESULT:")
+        print(json.dumps(stats, indent = 4, separators=(',', ': '), sort_keys = True))
+        print("PARSABLE RESULT: %s" % json.dumps(stats, separators=(',', ':')))
+
     except STLError as e:
         print(e)
 
+    except ValueError as e:
+        print("ERROR: %s" % e)
+
     finally:
             c.disconnect()
-            print("READABLE RESULT:")
-            print(json.dumps(stats, indent = 4, separators=(',', ': '), sort_keys = True))
-            print("PARSABLE RESULT: %s" % json.dumps(stats, separators=(',', ':')))
 
 if __name__ == "__main__":
     main()
