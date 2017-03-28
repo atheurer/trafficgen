@@ -209,6 +209,7 @@ def main():
         c.connect()
 
         # prepare our ports
+        c.acquire(ports = [port_a, port_b], force=True)
         c.reset(ports = [port_a, port_b])
         c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
 
@@ -306,9 +307,9 @@ def main():
         print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_a, port_b, t_global.args.runtime))
         if t_global.args.run_bidirec:
             print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_b, port_a, t_global.args.runtime))
-            c.start(ports = [port_a, port_b], mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
         else:
-            c.start(ports = [port_a], mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
 
         # block until done
         if t_global.args.run_bidirec:
