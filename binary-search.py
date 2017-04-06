@@ -109,6 +109,12 @@ def process_options ():
                         default = 0.0,
                         type = float
                         )
+    parser.add_argument('--rate-unit',
+                        dest='rate_unit',
+                        help='rate unit per device',
+                        default = "mpps",
+                        choices = [ '%', 'mpps' ]
+                        )
     parser.add_argument('--max-loss-pct', 
                         dest='max_loss_pct',
                         help='maximum percentage of packet loss',
@@ -243,6 +249,7 @@ def run_trial (trial_params):
         #cmd = cmd + ' --devices=0,1' # fix to allow different devices
         cmd = cmd + ' --measure-latency=' + str(trial_params['measure_latency'])
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
+        cmd = cmd + ' --rate-unit=' + str(trial_params['rate_unit'])
         cmd = cmd + ' --size=' + str(trial_params['frame_size'])
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
         cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
@@ -333,7 +340,10 @@ def main():
 
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
-        rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
+        if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%":
+             rate = 100
+        else:
+             rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
     prev_rate = 0
     prev_pass_rate = 0
     prev_fail_rate = rate
@@ -341,6 +351,7 @@ def main():
     # be verbose, dump all options to binary-search
     print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
+    print("rate_unit", t_global.args.rate_unit)
     print("frame_size", t_global.args.frame_size)
     print("measure_latency", t_global.args.measure_latency)
     print("max_loss_pct", t_global.args.max_loss_pct)
@@ -369,6 +380,7 @@ def main():
     # trial parameters which do not change during binary search
     trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['device_list'] = [0,1]
+    trial_params['rate_unit'] = t_global.args.rate_unit
     trial_params['frame_size'] = t_global.args.frame_size
     trial_params['run_bidirec'] = t_global.args.run_bidirec
     trial_params['num_flows'] = t_global.args.num_flows
