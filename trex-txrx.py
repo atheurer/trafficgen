@@ -128,9 +128,15 @@ def process_options ():
                         )
     parser.add_argument('--rate', 
                         dest='rate',
-                        help='rate in millions of packets per second per device',
+                        help='rate per device',
                         default = 0.0,
                         type = float
+                        )
+    parser.add_argument('--rate-unit',
+                        dest='rate_unit',
+                        help='rate unit per device',
+                        default = "mpps",
+                        choices = [ '%', 'mpps' ]
                         )
     parser.add_argument('--dst-macs-list',
                         dest='dst_macs_list',
@@ -304,12 +310,12 @@ def main():
         print("Starting test at %s" % datetime.datetime.now().strftime("%H:%M:%S on %Y-%m-%d"))
 
         # here we multiply the traffic lineaer to whatever given in rate
-        print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_a, port_b, t_global.args.runtime))
+        print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
         if t_global.args.run_bidirec:
-            print("Transmitting {:} Mpps from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, port_b, port_a, t_global.args.runtime))
-            c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
+            print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
+            c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
         else:
-            c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + 'mpps'), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
 
         # block until done
         if t_global.args.run_bidirec:
