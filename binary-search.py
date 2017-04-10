@@ -226,21 +226,21 @@ def run_trial (trial_params):
             cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs_list'])
         flow_mods_opt = ' --flowMods=\"'
         if trial_params['use_src_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',srcIps'
+	    flow_mods_opt = flow_mods_opt + ',srcIp'
         if trial_params['use_dst_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',dstIps'
+	    flow_mods_opt = flow_mods_opt + ',dstIp'
         if trial_params['use_encap_src_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapSrcIps'
+	    flow_mods_opt = flow_mods_opt + ',encapSrcIp'
         if trial_params['use_encap_dst_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapDstIps'
+	    flow_mods_opt = flow_mods_opt + ',encapDstIp'
         if trial_params['use_src_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',srcMacs'
+	    flow_mods_opt = flow_mods_opt + ',srcMac'
         if trial_params['use_dst_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',dstMacs'
+	    flow_mods_opt = flow_mods_opt + ',dstMac'
         if trial_params['use_encap_src_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapSrcMacs'
+	    flow_mods_opt = flow_mods_opt + ',encapSrcMac'
         if trial_params['use_encap_dst_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapDstMacs'
+	    flow_mods_opt = flow_mods_opt + ',encapDstMac'
         flow_mods_opt = flow_mods_opt + '\"'
         re.sub(r"^,", "", flow_mods_opt)
         cmd = cmd + flow_mods_opt
