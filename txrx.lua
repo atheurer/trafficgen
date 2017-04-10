@@ -450,11 +450,11 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "srcIp" ) then
-				pkt.ip4.src:set(args.srcIps[devId] + flowId)
+				pkt.ip4.src:set(args.srcIpsU32[devId] + flowId)
 			end
 	
 			if ( v == "dstIp" ) then
-				pkt.ip4.dst:set(args.dstIps[devId] + flowId)
+				pkt.ip4.dst:set(args.dstIpsU32[devId] + flowId)
 			end
 	
 			if ( v == "srcMac" ) then
