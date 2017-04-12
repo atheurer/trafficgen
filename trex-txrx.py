@@ -220,10 +220,9 @@ def main():
         c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
 
         port_info = c.get_port_info(ports = [port_a, port_b])
-        print("Port %d Info:" % port_a)
-        print(json.dumps(port_info[port_a], indent = 4, separators=(',', ': '), sort_keys = True))
-        print("Port %d Info:" % port_b)
-        print(json.dumps(port_info[port_b], indent = 4, separators=(',', ': '), sort_keys = True))
+        print("READABLE PORT INFO:")
+        print(json.dumps(port_info, indent = 4, separators=(',', ': '), sort_keys = True))
+        print("PARSABLE PORT INFO: %s" % json.dumps(port_info, separators=(',', ':')))
 
         mac_a_src = port_info[port_a]["src_mac"]
         mac_a_dst = port_info[port_b]["src_mac"]
