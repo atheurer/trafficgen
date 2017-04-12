@@ -296,9 +296,9 @@ def run_trial (trial_params):
                        #stats[0] = {'rx_packets':int(m.group(4)), 'tx_packets':int(m.group(3)), 'tx_rate':float(m.group(6)), 'rx_rate':float(m.group(7))}
                        #stats[1] = {'rx_packets':0, 'tx_packets':0, 'tx_rate':0, 'rx_rate':0}
                        stats[int(m.group(1))]['tx_packets'] = int(m.group(3))
-                       stats[int(m.group(1))]['tx_pps'] = float(m.group(3) / float(trial_params['runtime']))
+                       stats[int(m.group(1))]['tx_pps'] = float(m.group(3)) / float(trial_params['runtime'])
                        stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
-                       stats[int(m.group(2))]['rx_pps'] = float(m.group(4) / float(trial_params['runtime']))
+                       stats[int(m.group(2))]['rx_pps'] = float(m.group(4)) / float(trial_params['runtime'])
              elif trial_params['traffic_generator'] == 'trex-txrx':
                   #PARSABLE RESULT: {"0":{"tx_util":37.68943472,"rx_bps":11472348160.0,"obytes":43064997504,"rx_pps":22406932.0,"ipackets":672312848,"oerrors":0,"rx_util":37.6436432,"opackets":672890586,"tx_pps":22434198.0,"tx_bps":11486302208.0,"ierrors":0,"rx_bps_L1":15057457280.0,"tx_bps_L1":15075773888.0,"ibytes":43028022272},"1":{"tx_util":37.6893712,"rx_bps":11486310400.0,"obytes":43063561984,"rx_pps":22434204.0,"ipackets":672890586,"oerrors":0,"rx_util":37.6894576,"opackets":672868156,"tx_pps":22434148.0,"tx_bps":11486284800.0,"ierrors":0,"rx_bps_L1":15075783040.0,"tx_bps_L1":15075748480.0,"ibytes":43064997504},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":22958659584.0,"bw_per_core":7.34,"rx_cpu_util":0.0,"rx_pps":44841136.0,"queue_full":0,"cpu_util":62.6,"tx_pps":44868344.0,"tx_bps":22972585984.0,"rx_drop_bps":0.0},"total":{"tx_util":75.37880591999999,"rx_bps":22958658560.0,"obytes":86128559488,"ipackets":1345203434,"rx_pps":44841136.0,"rx_util":75.3331008,"oerrors":0,"opackets":1345758742,"tx_pps":44868346.0,"tx_bps":22972587008.0,"ierrors":0,"rx_bps_L1":30133240320.0,"tx_bps_L1":30151522368.0,"ibytes":86093019776},"flow_stats":{"1":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":"N/A","1":20884464.286073223,"total":20884464.286073223},"rx_pkts":{"0":0,"1":672890586,"total":672890586},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":43064997504,"1":0,"total":43064997504},"tx_pps":{"0":20898314.26218906,"1":"N/A","total":20898314.26218906},"tx_bps":{"0":10699936902.240799,"1":"N/A","total":10699936902.240799},"tx_pkts":{"0":672890586,"1":0,"total":672890586},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":14043667184.191048,"1":"N/A","total":14043667184.191048}},"2":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":20884967.481241994,"1":"N/A","total":20884967.481241994},"rx_pkts":{"0":672312848,"1":0,"total":672312848},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":0,"1":43063561984,"total":43063561984},"tx_pps":{"0":"N/A","1":20898728.6582104,"total":20898728.6582104},"tx_bps":{"0":"N/A","1":10700149073.003725,"total":10700149073.003725},"tx_pkts":{"0":0,"1":672868156,"total":672868156},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":"N/A","1":14043945658.317389,"total":14043945658.317389}},"global":{"rx_err":{},"tx_err":{}}}}
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
@@ -312,8 +312,8 @@ def run_trial (trial_params):
                             stats[0]['tx_packets'] += int(results["flow_stats"]["3"]["tx_pkts"]["total"])
                             stats[1]['rx_packets'] += int(results["flow_stats"]["3"]["rx_pkts"]["total"])
 
-                       stats[0]['tx_pps'] = float(stats[0]['tx_packets'] / float(trial_params['runtime']))
-                       stats[1]['rx_pps'] = float(stats[1]['rx_packets'] / float(trial_params['runtime']))
+                       stats[0]['tx_pps'] = float(stats[0]['tx_packets']) / float(trial_params['runtime'])
+                       stats[1]['rx_pps'] = float(stats[1]['rx_packets']) / float(trial_params['runtime'])
 
                        print('tx_packets, tx_rate, device', stats[0]['tx_packets'], stats[0]['tx_pps'], 0)
                        print('rx_packets, rx_rate, device', stats[1]['rx_packets'], stats[1]['rx_pps'], 1)
@@ -326,8 +326,8 @@ def run_trial (trial_params):
                                  stats[1]['tx_packets'] += int(results["flow_stats"]["4"]["tx_pkts"]["total"])
                                  stats[0]['rx_packets'] += int(results["flow_stats"]["4"]["rx_pkts"]["total"])
 
-                            stats[1]['tx_pps'] = float(stats[1]['tx_packets'] / float(trial_params['runtime']))
-                            stats[0]['rx_pps'] = float(stats[0]['rx_packets'] / float(trial_params['runtime']))
+                            stats[1]['tx_pps'] = float(stats[1]['tx_packets']) / float(trial_params['runtime'])
+                            stats[0]['rx_pps'] = float(stats[0]['rx_packets']) / float(trial_params['runtime'])
 
                             print('tx_packets, tx_rate, device', stats[1]['tx_packets'], stats[1]['tx_pps'], 1)
                             print('rx_packets, rx_rate, device', stats[0]['rx_packets'], stats[0]['rx_pps'], 0)
