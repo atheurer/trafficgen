@@ -394,6 +394,7 @@ def main():
     print("max_loss_pct", t_global.args.max_loss_pct)
     print("one_shot", t_global.args.one_shot)
     print("search-runtime", t_global.args.search_runtime)
+    print("validation-runtime", t_global.args.validation_runtime)
     print("run-bidirec", t_global.args.run_bidirec)
     print("use-num-flows", t_global.args.num_flows)
     print("use-src-mac-flows", t_global.args.use_src_mac_flows)
