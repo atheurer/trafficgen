@@ -508,7 +508,7 @@ def main():
 
         if test_abort:
              print('Binary search aborting due to critical error')
-             quit()
+             quit(1)
 
         if trial_passed:
 	    print('(trial passed all requirements)')
