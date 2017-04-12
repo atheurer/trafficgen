@@ -303,7 +303,7 @@ def main():
         # if latency is enabled the requested packet rate needs to be
         # adjusted to account for the latency streams
         rate_multiplier = t_global.args.rate
-        if t_global.args.measure_latency:
+        if t_global.args.rate_unit == "mpps" and t_global.args.measure_latency:
              rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
 
         # log start of test
