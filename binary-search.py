@@ -370,6 +370,10 @@ def main():
     rate_granularity = 0.01
     rate = t_global.args.rate
 
+    if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
+         print("The moongen-txrx traffic generator does not support --rate-unit=%")
+         quit(1)
+
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
         if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%":
