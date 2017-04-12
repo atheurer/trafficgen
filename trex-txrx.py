@@ -220,10 +220,9 @@ def main():
         c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
 
         port_info = c.get_port_info(ports = [port_a, port_b])
-        print("Port %d Info:" % port_a)
-        print(json.dumps(port_info[port_a], indent = 4, separators=(',', ': '), sort_keys = True))
-        print("Port %d Info:" % port_b)
-        print(json.dumps(port_info[port_b], indent = 4, separators=(',', ': '), sort_keys = True))
+        print("READABLE PORT INFO:")
+        print(json.dumps(port_info, indent = 4, separators=(',', ': '), sort_keys = True))
+        print("PARSABLE PORT INFO: %s" % json.dumps(port_info, separators=(',', ':')))
 
         mac_a_src = port_info[port_a]["src_mac"]
         mac_a_dst = port_info[port_b]["src_mac"]
@@ -300,33 +299,48 @@ def main():
         # clear the stats before injecting
         c.clear_stats()
 
+        # clear the event log
+        c.clear_events()
+
         # if latency is enabled the requested packet rate needs to be
         # adjusted to account for the latency streams
         rate_multiplier = t_global.args.rate
-        if t_global.args.measure_latency:
+        if t_global.args.rate_unit == "mpps" and t_global.args.measure_latency:
              rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
 
         # log start of test
-        print("Starting test at %s" % datetime.datetime.now().strftime("%H:%M:%S on %Y-%m-%d"))
+        start_time = datetime.datetime.now()
+        print("Starting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
 
         # here we multiply the traffic lineaer to whatever given in rate
         print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
         if t_global.args.run_bidirec:
             print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
-            c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
         else:
-            c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
+            c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
 
-        # block until done
+        time.sleep(t_global.args.runtime)
+
         if t_global.args.run_bidirec:
-            c.wait_on_traffic(ports = [port_a, port_b])
+             c.stop(ports = [port_a, port_b])
         else:
-            c.wait_on_traffic(ports = [port_a])
+             c.stop(ports = [port_a])
 
         # log end of test
-        print("Finished test at %s" % datetime.datetime.now().strftime("%H:%M:%S on %Y-%m-%d"))
+        stop_time = datetime.datetime.now()
+        print("Finished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        total_time = stop_time - start_time
+        print("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
 
-        stats = c.get_stats()
+        stats = c.get_stats(sync_now = True)
+
+        warning_events = c.get_warnings()
+        if len(warning_events):
+             print("TRex Events:")
+             for warning in warning_events:
+                  print("    WARNING: %s" % warning)
+
         c.disconnect()
 
         print("READABLE RESULT:")

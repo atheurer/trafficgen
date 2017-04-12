@@ -103,6 +103,12 @@ def process_options ():
                         default=30,
                         type = int,
                         )
+    parser.add_argument('--sniff-runtime',
+                        dest='sniff_runtime',
+                        help='trial period in seconds during sniff search',
+                        default = 0,
+                        type = int,
+                        )
     parser.add_argument('--rate', 
                         dest='rate',
                         help='rate in millions of packets per second per device',
@@ -114,6 +120,12 @@ def process_options ():
                         help='rate unit per device',
                         default = "mpps",
                         choices = [ '%', 'mpps' ]
+                        )
+    parser.add_argument('--rate-tolerance',
+                        dest='rate_tolerance',
+                        help='amount that TX rate is allowed to vary from requested rate and still be considered valid (in --rate-unit units)',
+                        default = 0.250,
+                        type = float
                         )
     parser.add_argument('--max-loss-pct', 
                         dest='max_loss_pct',
@@ -182,6 +194,12 @@ def process_options ():
                         default = 1,
                         type = int
                         )
+    parser.add_argument('--trial-gap',
+                        dest='trial_gap',
+                        help='Time to sleep between trial attempts',
+                        default = 0,
+                        type = int
+                        )
 
     t_global.args = parser.parse_args();
     print(t_global.args)
@@ -191,9 +209,11 @@ def run_trial (trial_params):
     stats[0] = dict()
     stats[0]['tx_packets'] = 0
     stats[0]['rx_packets'] = 0
+    stats[0]['tx_bandwidth'] = 0
     stats[1] = dict()
     stats[1]['tx_packets'] = 0
     stats[1]['rx_packets'] = 0
+    stats[1]['tx_bandwidth'] = 0
     cmd = ""
 
     if trial_params['traffic_generator'] == 'moongen-txrx':
@@ -300,6 +320,15 @@ def run_trial (trial_params):
                        stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
                        stats[int(m.group(2))]['rx_pps'] = float(m.group(4)) / float(trial_params['runtime'])
              elif trial_params['traffic_generator'] == 'trex-txrx':
+                  #PARSABLE PORT INFO: [{"arp":"68:05:ca:32:0d:f0","src_ipv4":"1.1.1.1","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":0,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:14:d0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"2.2.2.2","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:81:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"},{"arp":"68:05:ca:32:14:d0","src_ipv4":"2.2.2.2","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":1,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:0d:f0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"1.1.1.1","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:84:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"}]
+                  m = re.search(r"PARSABLE PORT INFO:\s+(.*)$", line)
+                  if m:
+                       results = json.loads(m.group(1))
+
+                       stats[0]['tx_bandwidth'] = results[0]['speed'] * 1000 * 1000 * 1000
+
+                       if trial_params['run_bidirec']:
+                            stats[1]['tx_bandwidth'] = results[1]['speed'] * 1000 * 1000 * 1000
                   #PARSABLE RESULT: {"0":{"tx_util":37.68943472,"rx_bps":11472348160.0,"obytes":43064997504,"rx_pps":22406932.0,"ipackets":672312848,"oerrors":0,"rx_util":37.6436432,"opackets":672890586,"tx_pps":22434198.0,"tx_bps":11486302208.0,"ierrors":0,"rx_bps_L1":15057457280.0,"tx_bps_L1":15075773888.0,"ibytes":43028022272},"1":{"tx_util":37.6893712,"rx_bps":11486310400.0,"obytes":43063561984,"rx_pps":22434204.0,"ipackets":672890586,"oerrors":0,"rx_util":37.6894576,"opackets":672868156,"tx_pps":22434148.0,"tx_bps":11486284800.0,"ierrors":0,"rx_bps_L1":15075783040.0,"tx_bps_L1":15075748480.0,"ibytes":43064997504},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":22958659584.0,"bw_per_core":7.34,"rx_cpu_util":0.0,"rx_pps":44841136.0,"queue_full":0,"cpu_util":62.6,"tx_pps":44868344.0,"tx_bps":22972585984.0,"rx_drop_bps":0.0},"total":{"tx_util":75.37880591999999,"rx_bps":22958658560.0,"obytes":86128559488,"ipackets":1345203434,"rx_pps":44841136.0,"rx_util":75.3331008,"oerrors":0,"opackets":1345758742,"tx_pps":44868346.0,"tx_bps":22972587008.0,"ierrors":0,"rx_bps_L1":30133240320.0,"tx_bps_L1":30151522368.0,"ibytes":86093019776},"flow_stats":{"1":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":"N/A","1":20884464.286073223,"total":20884464.286073223},"rx_pkts":{"0":0,"1":672890586,"total":672890586},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":43064997504,"1":0,"total":43064997504},"tx_pps":{"0":20898314.26218906,"1":"N/A","total":20898314.26218906},"tx_bps":{"0":10699936902.240799,"1":"N/A","total":10699936902.240799},"tx_pkts":{"0":672890586,"1":0,"total":672890586},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":14043667184.191048,"1":"N/A","total":14043667184.191048}},"2":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":20884967.481241994,"1":"N/A","total":20884967.481241994},"rx_pkts":{"0":672312848,"1":0,"total":672312848},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":0,"1":43063561984,"total":43063561984},"tx_pps":{"0":"N/A","1":20898728.6582104,"total":20898728.6582104},"tx_bps":{"0":"N/A","1":10700149073.003725,"total":10700149073.003725},"tx_pkts":{"0":0,"1":672868156,"total":672868156},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":"N/A","1":14043945658.317389,"total":14043945658.317389}},"global":{"rx_err":{},"tx_err":{}}}}
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
@@ -353,6 +382,10 @@ def main():
     rate_granularity = 0.01
     rate = t_global.args.rate
 
+    if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
+         print("The moongen-txrx traffic generator does not support --rate-unit=%")
+         quit(1)
+
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
         if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%":
@@ -367,11 +400,15 @@ def main():
     print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
     print("rate_unit", t_global.args.rate_unit)
+    print("rate_tolerance", t_global.args.rate_tolerance)
     print("frame_size", t_global.args.frame_size)
     print("measure_latency", t_global.args.measure_latency)
     print("max_loss_pct", t_global.args.max_loss_pct)
     print("one_shot", t_global.args.one_shot)
+    print("trial_gap", t_global.args.trial_gap)
     print("search-runtime", t_global.args.search_runtime)
+    print("validation-runtime", t_global.args.validation_runtime)
+    print("sniff-runtime", t_global.args.sniff_runtime)
     print("run-bidirec", t_global.args.run_bidirec)
     print("use-num-flows", t_global.args.num_flows)
     print("use-src-mac-flows", t_global.args.use_src_mac_flows)
@@ -396,6 +433,7 @@ def main():
     trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['device_list'] = [0,1]
     trial_params['rate_unit'] = t_global.args.rate_unit
+    trial_params['rate_tolerance'] = t_global.args.rate_tolerance
     trial_params['frame_size'] = t_global.args.frame_size
     trial_params['run_bidirec'] = t_global.args.run_bidirec
     trial_params['num_flows'] = t_global.args.num_flows
@@ -419,55 +457,134 @@ def main():
     trial_params['vxlan_ids_list'] = t_global.args.vxlan_ids_list
     trial_params['traffic_generator'] = t_global.args.traffic_generator
 
+    test_dev_pairs = [ { 'tx': 0, 'rx': 1 } ]
+    if trial_params['run_bidirec']:
+         test_dev_pairs.append({ 'tx': 1, 'rx': 0 })
+
+    perform_sniffs = False
+    do_sniff = False
+    do_search = True
+    if t_global.args.sniff_runtime:
+         perform_sniffs = True
+         do_sniff = True
+         do_search = False
+
     # the actual binary search to find the maximum packet rate
-    while final_validation or abs(rate - prev_rate) > rate_granularity:
+    while final_validation or do_sniff or do_search:
         # support a longer measurement for the last trial, AKA "final validation"
         if final_validation:
 		trial_params['runtime'] = t_global.args.validation_runtime
-		print('\nfinal validation')
-        else:
+		print('\nTrial Mode: Final Validation')
+        elif do_search:
 		trial_params['runtime'] = t_global.args.search_runtime
-		print('\nsearch')
+		print('\nTrial Mode: Search')
+        else:
+		trial_params['runtime'] = t_global.args.sniff_runtime
+                print('\nTrial Mode: Sniff')
+
         trial_params['rate'] = rate
         # run the actual trial
         stats = run_trial(trial_params)
-        # calculate loss and decide what to do
-        total_tx_packets = stats[0]['tx_packets'] + stats[1]['tx_packets']
-        if total_tx_packets == 0:
-	    print('binary search failed because no packets were transmitted')
-            quit() # abort immediately because nothing works
+
+        trial_passed = True
+        test_abort = False
+        total_tx_packets = 0
+        total_rx_packets = 0
+        for dev_pair in test_dev_pairs:
+             pair_abort = False
+             if stats[dev_pair['tx']]['tx_packets'] == 0:
+                  pair_abort = True
+                  print("binary search failed because no packets were transmitted between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
+
+             if stats[dev_pair['rx']]['rx_packets'] == 0:
+                  pair_abort = True
+                  print("binary search failed because no packets were received between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
+
+             if pair_abort:
+                  test_abort = True
+                  continue
+
+             pct_lost_packets = 100.0 * (stats[dev_pair['tx']]['tx_packets'] - stats[dev_pair['rx']]['rx_packets']) / stats[dev_pair['tx']]['tx_packets']
+             requirement_msg = "passed"
+             if pct_lost_packets > t_global.args.max_loss_pct:
+                  requirement_msg = "failed"
+                  trial_passed = False
+             print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets))
+
+             requirement_msg = "passed"
+             tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
+             tolerance_min = 0.0
+             tolerance_max = 0.0
+             if trial_params['rate_unit'] == "mpps":
+                  tolerance_min = trial_params['rate'] - trial_params['rate_tolerance']
+                  tolerance_max = trial_params['rate'] + trial_params['rate_tolerance']
+                  if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                       requirement_msg = "failed"
+                       trial_passed = False
+             elif trial_params['rate_unit'] == "%":
+                  # +20 is packet overhead (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
+                  # *8 is for bits/byte
+                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000
+                  tx_rate = (tx_rate / max_packet_rate) * 100.0
+                  tolerance_min = trial_params['rate'] * ((100.0 - trial_params['rate_tolerance']) / 100)
+                  tolerance_max = trial_params['rate'] * ((100.0 + trial_params['rate_tolerance']) / 100)
+                  if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                       requirement_msg = "failed"
+                       trial_passed = False
+             print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: %s, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], trial_params['rate_unit'], tolerance_min, tolerance_max, tx_rate))
+
+        if test_abort:
+             print('Binary search aborting due to critical error')
+             quit(1)
+
+        if trial_passed:
+	    print('(trial passed all requirements)')
         else:
-	    print('total_tx_packets', total_tx_packets)
-        total_rx_packets = stats[0]['rx_packets'] + stats[1]['rx_packets']
-        if total_rx_packets == 0:
-	    print('binary search failed because no packets were received')
-            quit() # abort immediately because nothing works
-        else:
-	    print('total_rx_packets', total_rx_packets)
-        total_lost_packets = total_tx_packets - total_rx_packets
-	print('total_lost_packets', total_lost_packets)
-        pct_lost_packets = 100.0 * (total_tx_packets - total_rx_packets) / total_tx_packets
+	    print('(trial failed one or more requirements)')
+
         if t_global.args.one_shot == 1:
                 break
-        if pct_lost_packets > t_global.args.max_loss_pct:  # the trial failed
-	    print('trial failed, percent loss', pct_lost_packets)
+        if not trial_passed:
             if final_validation:
                 final_validation = False
                 next_rate = rate - rate_granularity # subtracting by rate_granularity avoids very small reductions in rate
             else:
                 next_rate = (prev_pass_rate + rate) / 2
+            if perform_sniffs:
+                 do_sniff = True
+                 do_search = False
+            else:
+                 do_search = True
+                 do_sniff = False
             prev_fail_rate = rate
         else: # the trial passed
-	    print('trial passed, percent loss', pct_lost_packets)
             passed_stats = stats
             if final_validation: # no longer necessary to continue searching
                 break
-            prev_pass_rate = rate
-            next_rate = (prev_fail_rate + rate) / 2
-        if abs(rate - next_rate) < rate_granularity: # trigger final validation
-            final_validation = True
+            if do_sniff:
+                 do_sniff = False
+                 do_search = True
+            else:
+                 prev_pass_rate = rate
+                 next_rate = (prev_fail_rate + rate) / 2
+                 if abs(rate - next_rate) < rate_granularity: # trigger final validation
+                      final_validation = True
+                      do_search = False
+                 else:
+                      if perform_sniffs:
+                           do_sniff = True
+                           do_search = False
+
 	prev_rate = rate
         rate = next_rate
+
+        if rate < rate_granularity:
+             print("Rate granularity could not be satisfied")
+             quit(1)
+
+        if t_global.args.trial_gap:
+             print("Sleeping for %d seconds between trial attempts" % t_global.args.trial_gap)
+             time.sleep(t_global.args.trial_gap)
 
     print("RESULT:")
     if prev_pass_rate != 0: # show the stats for the most recent passing trial
