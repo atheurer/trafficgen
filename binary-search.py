@@ -188,6 +188,12 @@ def process_options ():
                         default = 1,
                         type = int
                         )
+    parser.add_argument('--trial-gap',
+                        dest='trial_gap',
+                        help='Time to sleep between trial attempts',
+                        default = 0,
+                        type = int
+                        )
 
     t_global.args = parser.parse_args();
     print(t_global.args)
@@ -393,6 +399,7 @@ def main():
     print("measure_latency", t_global.args.measure_latency)
     print("max_loss_pct", t_global.args.max_loss_pct)
     print("one_shot", t_global.args.one_shot)
+    print("trial_gap", t_global.args.trial_gap)
     print("search-runtime", t_global.args.search_runtime)
     print("validation-runtime", t_global.args.validation_runtime)
     print("run-bidirec", t_global.args.run_bidirec)
@@ -535,6 +542,10 @@ def main():
             final_validation = True
 	prev_rate = rate
         rate = next_rate
+
+        if t_global.args.trial_gap:
+             print("Sleeping for %d seconds between trial attempts" % t_global.args.trial_gap)
+             time.sleep(t_global.args.trial_gap)
 
     print("RESULT:")
     if prev_pass_rate != 0: # show the stats for the most recent passing trial
