@@ -103,6 +103,12 @@ def process_options ():
                         default=30,
                         type = int,
                         )
+    parser.add_argument('--sniff-runtime',
+                        dest='sniff_runtime',
+                        help='trial period in seconds during sniff search',
+                        default = 0,
+                        type = int,
+                        )
     parser.add_argument('--rate', 
                         dest='rate',
                         help='rate in millions of packets per second per device',
@@ -402,6 +408,7 @@ def main():
     print("trial_gap", t_global.args.trial_gap)
     print("search-runtime", t_global.args.search_runtime)
     print("validation-runtime", t_global.args.validation_runtime)
+    print("sniff-runtime", t_global.args.sniff_runtime)
     print("run-bidirec", t_global.args.run_bidirec)
     print("use-num-flows", t_global.args.num_flows)
     print("use-src-mac-flows", t_global.args.use_src_mac_flows)
@@ -454,15 +461,27 @@ def main():
     if trial_params['run_bidirec']:
          test_dev_pairs.append({ 'tx': 1, 'rx': 0 })
 
+    perform_sniffs = False
+    do_sniff = False
+    do_search = True
+    if t_global.args.sniff_runtime:
+         perform_sniffs = True
+         do_sniff = True
+         do_search = False
+
     # the actual binary search to find the maximum packet rate
-    while final_validation or abs(rate - prev_rate) > rate_granularity:
+    while final_validation or do_sniff or do_search:
         # support a longer measurement for the last trial, AKA "final validation"
         if final_validation:
 		trial_params['runtime'] = t_global.args.validation_runtime
-		print('\nfinal validation')
-        else:
+		print('\nTrial Mode: Final Validation')
+        elif do_search:
 		trial_params['runtime'] = t_global.args.search_runtime
-		print('\nsearch')
+		print('\nTrial Mode: Search')
+        else:
+		trial_params['runtime'] = t_global.args.sniff_runtime
+                print('\nTrial Mode: Sniff')
+
         trial_params['rate'] = rate
         # run the actual trial
         stats = run_trial(trial_params)
@@ -531,17 +550,37 @@ def main():
                 next_rate = rate - rate_granularity # subtracting by rate_granularity avoids very small reductions in rate
             else:
                 next_rate = (prev_pass_rate + rate) / 2
+            if perform_sniffs:
+                 do_sniff = True
+                 do_search = False
+            else:
+                 do_search = True
+                 do_sniff = False
             prev_fail_rate = rate
         else: # the trial passed
             passed_stats = stats
             if final_validation: # no longer necessary to continue searching
                 break
-            prev_pass_rate = rate
-            next_rate = (prev_fail_rate + rate) / 2
-        if abs(rate - next_rate) < rate_granularity: # trigger final validation
-            final_validation = True
+            if do_sniff:
+                 do_sniff = False
+                 do_search = True
+            else:
+                 prev_pass_rate = rate
+                 next_rate = (prev_fail_rate + rate) / 2
+                 if abs(rate - next_rate) < rate_granularity: # trigger final validation
+                      final_validation = True
+                      do_search = False
+                 else:
+                      if perform_sniffs:
+                           do_sniff = True
+                           do_search = False
+
 	prev_rate = rate
         rate = next_rate
+
+        if rate < rate_granularity:
+             print("Rate granularity could not be satisfied")
+             quit(1)
 
         if t_global.args.trial_gap:
              print("Sleeping for %d seconds between trial attempts" % t_global.args.trial_gap)
