@@ -115,6 +115,12 @@ def process_options ():
                         default = "mpps",
                         choices = [ '%', 'mpps' ]
                         )
+    parser.add_argument('--rate-tolerance',
+                        dest='rate_tolerance',
+                        help='amount that TX rate is allowed to vary from requested rate and still be considered valid (in --rate-unit units)',
+                        default = 0.250,
+                        type = float
+                        )
     parser.add_argument('--max-loss-pct', 
                         dest='max_loss_pct',
                         help='maximum percentage of packet loss',
@@ -378,6 +384,7 @@ def main():
     print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
     print("rate_unit", t_global.args.rate_unit)
+    print("rate_tolerance", t_global.args.rate_tolerance)
     print("frame_size", t_global.args.frame_size)
     print("measure_latency", t_global.args.measure_latency)
     print("max_loss_pct", t_global.args.max_loss_pct)
@@ -407,6 +414,7 @@ def main():
     trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['device_list'] = [0,1]
     trial_params['rate_unit'] = t_global.args.rate_unit
+    trial_params['rate_tolerance'] = t_global.args.rate_tolerance
     trial_params['frame_size'] = t_global.args.frame_size
     trial_params['run_bidirec'] = t_global.args.run_bidirec
     trial_params['num_flows'] = t_global.args.num_flows
@@ -430,6 +438,10 @@ def main():
     trial_params['vxlan_ids_list'] = t_global.args.vxlan_ids_list
     trial_params['traffic_generator'] = t_global.args.traffic_generator
 
+    test_dev_pairs = [ { 'tx': 0, 'rx': 1 } ]
+    if trial_params['run_bidirec']:
+         test_dev_pairs.append({ 'tx': 1, 'rx': 0 })
+
     # the actual binary search to find the maximum packet rate
     while final_validation or abs(rate - prev_rate) > rate_granularity:
         # support a longer measurement for the last trial, AKA "final validation"
@@ -442,26 +454,66 @@ def main():
         trial_params['rate'] = rate
         # run the actual trial
         stats = run_trial(trial_params)
-        # calculate loss and decide what to do
-        total_tx_packets = stats[0]['tx_packets'] + stats[1]['tx_packets']
-        if total_tx_packets == 0:
-	    print('binary search failed because no packets were transmitted')
-            quit() # abort immediately because nothing works
+
+        trial_passed = True
+        test_abort = False
+        total_tx_packets = 0
+        total_rx_packets = 0
+        for dev_pair in test_dev_pairs:
+             pair_abort = False
+             if stats[dev_pair['tx']]['tx_packets'] == 0:
+                  pair_abort = True
+                  print("binary search failed because no packets were transmitted between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
+
+             if stats[dev_pair['rx']]['rx_packets'] == 0:
+                  pair_abort = True
+                  print("binary search failed because no packets were received between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
+
+             if pair_abort:
+                  test_abort = True
+                  continue
+
+             pct_lost_packets = 100.0 * (stats[dev_pair['tx']]['tx_packets'] - stats[dev_pair['rx']]['rx_packets']) / stats[dev_pair['tx']]['tx_packets']
+             requirement_msg = "passed"
+             if pct_lost_packets > t_global.args.max_loss_pct:
+                  requirement_msg = "failed"
+                  trial_passed = False
+             print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets))
+
+             requirement_msg = "passed"
+             tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
+             tolerance_min = 0.0
+             tolerance_max = 0.0
+             if trial_params['rate_unit'] == "mpps":
+                  tolerance_min = trial_params['rate'] - trial_params['rate_tolerance']
+                  tolerance_max = trial_params['rate'] + trial_params['rate_tolerance']
+                  if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                       requirement_msg = "failed"
+                       trial_passed = False
+             elif trial_params['rate_unit'] == "%":
+                  # +20 is packet overhead (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
+                  # *8 is for bits/byte
+                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000
+                  tx_rate = (tx_rate / max_packet_rate) * 100.0
+                  tolerance_min = trial_params['rate'] * ((100.0 - trial_params['rate_tolerance']) / 100)
+                  tolerance_max = trial_params['rate'] * ((100.0 + trial_params['rate_tolerance']) / 100)
+                  if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                       requirement_msg = "failed"
+                       trial_passed = False
+             print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: %s, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], trial_params['rate_unit'], tolerance_min, tolerance_max, tx_rate))
+
+        if test_abort:
+             print('Binary search aborting due to critical error')
+             quit()
+
+        if trial_passed:
+	    print('(trial passed all requirements)')
         else:
-	    print('total_tx_packets', total_tx_packets)
-        total_rx_packets = stats[0]['rx_packets'] + stats[1]['rx_packets']
-        if total_rx_packets == 0:
-	    print('binary search failed because no packets were received')
-            quit() # abort immediately because nothing works
-        else:
-	    print('total_rx_packets', total_rx_packets)
-        total_lost_packets = total_tx_packets - total_rx_packets
-	print('total_lost_packets', total_lost_packets)
-        pct_lost_packets = 100.0 * (total_tx_packets - total_rx_packets) / total_tx_packets
+	    print('(trial failed one or more requirements)')
+
         if t_global.args.one_shot == 1:
                 break
-        if pct_lost_packets > t_global.args.max_loss_pct:  # the trial failed
-	    print('trial failed, percent loss', pct_lost_packets)
+        if not trial_passed:
             if final_validation:
                 final_validation = False
                 next_rate = rate - rate_granularity # subtracting by rate_granularity avoids very small reductions in rate
@@ -469,7 +521,6 @@ def main():
                 next_rate = (prev_pass_rate + rate) / 2
             prev_fail_rate = rate
         else: # the trial passed
-	    print('trial passed, percent loss', pct_lost_packets)
             passed_stats = stats
             if final_validation: # no longer necessary to continue searching
                 break
