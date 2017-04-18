@@ -123,8 +123,8 @@ def process_options ():
                         )
     parser.add_argument('--rate-tolerance',
                         dest='rate_tolerance',
-                        help='amount that TX rate is allowed to vary from requested rate and still be considered valid (in --rate-unit units)',
-                        default = 0.250,
+                        help='percentage that TX rate is allowed to vary from requested rate and still be considered valid',
+                        default = 5,
                         type = float
                         )
     parser.add_argument('--max-loss-pct', 
@@ -516,8 +516,8 @@ def main():
              tolerance_min = 0.0
              tolerance_max = 0.0
              if trial_params['rate_unit'] == "mpps":
-                  tolerance_min = trial_params['rate'] - trial_params['rate_tolerance']
-                  tolerance_max = trial_params['rate'] + trial_params['rate_tolerance']
+                  tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
+                  tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
                        requirement_msg = "failed"
                        trial_passed = False
