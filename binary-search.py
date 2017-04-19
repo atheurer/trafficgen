@@ -200,6 +200,12 @@ def process_options ():
                         default = 0,
                         type = int
                         )
+    parser.add_argument('--max-retries',
+                        dest='max_retries',
+                        help='Maximum number of trial retries before aborting',
+                        default = 3,
+                        type = int
+                        )
 
     t_global.args = parser.parse_args();
     print(t_global.args)
@@ -455,6 +461,7 @@ def main():
     trial_params['vlan_ids_list'] = t_global.args.vlan_ids_list
     trial_params['vxlan_ids_list'] = t_global.args.vxlan_ids_list
     trial_params['traffic_generator'] = t_global.args.traffic_generator
+    trial_params['max_retries'] = t_global.args.max_retries
 
     test_dev_pairs = [ { 'tx': 0, 'rx': 1 } ]
     if trial_params['run_bidirec']:
@@ -468,6 +475,7 @@ def main():
          do_sniff = True
          do_search = False
 
+    retries = 0
     # the actual binary search to find the maximum packet rate
     while final_validation or do_sniff or do_search:
         # support a longer measurement for the last trial, AKA "final validation"
@@ -485,7 +493,7 @@ def main():
         # run the actual trial
         stats = run_trial(trial_params)
 
-        trial_passed = True
+        trial_result = 'pass'
         test_abort = False
         total_tx_packets = 0
         total_rx_packets = 0
@@ -507,7 +515,7 @@ def main():
              requirement_msg = "passed"
              if pct_lost_packets > t_global.args.max_loss_pct:
                   requirement_msg = "failed"
-                  trial_passed = False
+                  trial_result = 'fail'
              print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets))
 
              requirement_msg = "passed"
@@ -518,8 +526,9 @@ def main():
                   tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
                   tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                       requirement_msg = "failed"
-                       trial_passed = False
+                       requirement_msg = "retry"
+                       if trial_result == "pass":
+                           trial_result = "retry" 
              elif trial_params['rate_unit'] == "%":
                   # +20 is packet overhead (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
                   # *8 is for bits/byte
@@ -528,22 +537,25 @@ def main():
                   tolerance_min = trial_params['rate'] * ((100.0 - trial_params['rate_tolerance']) / 100)
                   tolerance_max = trial_params['rate'] * ((100.0 + trial_params['rate_tolerance']) / 100)
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                       requirement_msg = "failed"
-                       trial_passed = False
+                       requirement_msg = "retry"
+                       if trial_result == "pass":
+                           trial_result = "retry" 
              print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: %s, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], trial_params['rate_unit'], tolerance_min, tolerance_max, tx_rate))
 
         if test_abort:
              print('Binary search aborting due to critical error')
              quit(1)
 
-        if trial_passed:
+        if trial_result == "pass":
 	    print('(trial passed all requirements)')
-        else:
+        elif trial_result == "retry":
+	    print('(trial trial must be repeated because one or more requirements did not pass, but allow a retry)')
+	else:
 	    print('(trial failed one or more requirements)')
 
         if t_global.args.one_shot == 1:
                 break
-        if not trial_passed:
+        if trial_result == "fail":
             if final_validation:
                 final_validation = False
                 next_rate = rate - rate_granularity # subtracting by rate_granularity avoids very small reductions in rate
@@ -556,7 +568,10 @@ def main():
                  do_search = True
                  do_sniff = False
             prev_fail_rate = rate
-        else: # the trial passed
+	    prev_rate = rate
+            rate = next_rate
+            retries = 0
+        elif trial_result == "pass":
             passed_stats = stats
             if final_validation: # no longer necessary to continue searching
                 break
@@ -573,9 +588,16 @@ def main():
                       if perform_sniffs:
                            do_sniff = True
                            do_search = False
-
-	prev_rate = rate
-        rate = next_rate
+	    prev_rate = rate
+            rate = next_rate
+            retries = 0
+	elif trial_result == "retry":
+            if retries >= trial_params['max_retries']:
+                print('The rety limit for a trial has been reached.  This is probably due to a rate tolerance failure.')
+                print('You must adjust the --rate-tolerance to a higher value, or use --rate to start with a lower rate')
+                quit(1)
+            # if trial_result is retry, then don't adjust anything and repeat
+            retries = retries + 1
 
         if rate < rate_granularity:
              print("Rate granularity could not be satisfied")
