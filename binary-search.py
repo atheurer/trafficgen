@@ -244,7 +244,7 @@ def run_trial (trial_params):
             cmd = cmd + ' --encapSrcMacs=' + str(trial_params['encap_src_macs_list'])
         if trial_params['encap_dst_macs_list'] != '':
             cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs_list'])
-        flow_mods_opt = ' --flowMods=\"'
+        flow_mods_opt = ''
         if trial_params['use_src_ip_flows'] == 1:
 	    flow_mods_opt = flow_mods_opt + ',srcIp'
         if trial_params['use_dst_ip_flows'] == 1:
@@ -261,8 +261,7 @@ def run_trial (trial_params):
 	    flow_mods_opt = flow_mods_opt + ',encapSrcMac'
         if trial_params['use_encap_dst_mac_flows'] == 1:
 	    flow_mods_opt = flow_mods_opt + ',encapDstMac'
-        flow_mods_opt = flow_mods_opt + '\"'
-        re.sub(r"^,", "", flow_mods_opt)
+        flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'trex-txrx':
         cmd = 'python trex-txrx.py'
