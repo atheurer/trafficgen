@@ -1,6 +1,6 @@
 import sys, getopt
-sys.path.append('/opt/trex-core/scripts/automation/trex_control_plane/stl/examples')
-sys.path.append('/opt/trex-core/scripts/automation/trex_control_plane/stl')
+sys.path.append('/opt/trex/current/scripts/automation/trex_control_plane/stl/examples')
+sys.path.append('/opt/trex/current/scripts/automation/trex_control_plane/stl')
 import argparse
 import stl_path
 import time
