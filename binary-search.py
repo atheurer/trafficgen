@@ -127,6 +127,12 @@ def process_options ():
                         default = 5,
                         type = float
                         )
+    parser.add_argument('--search-granularity',
+                        dest='search_granularity',
+                        help='the binary search will stop once the percent throughput difference between the most recent passing and failing trial is lower than this',
+                        default = 2,
+                        type = float
+                        )
     parser.add_argument('--max-loss-pct', 
                         dest='max_loss_pct',
                         help='maximum percentage of packet loss',
@@ -383,8 +389,6 @@ def getlines(process):
 def main():
     process_options()
     final_validation = t_global.args.one_shot == 1
-    # binary search will stop once this granularity is reached
-    rate_granularity = 0.01
     rate = t_global.args.rate
 
     if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
@@ -397,6 +401,7 @@ def main():
              rate = 100
         else:
              rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
+    initial_rate = rate
     prev_rate = 0
     prev_pass_rate = 0
     prev_fail_rate = rate
@@ -462,6 +467,7 @@ def main():
     trial_params['vxlan_ids_list'] = t_global.args.vxlan_ids_list
     trial_params['traffic_generator'] = t_global.args.traffic_generator
     trial_params['max_retries'] = t_global.args.max_retries
+    trial_params['search_granularity'] = t_global.args.search_granularity
 
     test_dev_pairs = [ { 'tx': 0, 'rx': 1 } ]
     if trial_params['run_bidirec']:
@@ -558,7 +564,7 @@ def main():
         if trial_result == "fail":
             if final_validation:
                 final_validation = False
-                next_rate = rate - rate_granularity # subtracting by rate_granularity avoids very small reductions in rate
+                next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
             else:
                 next_rate = (prev_pass_rate + rate) / 2
             if perform_sniffs:
@@ -581,7 +587,7 @@ def main():
             else:
                  prev_pass_rate = rate
                  next_rate = (prev_fail_rate + rate) / 2
-                 if abs(rate - next_rate) < rate_granularity: # trigger final validation
+                 if abs(rate - next_rate)/rate * 100 < trial_params['search_granularity']: # trigger final validation
                       final_validation = True
                       do_search = False
                  else:
@@ -599,8 +605,8 @@ def main():
             # if trial_result is retry, then don't adjust anything and repeat
             retries = retries + 1
 
-        if rate < rate_granularity:
-             print("Rate granularity could not be satisfied")
+        if rate < initial_rate * trial_params['search_granularity'] / 100:
+             print("Binary search ended up at rate which is below minimum allowed")
              quit(1)
 
         if t_global.args.trial_gap:
