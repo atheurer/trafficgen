@@ -517,12 +517,13 @@ def main():
                   test_abort = True
                   continue
 
-             pct_lost_packets = 100.0 * (stats[dev_pair['tx']]['tx_packets'] - stats[dev_pair['rx']]['rx_packets']) / stats[dev_pair['tx']]['tx_packets']
+             lost_packets = stats[dev_pair['tx']]['tx_packets'] - stats[dev_pair['rx']]['rx_packets']
+             pct_lost_packets = 100.0 * lost_packets / stats[dev_pair['tx']]['tx_packets']
              requirement_msg = "passed"
              if pct_lost_packets > t_global.args.max_loss_pct:
                   requirement_msg = "failed"
                   trial_result = 'fail'
-             print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets))
+             print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets, lost_packets))
 
              requirement_msg = "passed"
              tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
@@ -538,7 +539,7 @@ def main():
              elif trial_params['rate_unit'] == "%":
                   # +20 is packet overhead (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
                   # *8 is for bits/byte
-                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000
+                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000.0
                   tx_rate = (tx_rate / max_packet_rate) * 100.0
                   tolerance_min = trial_params['rate'] * ((100.0 - trial_params['rate_tolerance']) / 100)
                   tolerance_max = trial_params['rate'] * ((100.0 + trial_params['rate_tolerance']) / 100)
