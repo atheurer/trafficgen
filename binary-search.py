@@ -539,7 +539,7 @@ def main():
              elif trial_params['rate_unit'] == "%":
                   # +20 is packet overhead (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
                   # *8 is for bits/byte
-                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000
+                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000.0
                   tx_rate = (tx_rate / max_packet_rate) * 100.0
                   tolerance_min = trial_params['rate'] * ((100.0 - trial_params['rate_tolerance']) / 100)
                   tolerance_max = trial_params['rate'] * ((100.0 + trial_params['rate_tolerance']) / 100)
