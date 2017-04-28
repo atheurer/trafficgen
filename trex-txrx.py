@@ -53,12 +53,15 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
     base = Ether(src = mac_src, dst = mac_dst)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))/UDP()
     pad = max(0, size-len(base)) * 'x'
 
+    the_packet = base/pad
+    #the_packet.show2()
+
     if src_ip_flows or dst_ip_flows or src_mac_flows or dst_mac_flows:
          vm = vm + [STLVmFixIpv4(offset = "IP")]
-         return STLPktBuilder(pkt = base/pad,
+         return STLPktBuilder(pkt = the_packet,
                               vm  = vm)
     else:
-         return STLPktBuilder(pkt = base/pad)
+         return STLPktBuilder(pkt = the_packet)
 
 
 def process_options ():
