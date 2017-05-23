@@ -834,7 +834,7 @@ function getBuffers(devId, testParams)
 	local mem = memory.createMemPool(function(buf)
 		local eth_dst
 		buf:getUdpPacket():fill{
-			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
+			pktLength = testParams.frameSize - 4,
 			ethSrc = testParams.srcMacs[devId],
 			ethDst = testParams.dstMacs[devId],
 			ip4Dst = testParams.dstIp,
