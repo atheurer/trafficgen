@@ -26,8 +26,10 @@ def calculate_latency_pps (dividend, divisor, total_rate):
 def create_traffic_profile (direction, measure_latency, default_stream_pg_id_base, latency_stream_pg_id_base, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst):
      streams = { 'default': { 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] }, 'latency': { 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] } }
 
+     ethernet_frame_overhead = 18
+
      if frame_size == "imix":
-          # imix is defined as 7 packets of size 40 bytes, 4 packets of size 576 bytes, and 1 packet of size 1500 bytes
+          # imix is defined as the following packets (including IP header): 7 of size 40 bytes, 4 of size 576 bytes, and 1 of size 1500 bytes
           # from https://en.wikipedia.org/wiki/Internet_Mix
 
           small_packets = 7
@@ -35,9 +37,9 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
           large_packets = 1
           total_packets = small_packets + medium_packets + large_packets
 
-          small_packet_bytes = 40
-          medium_packet_bytes = 576
-          large_packet_bytes = 1500
+          small_packet_bytes = 40 + ethernet_frame_overhead
+          medium_packet_bytes = 576 + ethernet_frame_overhead
+          large_packet_bytes = 1500 + ethernet_frame_overhead
 
           small_stream_pg_id = default_stream_pg_id_base
           medium_stream_pg_id = default_stream_pg_id_base + 1
