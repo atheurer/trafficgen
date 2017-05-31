@@ -164,14 +164,35 @@ function master(args)
 			args.srcMacs[i] = devs[i]:getMacString()
 		end
 	end
+
+	-- start a task for each dev to listen/respond to ARP
+	local arpQueuePairs = {}
+	for txDevId, txDev in ipairs(devs) do
+		if connections[txDevId] then
+			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { args.srcIps[txDevId] }} )
+		end
+	end
+	moongen.startTask(proto.arp.arpTask, arpQueuePairs)
+
 	-- assign the dst MAC addresses
 	for i, deviceNum in ipairs(args.devices) do
 		if connections[i] then
-			-- if VxLAN is used, this is for the inner packet
+			-- in a L2 test, the dst MAC is just assigned the src MAC from the corresponding Rx device.
+			-- However, if an L3 test (router), we want the MAC of the router.  So, before using 
+			-- the src MAC, try to ARP request the MAC from dstIp.  If there is no reply, then
+			-- just use the src MAC.  In order for a ARP request to happen, you must not use the
+			-- --dstMacs option and use must use the --dstIps option.
+			if not args.dstMacs[i] and args.dstIps[i] then
+				log:info("looking up MAC for IP %s", args.dstIps[i])
+				args.dstMacs[i] = proto.arp.blockingLookup(args.dstIps[i], 5)
+				log:info("got MAC %s for IP %s", args.dstMacs[i], args.dstIps[i])
+			end
 			if not args.dstMacs[i] then
+				log:info("no ARP reponse, assigning device %d src MAC", args.devices[connections[i]])
 				args.dstMacs[i] = args.srcMacs[connections[i]]
 			end
 			log:info("device %d when transmitting packets will use src MAC: [%s] src IP [%s] dst MAC: [%s] dst IP [%s]", deviceNum, args.srcMacs[i], args.srcIps[i], args.dstMacs[i], args.dstIps[i])
+			-- if VxLAN is used, this is for the inner packet
 			if args.vxlanIds[i] then
 				if not args.encapDstMacs[i] and connections[i] then
 					args.encapDstMacs[i] = args.encapSrcMacs[connections[i]]
@@ -221,15 +242,6 @@ function master(args)
 	local txTasks = {}
 	local rxTasks = {}
 	local timerTasks = {}
-
-	-- start a task for each dev to listen/respond to ARP
-	local arpQueuePairs = {}
-	for txDevId, txDev in ipairs(devs) do
-		if connections[txDevId] then
-			table.insert(arpQueuePairs, { rxQueue = txDev:getRxQueue(numRxQueues), txQueue = txDev:getTxQueue(numTxQueues), ips = { args.srcIps[txDevId] }} )
-		end
-	end
-	moongen.startTask(proto.arp.arpTask, arpQueuePairs)
 
 	-- start single task to output all device level Tx/Rx stats
 	devStatsTask = moongen.startTask("devStats", devs, connections)
