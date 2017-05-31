@@ -20,8 +20,131 @@ def ip_to_int (ip):
     ip_int = 256**3 * int(ip_fields[0]) + 256**2 * int(ip_fields[1]) + 256**1 * int(ip_fields[2]) + int(ip_fields[3])
     return ip_int
 
+def calculate_latency_pps (dividend, divisor, total_rate):
+     return int((float(dividend) / float(divisor) * total_rate))
+
+def create_traffic_profile (direction, measure_latency, default_stream_pg_id_base, latency_stream_pg_id_base, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst):
+     streams = { 'default': { 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] }, 'latency': { 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] } }
+
+     if frame_size == "imix":
+          # imix is defined as 7 packets of size 40 bytes, 4 packets of size 576 bytes, and 1 packet of size 1500 bytes
+          # from https://en.wikipedia.org/wiki/Internet_Mix
+
+          small_packets = 7
+          medium_packets = 4
+          large_packets = 1
+          total_packets = small_packets + medium_packets + large_packets
+
+          small_packet_bytes = 40
+          medium_packet_bytes = 576
+          large_packet_bytes = 1500
+
+          small_stream_pg_id = default_stream_pg_id_base
+          medium_stream_pg_id = default_stream_pg_id_base + 1
+          large_stream_pg_id = default_stream_pg_id_base + 2
+
+          small_stream_name = "small_stream_" + direction
+          medium_stream_name = "medium_stream_" + direction
+          large_stream_name = "large_stream_" + direction
+
+          streams['default']['pg_ids'].extend([small_stream_pg_id, medium_stream_pg_id, large_stream_pg_id])
+          streams['default']['names'].extend([small_stream_name, medium_stream_name, large_stream_name])
+          streams['default']['frame_sizes'].extend([small_packet_bytes, medium_packet_bytes, large_packet_bytes])
+          streams['default']['traffic_shares'].extend([(float(small_packets)/float(total_packets)), (float(medium_packets)/float(total_packets)), (float(large_packets)/float(total_packets))])
+
+          small_stream = STLStream(packet = create_pkt(small_packet_bytes, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                   flow_stats = STLFlowStats(pg_id = small_stream_pg_id),
+                                   mode = STLTXCont(pps = small_packets),
+                                   name = small_stream_name)
+
+          medium_stream = STLStream(packet = create_pkt(medium_packet_bytes, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                    flow_stats = STLFlowStats(pg_id = medium_stream_pg_id),
+                                    mode = STLTXCont(pps = medium_packets),
+                                    name = medium_stream_name)
+
+          large_stream = STLStream(packet = create_pkt(large_packet_bytes, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                   flow_stats = STLFlowStats(pg_id = large_stream_pg_id),
+                                   mode = STLTXCont(pps = large_packets),
+                                   name = large_stream_name)
+
+          if measure_latency:
+               small_latency_stream_pg_id = latency_stream_pg_id_base
+               medium_latency_stream_pg_id = latency_stream_pg_id_base + 1
+               large_latency_stream_pg_id = latency_stream_pg_id_base + 2
+
+               small_latency_stream_name = "small_latency_stream_" + direction
+               medium_latency_stream_name = "medium_latency_stream_" + direction
+               large_latency_stream_name = "large_latency_stream_" + direction
+
+               streams['latency']['pg_ids'].extend([small_latency_stream_pg_id, medium_latency_stream_pg_id, large_latency_stream_pg_id])
+               streams['latency']['names'].extend([small_latency_stream_name, medium_latency_stream_name, large_latency_stream_name])
+               streams['latency']['frame_sizes'].extend([small_packet_bytes, medium_packet_bytes, large_packet_bytes])
+               streams['latency']['traffic_shares'].extend([(float(small_packets)/float(total_packets)), (float(medium_packets)/float(total_packets)), (float(large_packets)/float(total_packets))])
+
+               small_latency_stream = STLStream(packet = create_pkt(small_packet_bytes, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                                flow_stats = STLFlowLatencyStats(pg_id = small_latency_stream_pg_id),
+                                                mode = STLTXCont(pps = calculate_latency_pps(small_packets, total_packets, latency_rate)),
+                                                name = small_latency_stream_name)
+
+               medium_latency_stream = STLStream(packet = create_pkt(medium_packet_bytes, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                                 flow_stats = STLFlowLatencyStats(pg_id = medium_latency_stream_pg_id),
+                                                 mode = STLTXCont(pps = calculate_latency_pps(medium_packets, total_packets, latency_rate)),
+                                                 name = medium_latency_stream_name)
+
+               large_latency_stream = STLStream(packet = create_pkt(large_packet_bytes, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                                flow_stats = STLFlowLatencyStats(pg_id = large_latency_stream_pg_id),
+                                                mode = STLTXCont(pps = calculate_latency_pps(large_packets, total_packets, latency_rate)),
+                                                name = large_latency_stream_name)
+
+               profile = STLProfile([ small_stream, medium_stream, large_stream, small_latency_stream, medium_latency_stream, large_latency_stream ])
+          else:
+               profile = STLProfile([ small_stream, medium_stream, large_stream ])
+     else:
+          default_stream_pg_id = default_stream_pg_id_base
+
+          default_stream_name = "default_stream_" + direction
+
+          streams['default']['pg_ids'].extend([default_stream_pg_id])
+          streams['default']['names'].extend([default_stream_name])
+          streams['default']['frame_sizes'].extend([int(frame_size)])
+          streams['default']['traffic_shares'].extend([1])
+
+          default_stream = STLStream(packet = create_pkt(frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                     flow_stats = STLFlowStats(pg_id = default_stream_pg_id),
+                                     mode = STLTXCont(pps = 100),
+                                     name = default_stream_name)
+
+          if measure_latency:
+               latency_stream_pg_id = latency_stream_pg_id_base
+
+               latency_stream_name = "latency_stream_" + direction
+
+               streams['latency']['pg_ids'].extend([latency_stream_pg_id])
+               streams['latency']['names'].extend([latency_stream_name])
+               streams['latency']['frame_sizes'].extend([int(frame_size)])
+               streams['latency']['traffic_shares'].extend([1])
+
+               latency_stream = STLStream(packet = create_pkt(frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst),
+                                          flow_stats = STLFlowLatencyStats(pg_id = latency_stream_pg_id),
+                                          mode = STLTXCont(pps = latency_rate),
+                                          name = latency_stream_name)
+
+               profile = STLProfile([ default_stream, latency_stream ])
+          else:
+               profile = STLProfile([ default_stream ])
+
+     print("READABLE STREAMS FOR DIRECTION '%s':" % direction)
+     print(json.dumps(streams, indent = 4, separators=(',', ': '), sort_keys = True))
+     print("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, json.dumps(streams, separators=(',', ': '))))
+
+     return profile
+
 # simple packet creation
 def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, mac_src, mac_dst, ip_src, ip_dst):
+    # adjust packet size
+    size = int(size)
+    size -= 4
+
     ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
     ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
 
@@ -71,9 +194,8 @@ def process_options ():
 
     parser.add_argument('--size', 
                         dest='frame_size',
-                        help='L2 frame size in bytes',
-                        default=64,
-                        type = int,
+                        help='L2 frame size in bytes or IMIX',
+                        default=64
                         )
     parser.add_argument('--num-flows', 
                         dest='num_flows',
@@ -194,6 +316,8 @@ def process_options ():
                         type = int
                    )
     t_global.args = parser.parse_args();
+    if t_global.args.frame_size == "IMIX":
+         t_global.args.frame_size = "imix"
     print(t_global.args)
 
 def main():
@@ -269,35 +393,15 @@ def main():
              if t_global.args.run_bidirec:
                   ip_b_dst = dst_ips[1]
 
-        s1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst),
-                       flow_stats = STLFlowStats(pg_id = 1),
-                       mode = STLTXCont(pps = 100))
+        # dedicate 128 (this is somewhat arbitrary; it is a 32bit id) packet group ids (pg_ids) to each direction: base_a=128 and base_b=256
+        # there are a maximum of 128 concurrent latency streams (with unique pg_ids) so dedicate 64 to each direction: latency_base_a=0 and latency_base_b=64
 
-	if t_global.args.run_bidirec:
-            s2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst),
-                           flow_stats = STLFlowStats(pg_id = 2),
-                           isg = 1000,
-                           mode = STLTXCont(pps = 100))
+        traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst)
+        c.add_streams(streams = traffic_profile, ports = [port_a])
 
-        if t_global.args.measure_latency:
-            ls1 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst),
-                            flow_stats = STLFlowLatencyStats(pg_id = 3),
-                            mode = STLTXCont(pps = t_global.args.latency_rate))
-            if t_global.args.run_bidirec:
-                ls2 = STLStream(packet = create_pkt(t_global.args.frame_size - 4, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst),
-                                flow_stats = STLFlowLatencyStats(pg_id = 4),
-                                isg = 1000,
-                                mode = STLTXCont(pps = t_global.args.latency_rate))
-
-        # add both streams to ports
-        c.add_streams(s1, ports = [port_a])
-	if t_global.args.run_bidirec:
-            c.add_streams(s2, ports = [port_b])
-
-        if t_global.args.measure_latency:
-            c.add_streams(ls1, ports = [port_a])
-            if t_global.args.run_bidirec:
-                c.add_streams(ls2, ports = [port_b])
+        if t_global.args.run_bidirec:
+             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 256, 64, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst)
+             c.add_streams(streams = traffic_profile, ports = [port_b])
 
         # clear the stats before injecting
         c.clear_stats()

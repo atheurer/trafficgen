@@ -21,9 +21,8 @@ def process_options ():
 
     parser.add_argument('--frame-size', 
                         dest='frame_size',
-                        help='L2 frame size in bytes',
-                        default=64,
-                        type = int,
+                        help='L2 frame size in bytes or IMIX',
+                        default="64"
                         )
     parser.add_argument('--num-flows', 
                         dest='num_flows',
@@ -200,6 +199,12 @@ def process_options ():
                         default = 1,
                         type = int
                         )
+    parser.add_argument('--latency-rate',
+                        dest='latency_rate',
+                        help='Rate to send latency packets per second',
+                        default = 1000,
+                        type = int
+                   )
     parser.add_argument('--trial-gap',
                         dest='trial_gap',
                         help='Time to sleep between trial attempts',
@@ -214,7 +219,47 @@ def process_options ():
                         )
 
     t_global.args = parser.parse_args();
+    if t_global.args.frame_size == "IMIX":
+         t_global.args.frame_size = "imix"
     print(t_global.args)
+
+def calculate_tx_pps_target(trial_params, streams, tmp_stats):
+     rate_target = 0.0
+
+     # packet overhead is (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
+     packet_overhead_bytes = 20
+     bits_per_byte = 8
+
+     default_packet_avg_bytes = 0.0
+     latency_packet_avg_bytes = 0.0
+
+     target_latency_bytes = 0.0
+     target_default_bytes = 0.0
+     total_target_bytes = (tmp_stats['tx_available_bandwidth'] / bits_per_byte) * (trial_params['rate'] / 100)
+
+     target_default_rate = 0.0
+
+     for frame_size, traffic_shares in zip(streams['default']['frame_sizes'], streams['default']['traffic_shares']):
+          default_packet_avg_bytes += (frame_size * traffic_shares)
+
+     if trial_params['measure_latency']:
+          for frame_size, traffic_shares in zip(streams['latency']['frame_sizes'], streams['latency']['traffic_shares']):
+               latency_packet_avg_bytes += (frame_size * traffic_shares)
+
+          target_latency_bytes = (latency_packet_avg_bytes + packet_overhead_bytes) * trial_params['latency_rate']
+
+     target_default_bytes = total_target_bytes - target_latency_bytes
+
+     target_default_rate = target_default_bytes / (default_packet_avg_bytes + packet_overhead_bytes)
+
+     rate_target = target_default_rate
+     if trial_params['measure_latency']:
+          rate_target += trial_params['latency_rate']
+
+     tmp_stats['packet_overhead_bytes'] = packet_overhead_bytes
+     tmp_stats['bits_per_byte'] = bits_per_byte
+
+     return rate_target
 
 def run_trial (trial_params):
     stats = dict()
@@ -222,11 +267,23 @@ def run_trial (trial_params):
     stats[0]['tx_packets'] = 0
     stats[0]['rx_packets'] = 0
     stats[0]['tx_bandwidth'] = 0
+    stats[0]['rx_bandwidth'] = 0
+    stats[0]['tx_pps_target'] = 0
     stats[1] = dict()
     stats[1]['tx_packets'] = 0
     stats[1]['rx_packets'] = 0
     stats[1]['tx_bandwidth'] = 0
+    stats[1]['rx_bandwidth'] = 0
+    stats[1]['tx_pps_target'] = 0
+
+    tmp_stats = dict()
+    tmp_stats[0] = dict()
+    tmp_stats[0]['tx_available_bandwidth'] = 0.0
+    tmp_stats[1] = dict()
+    tmp_stats[1]['tx_available_bandwidth'] = 0.0
+
     cmd = ""
+    streams = []
 
     if trial_params['traffic_generator'] == 'moongen-txrx':
         cmd = './MoonGen/build/MoonGen txrx.lua'
@@ -279,6 +336,7 @@ def run_trial (trial_params):
         cmd = 'python trex-txrx.py'
         #cmd = cmd + ' --devices=0,1' # fix to allow different devices
         cmd = cmd + ' --measure-latency=' + str(trial_params['measure_latency'])
+        cmd = cmd + ' --latency-rate=' + str(trial_params['latency_rate'])
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
         cmd = cmd + ' --rate-unit=' + str(trial_params['rate_unit'])
         cmd = cmd + ' --size=' + str(trial_params['frame_size'])
@@ -336,41 +394,76 @@ def run_trial (trial_params):
                   if m:
                        results = json.loads(m.group(1))
 
-                       stats[0]['tx_bandwidth'] = results[0]['speed'] * 1000 * 1000 * 1000
+                       tmp_stats[0]['tx_available_bandwidth'] = results[0]['speed'] * 1000 * 1000 * 1000
 
                        if trial_params['run_bidirec']:
-                            stats[1]['tx_bandwidth'] = results[1]['speed'] * 1000 * 1000 * 1000
+                            tmp_stats[1]['tx_available_bandwidth'] = results[1]['speed'] * 1000 * 1000 * 1000
+                  #PARSABLE STREAMS FOR DIRECTION 'a': {"default": {"traffic_shares": [0.5833333333333334,0.3333333333333333,0.08333333333333333],"names": ["small_stream_a","medium_stream_a","large_stream_a"],"pg_ids": [128,129,130],"frame_sizes": [40,576,1500]},"latency": {"traffic_shares": [0.5833333333333334,0.3333333333333333,0.08333333333333333],"names": ["small_latency_stream_a","medium_latency_stream_a","large_latency_stream_a"],"pg_ids": [0,1,2],"frame_sizes": [40,576,1500]}}
+                  m = re.search(r"PARSABLE STREAMS FOR DIRECTION '([ab])':\s+(.*)$", line)
+                  if m:
+                       if m.group(1) == "a":
+                            streams.insert(0, json.loads(m.group(2)))
+
+                            if trial_params['rate_unit'] == "%":
+                                 stats[0]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[0], tmp_stats[0])
+                       elif m.group(1) == "b":
+                            streams.insert(1, json.loads(m.group(2)))
+
+                            if trial_params['rate_unit'] == "%":
+                                 stats[1]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[1], tmp_stats[1])
                   #PARSABLE RESULT: {"0":{"tx_util":37.68943472,"rx_bps":11472348160.0,"obytes":43064997504,"rx_pps":22406932.0,"ipackets":672312848,"oerrors":0,"rx_util":37.6436432,"opackets":672890586,"tx_pps":22434198.0,"tx_bps":11486302208.0,"ierrors":0,"rx_bps_L1":15057457280.0,"tx_bps_L1":15075773888.0,"ibytes":43028022272},"1":{"tx_util":37.6893712,"rx_bps":11486310400.0,"obytes":43063561984,"rx_pps":22434204.0,"ipackets":672890586,"oerrors":0,"rx_util":37.6894576,"opackets":672868156,"tx_pps":22434148.0,"tx_bps":11486284800.0,"ierrors":0,"rx_bps_L1":15075783040.0,"tx_bps_L1":15075748480.0,"ibytes":43064997504},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":22958659584.0,"bw_per_core":7.34,"rx_cpu_util":0.0,"rx_pps":44841136.0,"queue_full":0,"cpu_util":62.6,"tx_pps":44868344.0,"tx_bps":22972585984.0,"rx_drop_bps":0.0},"total":{"tx_util":75.37880591999999,"rx_bps":22958658560.0,"obytes":86128559488,"ipackets":1345203434,"rx_pps":44841136.0,"rx_util":75.3331008,"oerrors":0,"opackets":1345758742,"tx_pps":44868346.0,"tx_bps":22972587008.0,"ierrors":0,"rx_bps_L1":30133240320.0,"tx_bps_L1":30151522368.0,"ibytes":86093019776},"flow_stats":{"1":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":"N/A","1":20884464.286073223,"total":20884464.286073223},"rx_pkts":{"0":0,"1":672890586,"total":672890586},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":43064997504,"1":0,"total":43064997504},"tx_pps":{"0":20898314.26218906,"1":"N/A","total":20898314.26218906},"tx_bps":{"0":10699936902.240799,"1":"N/A","total":10699936902.240799},"tx_pkts":{"0":672890586,"1":0,"total":672890586},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":14043667184.191048,"1":"N/A","total":14043667184.191048}},"2":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":20884967.481241994,"1":"N/A","total":20884967.481241994},"rx_pkts":{"0":672312848,"1":0,"total":672312848},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":0,"1":43063561984,"total":43063561984},"tx_pps":{"0":"N/A","1":20898728.6582104,"total":20898728.6582104},"tx_bps":{"0":"N/A","1":10700149073.003725,"total":10700149073.003725},"tx_pkts":{"0":0,"1":672868156,"total":672868156},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":"N/A","1":14043945658.317389,"total":14043945658.317389}},"global":{"rx_err":{},"tx_err":{}}}}
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
                        results = json.loads(m.group(1))
 
-                       stats[0]['tx_packets'] = int(results["flow_stats"]["1"]["tx_pkts"]["total"])
-                       stats[1]['rx_packets'] = int(results["flow_stats"]["1"]["rx_pkts"]["total"])
+                       for pg_id, frame_size in zip(streams[0]['default']['pg_ids'], streams[0]['default']['frame_sizes']):
+                            stats[0]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"])
+                            stats[1]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"])
+
+                            stats[0]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
+                            stats[1]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
 
                        if trial_params['measure_latency']:
-                            stats[0]['tx_packets'] += int(results["flow_stats"]["3"]["tx_pkts"]["total"])
-                            stats[1]['rx_packets'] += int(results["flow_stats"]["3"]["rx_pkts"]["total"])
+                            for pg_id, frame_size in zip(streams[0]['latency']['pg_ids'], streams[0]['latency']['frame_sizes']):
+                                 stats[0]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"])
+                                 stats[1]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"])
+
+                                 stats[0]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
+                                 stats[1]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
 
                        stats[0]['tx_pps'] = float(stats[0]['tx_packets']) / float(trial_params['runtime'])
                        stats[1]['rx_pps'] = float(stats[1]['rx_packets']) / float(trial_params['runtime'])
 
-                       print('tx_packets, tx_rate, device', stats[0]['tx_packets'], stats[0]['tx_pps'], 0)
-                       print('rx_packets, rx_rate, device', stats[1]['rx_packets'], stats[1]['rx_pps'], 1)
+                       stats[0]['tx_bandwidth'] = float(stats[0]['tx_bandwidth']) / float(trial_params['runtime']) * tmp_stats[0]['bits_per_byte']
+                       stats[1]['rx_bandwidth'] = float(stats[1]['rx_bandwidth']) / float(trial_params['runtime']) * tmp_stats[0]['bits_per_byte']
+
+                       print('tx_packets, tx_rate, tx_bandwidth, device', stats[0]['tx_packets'], stats[0]['tx_pps'], stats[0]['tx_bandwidth'], 0)
+                       print('rx_packets, rx_rate, rx_bandwidth, device', stats[1]['rx_packets'], stats[1]['rx_pps'], stats[1]['rx_bandwidth'], 1)
 
                        if trial_params['run_bidirec']:
-                            stats[1]['tx_packets'] = int(results["flow_stats"]["2"]["tx_pkts"]["total"])
-                            stats[0]['rx_packets'] = int(results["flow_stats"]["2"]["rx_pkts"]["total"])
+                            for pg_id, frame_size in zip(streams[1]['default']['pg_ids'], streams[1]['default']['frame_sizes']):
+                                 stats[1]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"])
+                                 stats[0]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"])
+
+                                 stats[1]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
+                                 stats[0]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
 
                             if trial_params['measure_latency']:
-                                 stats[1]['tx_packets'] += int(results["flow_stats"]["4"]["tx_pkts"]["total"])
-                                 stats[0]['rx_packets'] += int(results["flow_stats"]["4"]["rx_pkts"]["total"])
+                                 for pg_id, frame_size in zip(streams[1]['latency']['pg_ids'], streams[1]['latency']['frame_sizes']):
+                                      stats[1]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"])
+                                      stats[0]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"])
+
+                                      stats[1]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["total"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
+                                      stats[0]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["total"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
 
                             stats[1]['tx_pps'] = float(stats[1]['tx_packets']) / float(trial_params['runtime'])
                             stats[0]['rx_pps'] = float(stats[0]['rx_packets']) / float(trial_params['runtime'])
 
-                            print('tx_packets, tx_rate, device', stats[1]['tx_packets'], stats[1]['tx_pps'], 1)
-                            print('rx_packets, rx_rate, device', stats[0]['rx_packets'], stats[0]['rx_pps'], 0)
+                            stats[1]['tx_bandwidth'] = float(stats[1]['tx_bandwidth']) / float(trial_params['runtime']) * tmp_stats[1]['bits_per_byte']
+                            stats[0]['rx_bandwidth'] = float(stats[0]['rx_bandwidth']) / float(trial_params['runtime']) * tmp_stats[1]['bits_per_byte']
+
+                            print('tx_packets, tx_rate, tx_bandwidth, device', stats[1]['tx_packets'], stats[1]['tx_pps'], stats[1]['tx_bandwidth'], 1)
+                            print('rx_packets, rx_rate, rx_bandwidth, device', stats[0]['rx_packets'], stats[0]['rx_pps'], stats[0]['rx_bandwidth'], 0)
     retval = p.wait()
     print('return code', retval)
     return stats
@@ -395,6 +488,16 @@ def main():
          print("The moongen-txrx traffic generator does not support --rate-unit=%")
          quit(1)
 
+    if t_global.args.frame_size == "imix":
+         if t_global.args.traffic_generator == 'moongen-txrx':
+              print("The moongen-txrx traffic generator does not support --frame-size=imix")
+              quit(1)
+         if t_global.args.rate_unit == "mpps":
+              print("When --frame-size=imix then --rate-unit must be set to %")
+              quit(1)
+    else:
+         t_global.args.frame_size = int(t_global.args.frame_size)
+
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
         if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%":
@@ -413,6 +516,7 @@ def main():
     print("rate_tolerance", t_global.args.rate_tolerance)
     print("frame_size", t_global.args.frame_size)
     print("measure_latency", t_global.args.measure_latency)
+    print("latency_rate", t_global.args.latency_rate)
     print("max_loss_pct", t_global.args.max_loss_pct)
     print("one_shot", t_global.args.one_shot)
     print("trial_gap", t_global.args.trial_gap)
@@ -441,6 +545,7 @@ def main():
     trial_params = {} 
     # trial parameters which do not change during binary search
     trial_params['measure_latency'] = t_global.args.measure_latency
+    trial_params['latency_rate'] = t_global.args.latency_rate
     trial_params['device_list'] = [0,1]
     trial_params['rate_unit'] = t_global.args.rate_unit
     trial_params['rate_tolerance'] = t_global.args.rate_tolerance
@@ -537,17 +642,13 @@ def main():
                        if trial_result == "pass":
                            trial_result = "retry" 
              elif trial_params['rate_unit'] == "%":
-                  # +20 is packet overhead (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
-                  # *8 is for bits/byte
-                  max_packet_rate = (stats[dev_pair['tx']]['tx_bandwidth'] / ((trial_params['frame_size'] + 20) * 8)) / 1000000.0
-                  tx_rate = (tx_rate / max_packet_rate) * 100.0
-                  tolerance_min = trial_params['rate'] * ((100.0 - trial_params['rate_tolerance']) / 100)
-                  tolerance_max = trial_params['rate'] * ((100.0 + trial_params['rate_tolerance']) / 100)
+                  tolerance_min = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
+                  tolerance_max = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
                        requirement_msg = "retry"
                        if trial_result == "pass":
                            trial_result = "retry" 
-             print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: %s, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], trial_params['rate_unit'], tolerance_min, tolerance_max, tx_rate))
+             print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], tolerance_min, tolerance_max, tx_rate))
 
         if test_abort:
              print('Binary search aborting due to critical error')
@@ -568,6 +669,8 @@ def main():
                 next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
             else:
                 next_rate = (prev_pass_rate + rate) / 2
+                if abs(rate - next_rate) < (trial_params['search_granularity'] * rate / 100):
+                     next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
             if perform_sniffs:
                  do_sniff = True
                  do_search = False
