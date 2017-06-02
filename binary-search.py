@@ -404,13 +404,11 @@ def run_trial (trial_params):
                        if m.group(1) == "a":
                             streams.insert(0, json.loads(m.group(2)))
 
-                            if trial_params['rate_unit'] == "%":
-                                 stats[0]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[0], tmp_stats[0])
+                            stats[0]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[0], tmp_stats[0])
                        elif m.group(1) == "b":
                             streams.insert(1, json.loads(m.group(2)))
 
-                            if trial_params['rate_unit'] == "%":
-                                 stats[1]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[1], tmp_stats[1])
+                            stats[1]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[1], tmp_stats[1])
                   #PARSABLE RESULT: {"0":{"tx_util":37.68943472,"rx_bps":11472348160.0,"obytes":43064997504,"rx_pps":22406932.0,"ipackets":672312848,"oerrors":0,"rx_util":37.6436432,"opackets":672890586,"tx_pps":22434198.0,"tx_bps":11486302208.0,"ierrors":0,"rx_bps_L1":15057457280.0,"tx_bps_L1":15075773888.0,"ibytes":43028022272},"1":{"tx_util":37.6893712,"rx_bps":11486310400.0,"obytes":43063561984,"rx_pps":22434204.0,"ipackets":672890586,"oerrors":0,"rx_util":37.6894576,"opackets":672868156,"tx_pps":22434148.0,"tx_bps":11486284800.0,"ierrors":0,"rx_bps_L1":15075783040.0,"tx_bps_L1":15075748480.0,"ibytes":43064997504},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":22958659584.0,"bw_per_core":7.34,"rx_cpu_util":0.0,"rx_pps":44841136.0,"queue_full":0,"cpu_util":62.6,"tx_pps":44868344.0,"tx_bps":22972585984.0,"rx_drop_bps":0.0},"total":{"tx_util":75.37880591999999,"rx_bps":22958658560.0,"obytes":86128559488,"ipackets":1345203434,"rx_pps":44841136.0,"rx_util":75.3331008,"oerrors":0,"opackets":1345758742,"tx_pps":44868346.0,"tx_bps":22972587008.0,"ierrors":0,"rx_bps_L1":30133240320.0,"tx_bps_L1":30151522368.0,"ibytes":86093019776},"flow_stats":{"1":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":"N/A","1":20884464.286073223,"total":20884464.286073223},"rx_pkts":{"0":0,"1":672890586,"total":672890586},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":43064997504,"1":0,"total":43064997504},"tx_pps":{"0":20898314.26218906,"1":"N/A","total":20898314.26218906},"tx_bps":{"0":10699936902.240799,"1":"N/A","total":10699936902.240799},"tx_pkts":{"0":672890586,"1":0,"total":672890586},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":14043667184.191048,"1":"N/A","total":14043667184.191048}},"2":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":20884967.481241994,"1":"N/A","total":20884967.481241994},"rx_pkts":{"0":672312848,"1":0,"total":672312848},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":0,"1":43063561984,"total":43063561984},"tx_pps":{"0":"N/A","1":20898728.6582104,"total":20898728.6582104},"tx_bps":{"0":"N/A","1":10700149073.003725,"total":10700149073.003725},"tx_pkts":{"0":0,"1":672868156,"total":672868156},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":"N/A","1":14043945658.317389,"total":14043945658.317389}},"global":{"rx_err":{},"tx_err":{}}}}
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
@@ -634,16 +632,16 @@ def main():
              tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
              tolerance_min = 0.0
              tolerance_max = 0.0
-             if trial_params['rate_unit'] == "mpps":
-                  tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
-                  tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
+             if t_global.args.traffic_generator == 'trex-txrx':
+                  tolerance_min = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
+                  tolerance_max = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
                        requirement_msg = "retry"
                        if trial_result == "pass":
                            trial_result = "retry" 
-             elif trial_params['rate_unit'] == "%":
-                  tolerance_min = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
-                  tolerance_max = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
+             elif t_global.args.traffic_generator == 'moongen-txrx':
+                  tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
+                  tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
                        requirement_msg = "retry"
                        if trial_result == "pass":
