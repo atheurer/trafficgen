@@ -144,6 +144,16 @@ def process_options ():
                         default=0.002,
 			type = float
                         )
+    parser.add_argument('--src-ports',
+                        dest='src_ports',
+                        help='comma separated list of source ports, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--dst-ports',
+                        dest='dst_ports',
+                        help='comma separated list of destination ports, 1 per device',
+                        default=""
+                        )
     parser.add_argument('--dst-macs', 
                         dest='dst_macs',
                         help='comma separated list of destination MACs, 1 per device',
@@ -359,6 +369,10 @@ def run_trial (trial_params):
         cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
         cmd = cmd + ' --run-revunidirec=' + str(trial_params['run_revunidirec'])
         cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
+        if trial_params['src_ports'] != '':
+             cmd = cmd + ' --src-ports=' + str(trial_params['src_ports'])
+        if trial_params['dst_ports'] != '':
+             cmd = cmd + ' --dst-ports=' + str(trial_params['dst_ports'])
         if trial_params['src_ips'] != '':
              cmd = cmd + ' --src-ips=' + str(trial_params['src_ips'])
         if trial_params['dst_ips'] != '':
@@ -550,6 +564,8 @@ def main():
     print("dest-ips", t_global.args.dst_ips)
     print("encap-src-ips", t_global.args.encap_src_ips)
     print("encap-dest-ips", t_global.args.encap_dst_ips)
+    print("src-ports", t_global.args.src_ports)
+    print("dst-ports", t_global.args.dst_ports)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -582,6 +598,8 @@ def main():
     trial_params['traffic_generator'] = t_global.args.traffic_generator
     trial_params['max_retries'] = t_global.args.max_retries
     trial_params['search_granularity'] = t_global.args.search_granularity
+    trial_params['src_ports'] = t_global.args.src_ports
+    trial_params['dst_ports'] = t_global.args.dst_ports
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
