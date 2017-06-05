@@ -799,6 +799,7 @@ function getBuffers(devId, testParams)
 			pktLength = frame_size_without_crc, -- this sets all length headers fields in all used protocols
 			ethSrc = testParams.srcMacs[devId],
 			ethDst = testParams.dstMacs[devId],
+			ip4Src = testParams.srcIp,
 			ip4Dst = testParams.dstIp,
 			udpSrc = testParams.srcPort,
 			udpDst = testParams.dstPort
