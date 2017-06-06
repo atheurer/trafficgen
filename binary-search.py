@@ -266,15 +266,9 @@ def run_trial (trial_params):
     stats[0] = dict()
     stats[0]['tx_packets'] = 0
     stats[0]['rx_packets'] = 0
-    stats[0]['tx_bandwidth'] = 0
-    stats[0]['rx_bandwidth'] = 0
-    stats[0]['tx_pps_target'] = 0
     stats[1] = dict()
     stats[1]['tx_packets'] = 0
     stats[1]['rx_packets'] = 0
-    stats[1]['tx_bandwidth'] = 0
-    stats[1]['rx_bandwidth'] = 0
-    stats[1]['tx_pps_target'] = 0
 
     tmp_stats = dict()
     tmp_stats[0] = dict()
@@ -333,6 +327,13 @@ def run_trial (trial_params):
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'trex-txrx':
+        stats[0]['tx_bandwidth'] = 0
+        stats[0]['rx_bandwidth'] = 0
+        stats[0]['tx_pps_target'] = 0
+        stats[1]['tx_bandwidth'] = 0
+        stats[1]['rx_bandwidth'] = 0
+        stats[1]['tx_pps_target'] = 0
+
         cmd = 'python trex-txrx.py'
         #cmd = cmd + ' --devices=0,1' # fix to allow different devices
         cmd = cmd + ' --measure-latency=' + str(trial_params['measure_latency'])
