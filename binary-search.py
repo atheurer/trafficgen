@@ -54,6 +54,18 @@ def process_options ():
                         default=1,
                         type = int,
                         )
+    parser.add_argument('--use-src-port-flows',
+                        dest='use_src_port_flows',
+                        help='implement flows by source port',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--use-dst-port-flows',
+                        dest='use_dst_port_flows',
+                        help='implement flows by destination port',
+                        default=0,
+                        type = int,
+                        )
     parser.add_argument('--use-encap-src-ip-flows', 
                         dest='use_encap_src_ip_flows',
                         help='implement flows by source IP in the encapsulated packet',
@@ -385,6 +397,8 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-dst-ip-flows=' + str(trial_params['use_dst_ip_flows'])
         cmd = cmd + ' --use-src-mac-flows=' + str(trial_params['use_src_mac_flows'])
         cmd = cmd + ' --use-dst-mac-flows=' + str(trial_params['use_dst_mac_flows'])
+        cmd = cmd + ' --use-src-port-flows=' + str(trial_params['use_src_port_flows'])
+        cmd = cmd + ' --use-dst-port-flows=' + str(trial_params['use_dst_port_flows'])
 
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
@@ -552,6 +566,8 @@ def main():
     print("use-dst-mac-flows", t_global.args.use_dst_mac_flows)
     print("use-src-ip-flows", t_global.args.use_src_ip_flows)
     print("use-dst-ip-flows", t_global.args.use_dst_ip_flows)
+    print("use-src-port-flows", t_global.args.use_src_port_flows)
+    print("use-dst-port-flows", t_global.args.use_dst_port_flows)
     print("use-encap-src-mac-flows", t_global.args.use_encap_src_mac_flows)
     print("use-encap-dst-mac-flows", t_global.args.use_encap_dst_mac_flows)
     print("use-encap-src-ip-flows", t_global.args.use_encap_src_ip_flows)
@@ -579,6 +595,8 @@ def main():
     trial_params['num_flows'] = t_global.args.num_flows
     trial_params['use_src_mac_flows']= t_global.args.use_src_mac_flows
     trial_params['use_dst_mac_flows']= t_global.args.use_dst_mac_flows
+    trial_params['use_src_port_flows'] = t_global.args.use_src_port_flows
+    trial_params['use_dst_port_flows'] = t_global.args.use_dst_port_flows
     trial_params['use_encap_src_mac_flows'] = t_global.args.use_encap_src_mac_flows
     trial_params['use_encap_dst_mac_flows'] = t_global.args.use_encap_dst_mac_flows
     trial_params['use_src_ip_flows'] = t_global.args.use_src_ip_flows
