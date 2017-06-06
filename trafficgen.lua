@@ -837,6 +837,7 @@ function getBuffers(devId, testParams)
 			pktLength = testParams.frameSize - 4,
 			ethSrc = testParams.srcMacs[devId],
 			ethDst = testParams.dstMacs[devId],
+			ip4Src = testParams.srcIp,
 			ip4Dst = testParams.dstIp,
 			udpSrc = testParams.srcPort,
 			udpDst = testParams.dstPort
