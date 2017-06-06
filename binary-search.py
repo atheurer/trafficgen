@@ -138,6 +138,12 @@ def process_options ():
                         default = "mpps",
                         choices = [ '%', 'mpps' ]
                         )
+    parser.add_argument('--packet-protocol',
+                        dest='packet_protocol',
+                        help='IP protocol to use when constructing packets',
+                        default = "UDP",
+                        choices = [ 'UDP', 'TCP' ]
+                        )
     parser.add_argument('--rate-tolerance',
                         dest='rate_tolerance',
                         help='percentage that TX rate is allowed to vary from requested rate and still be considered valid',
@@ -399,6 +405,7 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-dst-mac-flows=' + str(trial_params['use_dst_mac_flows'])
         cmd = cmd + ' --use-src-port-flows=' + str(trial_params['use_src_port_flows'])
         cmd = cmd + ' --use-dst-port-flows=' + str(trial_params['use_dst_port_flows'])
+        cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
 
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
@@ -582,6 +589,7 @@ def main():
     print("encap-dest-ips", t_global.args.encap_dst_ips)
     print("src-ports", t_global.args.src_ports)
     print("dst-ports", t_global.args.dst_ports)
+    print("packet-protocol", t_global.args.packet_protocol)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -618,6 +626,7 @@ def main():
     trial_params['search_granularity'] = t_global.args.search_granularity
     trial_params['src_ports'] = t_global.args.src_ports
     trial_params['dst_ports'] = t_global.args.dst_ports
+    trial_params['packet_protocol'] = t_global.args.packet_protocol
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
