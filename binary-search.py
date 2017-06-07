@@ -687,6 +687,7 @@ def main():
             if do_sniff:
                  do_sniff = False
                  do_search = True
+                 next_rate = rate # since this was only the sniff test, keep the current rate
             else:
                  prev_pass_rate = rate
                  next_rate = (prev_fail_rate + rate) / 2
