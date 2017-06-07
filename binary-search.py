@@ -66,6 +66,12 @@ def process_options ():
                         default=0,
                         type = int,
                         )
+    parser.add_argument('--use-protocol-flows',
+                        dest='use_protocol_flows',
+                        help='implement flows by IP protocol',
+                        default=0,
+                        type = int,
+                        )
     parser.add_argument('--use-encap-src-ip-flows', 
                         dest='use_encap_src_ip_flows',
                         help='implement flows by source IP in the encapsulated packet',
@@ -405,6 +411,7 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-dst-mac-flows=' + str(trial_params['use_dst_mac_flows'])
         cmd = cmd + ' --use-src-port-flows=' + str(trial_params['use_src_port_flows'])
         cmd = cmd + ' --use-dst-port-flows=' + str(trial_params['use_dst_port_flows'])
+        cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
 
     print('running trial, rate', trial_params['rate'])
@@ -575,6 +582,7 @@ def main():
     print("use-dst-ip-flows", t_global.args.use_dst_ip_flows)
     print("use-src-port-flows", t_global.args.use_src_port_flows)
     print("use-dst-port-flows", t_global.args.use_dst_port_flows)
+    print("use-protocol-flows", t_global.args.use_protocol_flows)
     print("use-encap-src-mac-flows", t_global.args.use_encap_src_mac_flows)
     print("use-encap-dst-mac-flows", t_global.args.use_encap_dst_mac_flows)
     print("use-encap-src-ip-flows", t_global.args.use_encap_src_ip_flows)
@@ -609,6 +617,7 @@ def main():
     trial_params['use_encap_dst_mac_flows'] = t_global.args.use_encap_dst_mac_flows
     trial_params['use_src_ip_flows'] = t_global.args.use_src_ip_flows
     trial_params['use_dst_ip_flows'] = t_global.args.use_dst_ip_flows
+    trial_params['use_protocol_flows'] = t_global.args.use_protocol_flows
     trial_params['use_encap_src_ip_flows'] = t_global.args.use_encap_src_ip_flows
     trial_params['use_encap_dst_ip_flows'] = t_global.args.use_encap_dst_ip_flows
     trial_params['src_macs'] = t_global.args.src_macs
