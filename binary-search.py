@@ -235,9 +235,11 @@ def calculate_tx_pps_target(trial_params, streams, tmp_stats):
 
      target_latency_bytes = 0.0
      target_default_bytes = 0.0
-     total_target_bytes = (tmp_stats['tx_available_bandwidth'] / bits_per_byte) * (trial_params['rate'] / 100)
-
      target_default_rate = 0.0
+     if trial_params['rate_unit'] == "%":
+          total_target_bytes = (tmp_stats['tx_available_bandwidth'] / bits_per_byte) * (trial_params['rate'] / 100)
+     else:
+          total_target_bytes = (trial_params['frame_size'] + packet_overhead_bytes) * trial_params['rate'] * 1000000
 
      for frame_size, traffic_shares in zip(streams['default']['frame_sizes'], streams['default']['traffic_shares']):
           default_packet_avg_bytes += (frame_size * traffic_shares)
