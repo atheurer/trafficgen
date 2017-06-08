@@ -138,53 +138,53 @@ def process_options ():
                         default=0.002,
 			type = float
                         )
-    parser.add_argument('--dst-macs-list', 
-                        dest='dst_macs_list',
+    parser.add_argument('--dst-macs', 
+                        dest='dst_macs',
                         help='comma separated list of destination MACs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--src-macs-list', 
-                        dest='src_macs_list',
+    parser.add_argument('--src-macs', 
+                        dest='src_macs',
                         help='comma separated list of src MACs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--encap-dst-macs-list', 
-                        dest='encap_dst_macs_list',
+    parser.add_argument('--encap-dst-macs', 
+                        dest='encap_dst_macs',
                         help='comma separated list of destination MACs for encapulsated network, 1 per device',
                         default=""
                         )
-    parser.add_argument('--encap-src-macs-list', 
-                        dest='encap_src_macs_list',
+    parser.add_argument('--encap-src-macs', 
+                        dest='encap_src_macs',
                         help='comma separated list of src MACs for encapulsated network, 1 per device',
                         default=""
                         )
-    parser.add_argument('--dst-ips-list', 
-                        dest='dst_ips_list',
+    parser.add_argument('--dst-ips', 
+                        dest='dst_ips',
                         help='comma separated list of destination IPs 1 per device',
                         default=""
                         )
-    parser.add_argument('--src-ips-list', 
-                        dest='src_ips_list',
+    parser.add_argument('--src-ips', 
+                        dest='src_ips',
                         help='comma separated list of src IPs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--vxlan-ids-list', 
-                        dest='vxlan_ids_list',
+    parser.add_argument('--vxlan-ids', 
+                        dest='vxlan_ids',
                         help='comma separated list of VxLAN IDs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--vlan-ids-list', 
-                        dest='vlan_ids_list',
+    parser.add_argument('--vlan-ids', 
+                        dest='vlan_ids',
                         help='comma separated list of VLAN IDs, 1 per device',
                         default=""
                         )
-    parser.add_argument('--encap-dst-ips-list', 
-                        dest='encap_dst_ips_list',
+    parser.add_argument('--encap-dst-ips', 
+                        dest='encap_dst_ips',
                         help='comma separated list of destination IPs for excapsulated network, 1 per device',
                         default=""
                         )
-    parser.add_argument('--encap-src-ips-list', 
-                        dest='encap_src_ips_list',
+    parser.add_argument('--encap-src-ips', 
+                        dest='encap_src_ips',
                         help='comma separated list of src IPs for excapsulated network,, 1 per device',
                         default=""
                         )
@@ -287,26 +287,26 @@ def run_trial (trial_params):
 	cmd = cmd + ' --size=' + str(trial_params['frame_size'])
 	cmd = cmd + ' --runTime=' + str(trial_params['runtime'])
 	cmd = cmd + ' --bidirectional=' + str(trial_params['run_bidirec'])
-        if trial_params['vlan_ids_list'] != '':
-            cmd = cmd + ' --vlanIds=' + str(trial_params['vlan_ids_list'])
-        if trial_params['vxlan_ids_list'] != '':
-            cmd = cmd + ' --vxlanIds=' + str(trial_params['vxlan_ids_list'])
-        if trial_params['src_ips_list'] != '':
-            cmd = cmd + ' --srcIps=' + str(trial_params['src_ips_list'])
-        if trial_params['dst_ips_list'] != '':
-            cmd = cmd + ' --dstIps=' + str(trial_params['dst_ips_list'])
-        if trial_params['src_macs_list'] != '':
-            cmd = cmd + ' --srcMacs=' + str(trial_params['src_macs_list'])
-        if trial_params['dst_macs_list'] != '':
-            cmd = cmd + ' --dstMacs=' + str(trial_params['dst_macs_list'])
-        if trial_params['encap_src_ips_list'] != '':
-            cmd = cmd + ' --encapSrcIps=' + str(trial_params['encap_src_ips_list'])
-        if trial_params['encap_dst_ips_list'] != '':
-            cmd = cmd + ' --encapDstIps=' + str(trial_params['encap_dst_ips_list'])
-        if trial_params['encap_src_macs_list'] != '':
-            cmd = cmd + ' --encapSrcMacs=' + str(trial_params['encap_src_macs_list'])
-        if trial_params['encap_dst_macs_list'] != '':
-            cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs_list'])
+        if trial_params['vlan_ids'] != '':
+            cmd = cmd + ' --vlanIds=' + str(trial_params['vlan_ids'])
+        if trial_params['vxlan_ids'] != '':
+            cmd = cmd + ' --vxlanIds=' + str(trial_params['vxlan_ids'])
+        if trial_params['src_ips'] != '':
+            cmd = cmd + ' --srcIps=' + str(trial_params['src_ips'])
+        if trial_params['dst_ips'] != '':
+            cmd = cmd + ' --dstIps=' + str(trial_params['dst_ips'])
+        if trial_params['src_macs'] != '':
+            cmd = cmd + ' --srcMacs=' + str(trial_params['src_macs'])
+        if trial_params['dst_macs'] != '':
+            cmd = cmd + ' --dstMacs=' + str(trial_params['dst_macs'])
+        if trial_params['encap_src_ips'] != '':
+            cmd = cmd + ' --encapSrcIps=' + str(trial_params['encap_src_ips'])
+        if trial_params['encap_dst_ips'] != '':
+            cmd = cmd + ' --encapDstIps=' + str(trial_params['encap_dst_ips'])
+        if trial_params['encap_src_macs'] != '':
+            cmd = cmd + ' --encapSrcMacs=' + str(trial_params['encap_src_macs'])
+        if trial_params['encap_dst_macs'] != '':
+            cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs'])
         flow_mods_opt = ''
         if trial_params['use_src_ip_flows'] == 1:
 	    flow_mods_opt = flow_mods_opt + ',srcIp'
@@ -344,22 +344,14 @@ def run_trial (trial_params):
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
         cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
         cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
-        if trial_params['src_ips_list'] != '':
-             cmd = cmd + ' --src-ips-list=' + str(trial_params['src_ips_list'])
-        if trial_params['dst_ips_list'] != '':
-             cmd = cmd + ' --dst-ips-list=' + str(trial_params['dst_ips_list'])
-        if trial_params['src_macs_list'] != '':
-             cmd = cmd + ' --src-macs-list=' + str(trial_params['src_macs_list'])
-        if trial_params['dst_macs_list'] != '':
-             cmd = cmd + ' --dst-macs-list=' + str(trial_params['dst_macs_list'])
-        #if trial_params['encap_src_ips_list'] != '':
-        #     cmd = cmd + ' --encap-src-ips-list=' + str(trial_params['encap_src_ips_list'])
-        #if trial_params['encap_dst_ips_list'] != '':
-        #     cmd = cmd + ' --encap-dst-ips-list=' + str(trial_params['encap_dst_ips_list'])
-        #if trial_params['encap_src_macs_list'] != '':
-        #     cmd = cmd + ' --encap-src-macs-list=' + str(trial_params['encap_src_macs_list'])
-        #if trial_params['encap_dst_macs_list'] != '':
-        #     cmd = cmd + ' --encap-dst-macs-list=' + str(trial_params['encap_dst_macs_list'])
+        if trial_params['src_ips'] != '':
+             cmd = cmd + ' --src-ips=' + str(trial_params['src_ips'])
+        if trial_params['dst_ips'] != '':
+             cmd = cmd + ' --dst-ips=' + str(trial_params['dst_ips'])
+        if trial_params['src_macs'] != '':
+             cmd = cmd + ' --src-macs=' + str(trial_params['src_macs'])
+        if trial_params['dst_macs'] != '':
+             cmd = cmd + ' --dst-macs=' + str(trial_params['dst_macs'])
         cmd = cmd + ' --use-src-ip-flows=' + str(trial_params['use_src_ip_flows'])
         cmd = cmd + ' --use-dst-ip-flows=' + str(trial_params['use_dst_ip_flows'])
         cmd = cmd + ' --use-src-mac-flows=' + str(trial_params['use_src_mac_flows'])
@@ -532,20 +524,19 @@ def main():
     print("use-encap-dst-mac-flows", t_global.args.use_encap_dst_mac_flows)
     print("use-encap-src-ip-flows", t_global.args.use_encap_src_ip_flows)
     print("use-encap-dst-ip-flows", t_global.args.use_encap_dst_ip_flows)
-    print("src-macs-list", t_global.args.src_macs_list)
-    print("dest-macs-list", t_global.args.dst_macs_list)
-    print("encap-src-macs-list", t_global.args.encap_src_macs_list)
-    print("encap-dest-macs-list", t_global.args.encap_dst_macs_list)
-    print("src-ips-list", t_global.args.src_ips_list)
-    print("dest-ips-list", t_global.args.dst_ips_list)
-    print("encap-src-ips-list", t_global.args.encap_src_ips_list)
-    print("encap-dest-ips-list", t_global.args.encap_dst_ips_list)
+    print("src-macs", t_global.args.src_macs)
+    print("dest-macs", t_global.args.dst_macs)
+    print("encap-src-macs", t_global.args.encap_src_macs)
+    print("encap-dest-macs", t_global.args.encap_dst_macs)
+    print("src-ips", t_global.args.src_ips)
+    print("dest-ips", t_global.args.dst_ips)
+    print("encap-src-ips", t_global.args.encap_src_ips)
+    print("encap-dest-ips", t_global.args.encap_dst_ips)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
     trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['latency_rate'] = t_global.args.latency_rate
-    trial_params['device_list'] = [0,1]
     trial_params['rate_unit'] = t_global.args.rate_unit
     trial_params['rate_tolerance'] = t_global.args.rate_tolerance
     trial_params['frame_size'] = t_global.args.frame_size
@@ -559,16 +550,16 @@ def main():
     trial_params['use_dst_ip_flows'] = t_global.args.use_dst_ip_flows
     trial_params['use_encap_src_ip_flows'] = t_global.args.use_encap_src_ip_flows
     trial_params['use_encap_dst_ip_flows'] = t_global.args.use_encap_dst_ip_flows
-    trial_params['src_macs_list'] = t_global.args.src_macs_list
-    trial_params['dst_macs_list'] = t_global.args.dst_macs_list
-    trial_params['encap_src_macs_list'] = t_global.args.encap_src_macs_list
-    trial_params['encap_dst_macs_list'] = t_global.args.encap_dst_macs_list
-    trial_params['src_ips_list'] = t_global.args.src_ips_list
-    trial_params['dst_ips_list'] = t_global.args.dst_ips_list
-    trial_params['encap_src_ips_list'] = t_global.args.encap_src_ips_list
-    trial_params['encap_dst_ips_list'] = t_global.args.encap_dst_ips_list
-    trial_params['vlan_ids_list'] = t_global.args.vlan_ids_list
-    trial_params['vxlan_ids_list'] = t_global.args.vxlan_ids_list
+    trial_params['src_macs'] = t_global.args.src_macs
+    trial_params['dst_macs'] = t_global.args.dst_macs
+    trial_params['encap_src_macs'] = t_global.args.encap_src_macs
+    trial_params['encap_dst_macs'] = t_global.args.encap_dst_macs
+    trial_params['src_ips'] = t_global.args.src_ips
+    trial_params['dst_ips'] = t_global.args.dst_ips
+    trial_params['encap_src_ips'] = t_global.args.encap_src_ips
+    trial_params['encap_dst_ips'] = t_global.args.encap_dst_ips
+    trial_params['vlan_ids'] = t_global.args.vlan_ids
+    trial_params['vxlan_ids'] = t_global.args.vxlan_ids
     trial_params['traffic_generator'] = t_global.args.traffic_generator
     trial_params['max_retries'] = t_global.args.max_retries
     trial_params['search_granularity'] = t_global.args.search_granularity
