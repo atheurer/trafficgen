@@ -35,6 +35,12 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
 
 2. Bind DPDK to two network interfaces needed by the traffic generator.  If you intend to use MoonGen and ran ./setup.sh previously, then you can use ./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py.  If you intend to use TRex, it also includes a binding utility under [/opt/trex/current]/dpdk_set_ports.py.  Binding with vfio-pci kernel module is recommended.
       
-## Running binary-search.py
-   binary-search.py is controlled entirely by command line options.  Please see all of the options with --help.  At a minimum, you should provide a --devices option so the script knows which device to use for traffic Tx/Rx.
+## Running
+   
+   binary-search.py is controlled entirely by command line options.  Please see all of the options with --help.  The recommded minimum number of optons are:
+   
+   --devices
+   --traffic-generator
+   --max-loss-pct
+   --frame-size
    
