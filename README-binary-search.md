@@ -2,15 +2,16 @@
 A script to conduct a binary-search for maximum packet throughput.  This script is designed to work with different traffic generator solutions.  Currently it supports two software traffic generators: MoonGen (with txrx.lua) and TRex (with trex-txrx.lua).  The goal is to refine and enhance the binary-search features completely separate from the actual traffic generators.
 
 ## Installation:
-1.  Download the code:
+1.  Download the code
     ```
     [root@LinuxServer root]#git clone https://github.com/atheurer/lua-trafficgen
     ```
     
-2.  Build the code:
+2.  Build the code.  
+
     If your intention is to only use TRex with binary-search.py, you do not need to build anything from this repo.  However, before you run tests, you will need to install TRex, configure /etc/trex_cfg.yaml, and start the TRex server in stateless mode.  Binary-search.py will communicate with TRex server to start/stop trials.
 
-    If you intention is to use MoonGen for trials, then MoonGen can be build from this repo.  This repo includes a git submodule of a specific version of MoonGen repo, so that the txrx.lua script is synced with the proper version of MoonGen.  To build everything:
+    If your intention is to use MoonGen for trials, then MoonGen can be build from this repo.  This repo includes a git submodule of a specific version of MoonGen repo, so that the txrx.lua script is synced with the proper version of MoonGen.  To build everything:
 
     ```
     [root@LinuxServer root]#cd lua-trafficgen
