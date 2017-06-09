@@ -6,8 +6,8 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
 
     First, download this git repository
     ```
-    [root@LinuxServer root]#cd /opt
-    [root@LinuxServer root]#git clone https://github.com/atheurer/lua-trafficgen
+    [root@LinuxServer ~]#cd /opt
+    [root@LinuxServer opt]#git clone https://github.com/atheurer/lua-trafficgen
     ```
     Next, if you intend on using TRex with binary-search.py, also download the TRex package, here: http://trex-tgn.cisco.com/trex/release/v2.22.tar.gz
     
