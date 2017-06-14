@@ -80,6 +80,7 @@ function configure(parser)
 	parser:option("--flowMods", "Comma separated list (no spaces), one or more of:  srcIp,dstIp,srcMac,dstMac,srcPort,dstPort"):default({""}):convert(stringsToTable)
 	parser:option("--srcIps", "A comma separated list (no spaces) of source IP address used"):default("10.0.100.2,10.0.101.2"):convert(stringsToTable)
 	parser:option("--dstIps", "A comma separated list (no spaces) of destination IP address used"):default("10.0.100.1,10.0.101.1"):convert(stringsToTable)
+	parser:option("--gatewayIps", "A comma separated list (no spaces) of gateway (router) IP address used.  For router testing, either this option or dstIps is required"):default(""):convert(stringsToTable)
 	parser:option("--srcMacs", "A comma separated list (no spaces) of source MAC address used"):default({}):convert(stringsToTable)
 	parser:option("--dstMacs", "A comma separated list (no spaces) of destination MAC address used"):default({}):convert(stringsToTable)
 	parser:option("--srcPort", "Source port used"):default(1234):convert(tonumber)
@@ -179,13 +180,13 @@ function master(args)
 		if connections[i] then
 			-- in a L2 test, the dst MAC is just assigned the src MAC from the corresponding Rx device.
 			-- However, if an L3 test (router), we want the MAC of the router.  So, before using 
-			-- the src MAC, try to ARP request the MAC from dstIp.  If there is no reply, then
+			-- the src MAC, try to ARP request the MAC for gatewayIp.  If there is no reply, then
 			-- just use the src MAC.  In order for a ARP request to happen, you must not use the
-			-- --dstMacs option and use must use the --dstIps option.
-			if not args.dstMacs[i] and args.dstIps[i] then
-				log:info("looking up MAC for IP %s", args.dstIps[i])
-				args.dstMacs[i] = proto.arp.blockingLookup(args.dstIps[i], 5)
-				log:info("got MAC %s for IP %s", args.dstMacs[i], args.dstIps[i])
+			-- --dstMacs option and use must use the --gatewayIps option.
+			if not args.dstMacs[i] and args.gatewayIps[i] then
+				log:info("looking up MAC for IP %s", args.gatewayIps[i])
+				args.dstMacs[i] = proto.arp.blockingLookup(args.gatewayIps[i], 5)
+				log:info("got MAC %s for IP %s", args.dstMacs[i], args.gatewayIps[i])
 			end
 			if not args.dstMacs[i] then
 				log:info("no ARP reponse, assigning device %d src MAC", args.devices[connections[i]])
@@ -679,6 +680,37 @@ function calibrateTx(args, taskId, txQueues, txDevId, txTasksPerDev, numTxQueues
 		end
 	end
 	log:info("[calibrateTx] %s calibrateRatio: %f", txDev, calibrateRatio)
+
+	log:info("[calibrateTx] warming up for another 30 seconds")
+	start = libmoon.getTime()
+	while moongen.running() and elapsedTime < 30 do
+		bufs:alloc(sizeWithoutCrc)
+		if args.flowMods then
+			packetId = adjustHeaders(txDevId, bufs, packetId, args, srcMacs, dstMacs)
+			
+		end
+		if (args.vlanIds[txDevId]) then
+			bufs:setVlans(args.vlanIds[txDevId])
+		end
+                bufs:offloadUdpChecksums()
+		if ( args.txMethod == "hardware" ) then
+			local queue
+			for _, queue in ipairs(txQueues)  do
+				txCount = txCount + queue:send(bufs)
+			end
+		else
+			for _, buf in ipairs(bufs) do
+				buf:setRate(rate)
+			end
+			local queue
+			for _ , queue in pairs(txQueues)  do
+				txCount = txCount + queue:sendWithDelay(bufs)
+			end
+		end
+		stop = libmoon.getTime()
+		elapsedTime = stop - start
+	end
+
         return rate
 end
 
