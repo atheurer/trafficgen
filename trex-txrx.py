@@ -247,6 +247,12 @@ def process_options ():
                         default=1,
                         type = int,
                         )
+    parser.add_argument('--run-revunidirec',
+                        dest='run_revunidirec',
+                        help='0 = Tx on first device, 1 = Tx on second devices',
+                        default=0,
+                        type = int,
+                        )
     parser.add_argument('--runtime', 
                         dest='runtime',
                         help='tiral period in seconds',
@@ -343,6 +349,9 @@ def main():
         # connect to server
         c.connect()
 
+        if t_global.args.run_bidirec and t_global.args.run_revunidirec:
+             raise ValueError("It does not make sense for both --run-bidirec=1 and --run-revunidirec=1")
+
         # prepare our ports
         c.acquire(ports = [port_a, port_b], force=True)
         c.reset(ports = [port_a, port_b])
@@ -398,12 +407,16 @@ def main():
         # dedicate 128 (this is somewhat arbitrary; it is a 32bit id) packet group ids (pg_ids) to each direction: base_a=128 and base_b=256
         # there are a maximum of 128 concurrent latency streams (with unique pg_ids) so dedicate 64 to each direction: latency_base_a=0 and latency_base_b=64
 
-        traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst)
-        c.add_streams(streams = traffic_profile, ports = [port_a])
-
-        if t_global.args.run_bidirec:
-             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 256, 64, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst)
+        if t_global.args.run_revunidirec:
+             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst)
              c.add_streams(streams = traffic_profile, ports = [port_b])
+        else:
+             traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst)
+             c.add_streams(streams = traffic_profile, ports = [port_a])
+
+             if t_global.args.run_bidirec:
+                  traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 256, 64, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst)
+                  c.add_streams(streams = traffic_profile, ports = [port_b])
 
         # clear the stats before injecting
         c.clear_stats()
@@ -422,19 +435,26 @@ def main():
         print("Starting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
 
         # here we multiply the traffic lineaer to whatever given in rate
-        print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
-        if t_global.args.run_bidirec:
-            print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
-            c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
+        if t_global.args.run_revunidirec:
+             print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
+             c.start(ports = [port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
         else:
-            c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
+             print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
+             if t_global.args.run_bidirec:
+                  print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
+                  c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
+             else:
+                  c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
 
         time.sleep(t_global.args.runtime)
 
         if t_global.args.run_bidirec:
              c.stop(ports = [port_a, port_b])
         else:
-             c.stop(ports = [port_a])
+             if t_global.args.run_revunidirec:
+                  c.stop(ports = [port_b])
+             else:
+                  c.stop(ports = [port_a])
 
         # log end of test
         stop_time = datetime.datetime.now()
