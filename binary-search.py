@@ -54,6 +54,24 @@ def process_options ():
                         default=1,
                         type = int,
                         )
+    parser.add_argument('--use-src-port-flows',
+                        dest='use_src_port_flows',
+                        help='implement flows by source port',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--use-dst-port-flows',
+                        dest='use_dst_port_flows',
+                        help='implement flows by destination port',
+                        default=0,
+                        type = int,
+                        )
+    parser.add_argument('--use-protocol-flows',
+                        dest='use_protocol_flows',
+                        help='implement flows by IP protocol',
+                        default=0,
+                        type = int,
+                        )
     parser.add_argument('--use-encap-src-ip-flows', 
                         dest='use_encap_src_ip_flows',
                         help='implement flows by source IP in the encapsulated packet',
@@ -126,6 +144,12 @@ def process_options ():
                         default = "mpps",
                         choices = [ '%', 'mpps' ]
                         )
+    parser.add_argument('--packet-protocol',
+                        dest='packet_protocol',
+                        help='IP protocol to use when constructing packets',
+                        default = "UDP",
+                        choices = [ 'UDP', 'TCP' ]
+                        )
     parser.add_argument('--rate-tolerance',
                         dest='rate_tolerance',
                         help='percentage that TX rate is allowed to vary from requested rate and still be considered valid',
@@ -143,6 +167,16 @@ def process_options ():
                         help='maximum percentage of packet loss',
                         default=0.002,
 			type = float
+                        )
+    parser.add_argument('--src-ports',
+                        dest='src_ports',
+                        help='comma separated list of source ports, 1 per device',
+                        default=""
+                        )
+    parser.add_argument('--dst-ports',
+                        dest='dst_ports',
+                        help='comma separated list of destination ports, 1 per device',
+                        default=""
                         )
     parser.add_argument('--dst-macs', 
                         dest='dst_macs',
@@ -359,6 +393,10 @@ def run_trial (trial_params):
         cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
         cmd = cmd + ' --run-revunidirec=' + str(trial_params['run_revunidirec'])
         cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
+        if trial_params['src_ports'] != '':
+             cmd = cmd + ' --src-ports=' + str(trial_params['src_ports'])
+        if trial_params['dst_ports'] != '':
+             cmd = cmd + ' --dst-ports=' + str(trial_params['dst_ports'])
         if trial_params['src_ips'] != '':
              cmd = cmd + ' --src-ips=' + str(trial_params['src_ips'])
         if trial_params['dst_ips'] != '':
@@ -371,6 +409,10 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-dst-ip-flows=' + str(trial_params['use_dst_ip_flows'])
         cmd = cmd + ' --use-src-mac-flows=' + str(trial_params['use_src_mac_flows'])
         cmd = cmd + ' --use-dst-mac-flows=' + str(trial_params['use_dst_mac_flows'])
+        cmd = cmd + ' --use-src-port-flows=' + str(trial_params['use_src_port_flows'])
+        cmd = cmd + ' --use-dst-port-flows=' + str(trial_params['use_dst_port_flows'])
+        cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
+        cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
 
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
@@ -538,6 +580,9 @@ def main():
     print("use-dst-mac-flows", t_global.args.use_dst_mac_flows)
     print("use-src-ip-flows", t_global.args.use_src_ip_flows)
     print("use-dst-ip-flows", t_global.args.use_dst_ip_flows)
+    print("use-src-port-flows", t_global.args.use_src_port_flows)
+    print("use-dst-port-flows", t_global.args.use_dst_port_flows)
+    print("use-protocol-flows", t_global.args.use_protocol_flows)
     print("use-encap-src-mac-flows", t_global.args.use_encap_src_mac_flows)
     print("use-encap-dst-mac-flows", t_global.args.use_encap_dst_mac_flows)
     print("use-encap-src-ip-flows", t_global.args.use_encap_src_ip_flows)
@@ -550,6 +595,9 @@ def main():
     print("dest-ips", t_global.args.dst_ips)
     print("encap-src-ips", t_global.args.encap_src_ips)
     print("encap-dest-ips", t_global.args.encap_dst_ips)
+    print("src-ports", t_global.args.src_ports)
+    print("dst-ports", t_global.args.dst_ports)
+    print("packet-protocol", t_global.args.packet_protocol)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -563,10 +611,13 @@ def main():
     trial_params['num_flows'] = t_global.args.num_flows
     trial_params['use_src_mac_flows']= t_global.args.use_src_mac_flows
     trial_params['use_dst_mac_flows']= t_global.args.use_dst_mac_flows
+    trial_params['use_src_port_flows'] = t_global.args.use_src_port_flows
+    trial_params['use_dst_port_flows'] = t_global.args.use_dst_port_flows
     trial_params['use_encap_src_mac_flows'] = t_global.args.use_encap_src_mac_flows
     trial_params['use_encap_dst_mac_flows'] = t_global.args.use_encap_dst_mac_flows
     trial_params['use_src_ip_flows'] = t_global.args.use_src_ip_flows
     trial_params['use_dst_ip_flows'] = t_global.args.use_dst_ip_flows
+    trial_params['use_protocol_flows'] = t_global.args.use_protocol_flows
     trial_params['use_encap_src_ip_flows'] = t_global.args.use_encap_src_ip_flows
     trial_params['use_encap_dst_ip_flows'] = t_global.args.use_encap_dst_ip_flows
     trial_params['src_macs'] = t_global.args.src_macs
@@ -582,6 +633,9 @@ def main():
     trial_params['traffic_generator'] = t_global.args.traffic_generator
     trial_params['max_retries'] = t_global.args.max_retries
     trial_params['search_granularity'] = t_global.args.search_granularity
+    trial_params['src_ports'] = t_global.args.src_ports
+    trial_params['dst_ports'] = t_global.args.dst_ports
+    trial_params['packet_protocol'] = t_global.args.packet_protocol
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
