@@ -80,7 +80,7 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
                     streams['latency']['pg_ids'].extend([small_latency_stream_pg_id, medium_latency_stream_pg_id, large_latency_stream_pg_id])
                     streams['latency']['names'].extend([small_latency_stream_name, medium_latency_stream_name, large_latency_stream_name])
                     streams['latency']['frame_sizes'].extend([small_packet_bytes, medium_packet_bytes, large_packet_bytes])
-                    streams['latency']['traffic_shares'].extend([(float(small_packets)/float(total_packets)/len(protocols)), (float(medium_packets)/float(total_packets)/len(protocols)), (float(large_packets)/float(total_packets/len(protocols)))])
+                    streams['latency']['traffic_shares'].extend([(float(small_packets)/float(total_packets)/len(protocols)), (float(medium_packets)/float(total_packets)/len(protocols)), (float(large_packets)/float(total_packets)/len(protocols))])
           else:
                default_stream_pg_id = default_stream_pg_id_base + protocols_index
 
