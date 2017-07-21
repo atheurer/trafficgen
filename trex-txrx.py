@@ -23,7 +23,7 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_traffic_profile (direction, measure_latency, default_stream_pg_id_base, latency_stream_pg_id_base, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan):
+def create_traffic_profile (direction, measure_latency, pg_id, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan):
      streams = { 'default': { 'protocol': [], 'pps': [], 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] }, 'latency': { 'protocol': [], 'pps': [], 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] } }
 
      profile_streams = []
@@ -51,9 +51,9 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
                medium_packet_bytes = 576 + ethernet_frame_overhead
                large_packet_bytes = 1500 + ethernet_frame_overhead
 
-               small_stream_pg_id = default_stream_pg_id_base + protocols_index
-               medium_stream_pg_id = default_stream_pg_id_base + 2 + protocols_index
-               large_stream_pg_id = default_stream_pg_id_base + 4 + protocols_index
+               small_stream_pg_id = pg_id["default"]["start_index"] + protocols_index
+               medium_stream_pg_id =  pg_id["default"]["start_index"] + 2 + protocols_index
+               large_stream_pg_id = pg_id["default"]["start_index"] + 4 + protocols_index
 
                small_stream_name = "small_stream_" + direction + "_" + protocols_value
                medium_stream_name = "medium_stream_" + direction + "_" + protocols_value
@@ -67,9 +67,9 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
                streams['default']['traffic_shares'].extend([(float(small_packets)/float(total_packets)/len(protocols)), (float(medium_packets)/float(total_packets)/len(protocols)), (float(large_packets)/float(total_packets)/len(protocols))])
 
                if measure_latency:
-                    small_latency_stream_pg_id = latency_stream_pg_id_base + protocols_index
-                    medium_latency_stream_pg_id = latency_stream_pg_id_base + 2 + protocols_index
-                    large_latency_stream_pg_id = latency_stream_pg_id_base + 4 + protocols_index
+                    small_latency_stream_pg_id = pg_id["latency"]["start_index"] + protocols_index
+                    medium_latency_stream_pg_id = pg_id["latency"]["start_index"] + 2 + protocols_index
+                    large_latency_stream_pg_id = pg_id["latency"]["start_index"] + 4 + protocols_index
 
                     small_latency_stream_name = "small_latency_stream_" + direction + "_" + protocols_value
                     medium_latency_stream_name = "medium_latency_stream_" + direction + "_" + protocols_value
@@ -82,7 +82,7 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
                     streams['latency']['frame_sizes'].extend([small_packet_bytes, medium_packet_bytes, large_packet_bytes])
                     streams['latency']['traffic_shares'].extend([(float(small_packets)/float(total_packets)/len(protocols)), (float(medium_packets)/float(total_packets)/len(protocols)), (float(large_packets)/float(total_packets)/len(protocols))])
           else:
-               default_stream_pg_id = default_stream_pg_id_base + protocols_index
+               default_stream_pg_id = pg_id["default"]["start_index"] + protocols_index
 
                default_stream_name = "default_stream_" + direction + "_" + protocols_value
 
@@ -94,7 +94,7 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
                streams['default']['traffic_shares'].extend([1.0/len(protocols)])
 
                if measure_latency:
-                    latency_stream_pg_id = latency_stream_pg_id_base + protocols_index
+                    latency_stream_pg_id = pg_id["latency"]["start_index"] + protocols_index
 
                     latency_stream_name = "latency_stream_" + direction + "_" + protocols_value
 
@@ -517,18 +517,36 @@ def main():
              if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   vlan_b = int(vlan_ids[1])
 
-        # dedicate 128 (this is somewhat arbitrary; it is a 32bit id) packet group ids (pg_ids) to each direction: base_a=128 and base_b=256
-        # there are a maximum of 128 concurrent latency streams (with unique pg_ids) so dedicate 64 to each direction: latency_base_a=0 and latency_base_b=64
+        max_default_pg_ids = 255 # this is a hardware filtering limit of the XL710, 82599 cards have a limit of 127
+        max_latency_pg_ids = 128 # this is a software filtering limit
+        pg_ids = { "a": { "default": { "available": -1, "start_index": -1 }, "latency": { "available": -1, "start_index": -1 } } }
+        if not t_global.args.run_bidirec:
+             pg_ids["a"]["default"]["available"] = max_default_pg_ids
+             pg_ids["a"]["default"]["start_index"] = 1
+             pg_ids["a"]["latency"]["available"] = max_latency_pg_ids
+             pg_ids["a"]["latency"]["start_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"]
+        else:
+             pg_ids["b"] = copy.deepcopy(pg_ids["a"])
+
+             pg_ids["a"]["default"]["available"] = max_default_pg_ids / 2
+             pg_ids["a"]["default"]["start_index"] = 1
+             pg_ids["a"]["latency"]["available"] = max_latency_pg_ids / 2
+             pg_ids["a"]["latency"]["start_index"] = pg_ids["a"]["default"]["start_index"] + max_default_pg_ids
+
+             pg_ids["b"]["default"]["available"] = pg_ids["a"]["default"]["available"]
+             pg_ids["b"]["default"]["start_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"]
+             pg_ids["b"]["latency"]["available"] = pg_ids["a"]["latency"]["available"]
+             pg_ids["b"]["latency"]["start_index"] = pg_ids["a"]["latency"]["start_index"] + pg_ids["a"]["latency"]["available"]
 
         if t_global.args.run_revunidirec:
-             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
+             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
              c.add_streams(streams = traffic_profile, ports = [port_b])
         else:
-             traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a)
+             traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a)
              c.add_streams(streams = traffic_profile, ports = [port_a])
 
              if t_global.args.run_bidirec:
-                  traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 256, 64, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
+                  traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, pg_ids["b"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
                   c.add_streams(streams = traffic_profile, ports = [port_b])
 
         # clear the stats before injecting
