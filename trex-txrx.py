@@ -13,6 +13,12 @@ from trex_stl_lib.api import *
 class t_global(object):
      args=None;
 
+def dump_json_readable(obj):
+     return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True)
+
+def dump_json_parsable(obj):
+     return json.dumps(obj, separators=(',', ':'))
+
 def ip_to_int (ip):
     ip_fields = ip.split(".")
     if len(ip_fields) != 4:
@@ -120,8 +126,8 @@ def create_traffic_profile (direction, measure_latency, pg_id, latency_rate, fra
                                                 name = stream_name))
 
      print("READABLE STREAMS FOR DIRECTION '%s':" % direction)
-     print(json.dumps(streams, indent = 4, separators=(',', ': '), sort_keys = True))
-     print("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, json.dumps(streams, separators=(',', ': '))))
+     print(dump_json_readable(streams))
+     print("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, dump_json_parsable(streams)))
 
      return STLProfile(profile_streams)
 
@@ -435,8 +441,8 @@ def main():
 
         port_info = c.get_port_info(ports = [port_a, port_b])
         print("READABLE PORT INFO:")
-        print(json.dumps(port_info, indent = 4, separators=(',', ': '), sort_keys = True))
-        print("PARSABLE PORT INFO: %s" % json.dumps(port_info, separators=(',', ':')))
+        print(dump_json_readable(port_info))
+        print("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info))
 
         port_a_src = 32768
         port_a_dst = 53
@@ -604,8 +610,8 @@ def main():
         c.disconnect()
 
         print("READABLE RESULT:")
-        print(json.dumps(stats, indent = 4, separators=(',', ': '), sort_keys = True))
-        print("PARSABLE RESULT: %s" % json.dumps(stats, separators=(',', ':')))
+        print(dump_json_readable(stats))
+        print("PARSABLE RESULT: %s" % dump_json_parsable(stats))
 
     except STLError as e:
         print(e)
