@@ -23,7 +23,7 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_traffic_profile (direction, measure_latency, default_stream_pg_id_base, latency_stream_pg_id_base, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol):
+def create_traffic_profile (direction, measure_latency, default_stream_pg_id_base, latency_stream_pg_id_base, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan):
      streams = { 'default': { 'protocol': [], 'pps': [], 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] }, 'latency': { 'protocol': [], 'pps': [], 'pg_ids': [], 'names': [], 'frame_sizes': [], 'traffic_shares': [] } }
 
      profile_streams = []
@@ -114,7 +114,7 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
 
                print("Creating stream with packet_type=[%s], protocol=[%s], pps=[%d], pg_id=[%d], name=[%s], frame_size=[%d], and traffic_share=[%f]." % (streams_packet_type, stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share))
 
-               profile_streams.append(STLStream(packet = create_pkt(stream_frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, stream_packet_protocol),
+               profile_streams.append(STLStream(packet = create_pkt(stream_frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, stream_packet_protocol, vlan),
                                                 flow_stats = stream_flow_stats,
                                                 mode = STLTXCont(pps = stream_pps),
                                                 name = stream_name))
@@ -126,7 +126,7 @@ def create_traffic_profile (direction, measure_latency, default_stream_pg_id_bas
      return STLProfile(profile_streams)
 
 # simple packet creation
-def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol):
+def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
     # adjust packet size
     size = int(size)
     size -= 4
@@ -201,7 +201,11 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
             STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = packet_protocol + ".dport"),
         ]
 
-    base = Ether(src = mac_src, dst = mac_dst)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
+    if vlan_id > 1:
+        base = Ether(src = mac_src, dst = mac_dst)/Dot1Q(vlan = vlan_id)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
+    else:
+        base = Ether(src = mac_src, dst = mac_dst)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
+
     if packet_protocol == "UDP":
          base = base/UDP(sport = port_src['init'], dport = port_dst['init'] )
     elif packet_protocol == "TCP":
@@ -368,6 +372,11 @@ def process_options ():
                         help='comma separated list of src IPs, 1 per device',
                         default=""
                         )
+    parser.add_argument('--vlan-ids-list',
+                        dest='vlan_ids_list',
+                        help='A list of VLAN IDs to use for Tx, one per device',
+                        default = "",
+                   )
     #parser.add_argument('--encap-dst-ips-list',
     #                    dest='encap_dst_macs_list',
     #                    help='comma separated list of destination IPs for excapsulated network, 1 per device',
@@ -444,6 +453,9 @@ def main():
         ip_b_src = ip_a_dst
         ip_b_dst = ip_a_src
 
+	vlan_a = 1
+	vlan_b = 1
+
         if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
              if t_global.args.num_flows >= 1000:
                   if ((t_global.args.num_flows % 1000) != 0) and ((t_global.args.num_flows % 1024) != 0):
@@ -454,7 +466,7 @@ def main():
              if len(src_ports) < active_ports:
                   raise ValueError("--src-ports-list should be a comma separated list of at least %d source port(s)" % active_ports)
              port_a_src = int(src_ports[0])
-             if t_global.args.run_bidirec:
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   port_b_src = int(src_ports[1])
 
         if len(t_global.args.dst_ports_list):
@@ -462,7 +474,7 @@ def main():
              if len(dst_ports) < active_ports:
                   raise ValueError("--dst-ports-list should be a comma separated list of at least %d destination port(s)" % active_ports)
              port_a_dst = int(dst_ports[0])
-             if t_global.args.run_bidirec:
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   port_b_dst = int(dst_ports[1])
 
         if len(t_global.args.src_macs_list):
@@ -470,7 +482,7 @@ def main():
              if len(src_macs) < active_ports:
                   raise ValueError("--src-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
              mac_a_src = src_macs[0]
-             if t_global.args.run_bidirec:
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   mac_b_src = src_macs[1]
 
         if len(t_global.args.dst_macs_list):
@@ -478,7 +490,7 @@ def main():
              if len(dst_macs) < active_ports:
                   raise ValueError("--dst-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
              mac_a_dst = dst_macs[0]
-             if t_global.args.run_bidirec:
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   mac_b_dst = dst_macs[1]
 
         if len(t_global.args.src_ips_list):
@@ -486,7 +498,7 @@ def main():
              if len(src_ips) < active_ports:
                   raise ValueError("--src-ips-list should be a comma separated list of at least %d IP address(es)" % active_ports)
              ip_a_src = src_ips[0]
-             if t_global.args.run_bidirec:
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   ip_b_src = src_ips[1]
 
         if len(t_global.args.dst_ips_list):
@@ -494,21 +506,29 @@ def main():
              if len(dst_ips) < active_ports:
                   raise ValueError("--dst-ips-list should be a comma separated list of at least %d IP address(es)" % active_ports)
              ip_a_dst = dst_ips[0]
-             if t_global.args.run_bidirec:
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   ip_b_dst = dst_ips[1]
+
+        if len(t_global.args.vlan_ids_list):
+             vlan_ids = t_global.args.vlan_ids_list.split(",")
+             if len(vlan_ids) < active_ports:
+                  raise ValueError("--vlan-ids-list should be a comma separated list of at least %d VLAN ID(s)" % active_ports)
+             vlan_a = int(vlan_ids[0])
+             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
+                  vlan_b = int(vlan_ids[1])
 
         # dedicate 128 (this is somewhat arbitrary; it is a 32bit id) packet group ids (pg_ids) to each direction: base_a=128 and base_b=256
         # there are a maximum of 128 concurrent latency streams (with unique pg_ids) so dedicate 64 to each direction: latency_base_a=0 and latency_base_b=64
 
         if t_global.args.run_revunidirec:
-             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol)
+             traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
              c.add_streams(streams = traffic_profile, ports = [port_b])
         else:
-             traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol)
+             traffic_profile = create_traffic_profile("a", t_global.args.measure_latency, 128, 0, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a)
              c.add_streams(streams = traffic_profile, ports = [port_a])
 
              if t_global.args.run_bidirec:
-                  traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 256, 64, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol)
+                  traffic_profile = create_traffic_profile("b", t_global.args.measure_latency, 256, 64, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
                   c.add_streams(streams = traffic_profile, ports = [port_b])
 
         # clear the stats before injecting

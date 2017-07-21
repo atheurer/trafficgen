@@ -405,6 +405,8 @@ def run_trial (trial_params):
              cmd = cmd + ' --src-macs=' + str(trial_params['src_macs'])
         if trial_params['dst_macs'] != '':
              cmd = cmd + ' --dst-macs=' + str(trial_params['dst_macs'])
+        if trial_params['vlan_ids'] != '':
+             cmd = cmd + ' --vlan-ids=' + str(trial_params['vlan_ids'])
         cmd = cmd + ' --use-src-ip-flows=' + str(trial_params['use_src_ip_flows'])
         cmd = cmd + ' --use-dst-ip-flows=' + str(trial_params['use_dst_ip_flows'])
         cmd = cmd + ' --use-src-mac-flows=' + str(trial_params['use_src_mac_flows'])
