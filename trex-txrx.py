@@ -611,6 +611,43 @@ def main():
         print("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
 
         stats = c.get_stats(sync_now = True)
+        stats["global"]["runtime"] = total_time.total_seconds()
+
+        for flows_index, flows_id in enumerate(stats["flow_stats"]):
+             if flows_id == "global":
+                  continue
+
+             flow_tx = 0
+             flow_rx = 0
+
+             stats["flow_stats"][flows_id]["loss"] = dict()
+             stats["flow_stats"][flows_id]["loss"]["pct"] = dict()
+             stats["flow_stats"][flows_id]["loss"]["cnt"] = dict()
+
+             if 0 in stats["flow_stats"][flows_id]["tx_pkts"] and 1 in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][0]:
+                  stats["flow_stats"][flows_id]["loss"]["pct"]["0->1"] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][1]) / float(stats["flow_stats"][flows_id]["tx_pkts"][0]))) * 100
+                  stats["flow_stats"][flows_id]["loss"]["cnt"]["0->1"] = float(stats["flow_stats"][flows_id]["tx_pkts"][0]) - float(stats["flow_stats"][flows_id]["rx_pkts"][1])
+                  flow_tx += stats["flow_stats"][flows_id]["tx_pkts"][0]
+                  flow_rx += stats["flow_stats"][flows_id]["rx_pkts"][1]
+             else:
+                  stats["flow_stats"][flows_id]["loss"]["pct"]["0->1"] = "N/A"
+                  stats["flow_stats"][flows_id]["loss"]["cnt"]["0->1"] = "N/A"
+
+             if 1 in stats["flow_stats"][flows_id]["tx_pkts"] and 0 in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][1]:
+                  stats["flow_stats"][flows_id]["loss"]["pct"]["1->0"] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][0]) / float(stats["flow_stats"][flows_id]["tx_pkts"][1]))) * 100
+                  stats["flow_stats"][flows_id]["loss"]["cnt"]["1->0"] = float(stats["flow_stats"][flows_id]["tx_pkts"][1]) - float(stats["flow_stats"][flows_id]["rx_pkts"][0])
+                  flow_tx += stats["flow_stats"][flows_id]["tx_pkts"][1]
+                  flow_rx += stats["flow_stats"][flows_id]["rx_pkts"][0]
+             else:
+                  stats["flow_stats"][flows_id]["loss"]["pct"]["1->0"] = "N/A"
+                  stats["flow_stats"][flows_id]["loss"]["cnt"]["1->0"] = "N/A"
+
+             if flow_tx:
+                  stats["flow_stats"][flows_id]["loss"]["pct"]["total"] = (1 - (float(flow_rx) / float(flow_tx))) * 100
+                  stats["flow_stats"][flows_id]["loss"]["cnt"]["total"] = float(flow_tx) - float(flow_rx)
+             else:
+                  stats["flow_stats"][flows_id]["loss"]["pct"]["total"] = "N/A"
+                  stats["flow_stats"][flows_id]["loss"]["cnt"]["total"] = "N/A"
 
         warning_events = c.get_warnings()
         if len(warning_events):
