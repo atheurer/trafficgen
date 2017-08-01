@@ -523,7 +523,18 @@ def main():
              if t_global.args.run_revunidirec or t_global.args.run_bidirec:
                   vlan_b = int(vlan_ids[1])
 
-        max_default_pg_ids = 255 # this is a hardware filtering limit of the XL710, 82599 cards have a limit of 127
+        max_default_pg_ids = 0
+        if t_global.args.run_bidirec:
+             if port_info[port_a]["rx"]["counters"] <= port_info[port_b]["rx"]["counters"]:
+                  max_default_pg_ids = port_info[port_a]["rx"]["counters"]
+             else:
+                  max_default_pg_ids = port_info[port_b]["rx"]["counters"]
+        else:
+             if t_global.args.run_revunidirec:
+                  max_default_pg_ids = port_info[port_a]["rx"]["counters"]
+             else:
+                  max_default_pg_ids = port_info[port_b]["rx"]["counters"]
+
         max_latency_pg_ids = 128 # this is a software filtering limit
         pg_ids = { "a": { "default": { "available": -1, "start_index": -1 }, "latency": { "available": -1, "start_index": -1 } } }
         if not t_global.args.run_bidirec:
