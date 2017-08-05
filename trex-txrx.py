@@ -3,10 +3,10 @@ sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
 import argparse
 import stl_path
-import time
 import json
 import string
 import datetime
+import math
 from decimal import *
 from trex_stl_lib.api import *
 
@@ -316,9 +316,15 @@ def process_options ():
                         )
     parser.add_argument('--runtime', 
                         dest='runtime',
-                        help='tiral period in seconds',
+                        help='trial period in seconds',
                         default=30,
                         type = int,
+                        )
+    parser.add_argument('--runtime-tolerance',
+                        dest='runtime_tolerance',
+                        help='The percentage of time that the test is allowed in excess of the requested runtime before it is stopped',
+                        default=5,
+                        type = float,
                         )
     parser.add_argument('--rate', 
                         dest='rate',
@@ -581,39 +587,58 @@ def main():
              rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
 
         # log start of test
+        timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
+        stop_time = datetime.datetime.now()
         start_time = datetime.datetime.now()
         print("Starting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        expected_end_time = start_time + datetime.timedelta(seconds = t_global.args.runtime)
+        expected_timeout_time = start_time + datetime.timedelta(seconds = timeout_seconds)
+        print("The test should end at %s" % expected_end_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        print("The test will timeout with an error at %s" % expected_timeout_time.strftime("%H:%M:%S on %Y-%m-%d"))
 
         # here we multiply the traffic lineaer to whatever given in rate
         if t_global.args.run_revunidirec:
              print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
-             c.start(ports = [port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
+             c.start(ports = [port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
         else:
              print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
              if t_global.args.run_bidirec:
                   print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
-                  c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
+                  c.start(ports = [port_a, port_b], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
              else:
-                  c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = -1, total = False)
+                  c.start(ports = [port_a], force = True, mult = (str(rate_multiplier) + t_global.args.rate_unit), duration = t_global.args.runtime, total = False)
 
-        time.sleep(t_global.args.runtime)
+        timeout = False
 
-        if t_global.args.run_bidirec:
-             c.stop(ports = [port_a, port_b])
-        else:
-             if t_global.args.run_revunidirec:
-                  c.stop(ports = [port_b])
+        try:
+             if t_global.args.run_bidirec:
+                  c.wait_on_traffic(ports = [port_a, port_b], timeout = timeout_seconds)
              else:
-                  c.stop(ports = [port_a])
+                  if t_global.args.run_revunidirec:
+                       c.wait_on_traffic(ports = [port_b], timeout = timeout_seconds)
+                  else:
+                       c.wait_on_traffic(ports = [port_a], timeout = timeout_seconds)
+             stop_time = datetime.datetime.now()
+        except STLTimeoutError as e:
+             if t_global.args.run_bidirec:
+                  c.stop(ports = [port_a, port_b])
+             else:
+                  if t_global.args.run_revunidirec:
+                       c.stop(ports = [port_b])
+                  else:
+                       c.stop(ports = [port_a])
+             stop_time = datetime.datetime.now()
+             print("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
+             timeout = True
 
         # log end of test
-        stop_time = datetime.datetime.now()
         print("Finished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
         total_time = stop_time - start_time
         print("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
 
         stats = c.get_stats(sync_now = True)
         stats["global"]["runtime"] = total_time.total_seconds()
+        stats["global"]["timeout"] = timeout
 
         for flows_index, flows_id in enumerate(stats["flow_stats"]):
              if flows_id == "global":
