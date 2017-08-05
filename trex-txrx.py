@@ -429,7 +429,9 @@ def main():
         #c.set_verbose("high")
 
         # connect to server
+        print("Establishing connection to TRex server...")
         c.connect()
+        print("Connection established")
 
         if t_global.args.run_bidirec and t_global.args.run_revunidirec:
              raise ValueError("It does not make sense for both --run-bidirec=1 and --run-revunidirec=1")
@@ -655,8 +657,6 @@ def main():
              for warning in warning_events:
                   print("    WARNING: %s" % warning)
 
-        c.disconnect()
-
         print("READABLE RESULT:")
         print(dump_json_readable(stats))
         print("PARSABLE RESULT: %s" % dump_json_parsable(stats))
@@ -668,7 +668,9 @@ def main():
         print("ERROR: %s" % e)
 
     finally:
-            c.disconnect()
+        print("Disconnecting from TRex server...")
+        c.disconnect()
+        print("Connection severed")
 
 if __name__ == "__main__":
     main()

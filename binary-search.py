@@ -419,12 +419,13 @@ def run_trial (trial_params):
     print('running trial, rate', trial_params['rate'])
     print('cmd:', cmd)
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    process_loop = 1
+    process_loop = True
+    capture_output = True
     while process_loop:
-	lines = getlines(p)
+	lines = handle_process_output(p, capture_output)
         for line in lines:
              if line == "--END--":
-                  process_loop = 0
+                  process_loop = False
                   continue
              print(line.rstrip('\n'))
              if trial_params['traffic_generator'] == 'moongen-txrx':
@@ -441,6 +442,9 @@ def run_trial (trial_params):
                        stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
                        stats[int(m.group(2))]['rx_pps'] = float(m.group(4)) / float(trial_params['runtime'])
              elif trial_params['traffic_generator'] == 'trex-txrx':
+                  if line.rstrip('\n') == "Connection severed":
+                       capture_output = False
+
                   #PARSABLE PORT INFO: [{"arp":"68:05:ca:32:0d:f0","src_ipv4":"1.1.1.1","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":0,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:14:d0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"2.2.2.2","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:81:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"},{"arp":"68:05:ca:32:14:d0","src_ipv4":"2.2.2.2","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":1,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:0d:f0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"1.1.1.1","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:84:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"}]
                   m = re.search(r"PARSABLE PORT INFO:\s+(.*)$", line)
                   if m:
@@ -520,14 +524,16 @@ def run_trial (trial_params):
     print('return code', retval)
     return stats
 
-def getlines(process):
+def handle_process_output(process, capture):
      lines = []
      process.stdout.flush()
      line = process.stdout.readline()
-     lines.append(line)
+     if capture:
+          lines.append(line)
      if process.poll() is not None:
           for line in process.stdout:
-               lines.append(line)
+               if capture:
+                    lines.append(line)
           lines.append("--END--")
      return lines
 
