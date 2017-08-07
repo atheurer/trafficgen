@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import sys, getopt
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
@@ -125,9 +127,9 @@ def create_traffic_profile (direction, measure_latency, pg_id, latency_rate, fra
                                                 mode = STLTXCont(pps = stream_pps),
                                                 name = stream_name))
 
-     print("READABLE STREAMS FOR DIRECTION '%s':" % direction)
-     print(dump_json_readable(streams))
-     print("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, dump_json_parsable(streams)))
+     print("READABLE STREAMS FOR DIRECTION '%s':" % direction, file=sys.stderr)
+     print(dump_json_readable(streams), file=sys.stderr)
+     print("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, dump_json_parsable(streams)), file=sys.stderr)
 
      return STLProfile(profile_streams)
 
@@ -448,9 +450,9 @@ def main():
         c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
 
         port_info = c.get_port_info(ports = [port_a, port_b])
-        print("READABLE PORT INFO:")
-        print(dump_json_readable(port_info))
-        print("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info))
+        print("READABLE PORT INFO:", file=sys.stderr)
+        print(dump_json_readable(port_info), file=sys.stderr)
+        print("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), file=sys.stderr)
 
         port_a_src = 32768
         port_a_dst = 53
@@ -682,9 +684,9 @@ def main():
              for warning in warning_events:
                   print("    WARNING: %s" % warning)
 
-        print("READABLE RESULT:")
-        print(dump_json_readable(stats))
-        print("PARSABLE RESULT: %s" % dump_json_parsable(stats))
+        print("READABLE RESULT:", file=sys.stderr)
+        print(dump_json_readable(stats), file=sys.stderr)
+        print("PARSABLE RESULT: %s" % dump_json_parsable(stats), file=sys.stderr)
 
     except STLError as e:
         print(e)

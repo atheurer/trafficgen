@@ -1,5 +1,7 @@
 #!/bin/python -u
 
+from __future__ import print_function
+
 import sys, getopt
 import argparse
 import subprocess
@@ -8,6 +10,8 @@ import re
 import time
 import json
 import string
+import threading
+import thread
 # from decimal import *
 # from trex_stl_lib.api import *
 
@@ -19,6 +23,11 @@ def process_options ():
     Conduct a binary search to find the maximum packet rate within acceptable loss percent
     """);
 
+    parser.add_argument('--output-dir',
+                        dest='output_dir',
+                        help='Directory where the output should be stored',
+                        default="./"
+                        )
     parser.add_argument('--frame-size', 
                         dest='frame_size',
                         help='L2 frame size in bytes or IMIX',
@@ -431,18 +440,53 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
 
-    print('running trial, rate', trial_params['rate'])
+    print('running trial %03d, rate %f' % (trial_params['trial'], trial_params['rate']))
     print('cmd:', cmd)
-    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    process_loop = True
+    tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    exit_event = threading.Event()
+
+    stdout_thread = threading.Thread(target = handle_process_stdout, args = (tg_process, trial_params, stats, exit_event))
+    stderr_thread = threading.Thread(target = handle_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, exit_event))
+
+    stdout_thread.start()
+    stderr_thread.start()
+
+    exit_event.wait()
+    retval = tg_process.wait()
+
+    stdout_thread.join()
+    stderr_thread.join()
+
+    print('return code', retval)
+    return stats
+
+def handle_process_output(process, process_stream, capture):
+     lines = []
+     process_stream.flush()
+     line = process_stream.readline()
+     if capture:
+          lines.append(line)
+     if process.poll() is not None:
+          for line in process_stream:
+               if capture:
+                    lines.append(line)
+          lines.append("--END--")
+     return lines
+
+def handle_process_stdout(process, trial_params, stats, exit_event):
+    prefix = "%03d" % trial_params['trial']
+
     capture_output = True
-    while process_loop:
-	lines = handle_process_output(p, capture_output)
-        for line in lines:
+    while not exit_event.is_set():
+        stdout_lines = handle_process_output(process, process.stdout, capture_output)
+
+        for line in stdout_lines:
              if line == "--END--":
-                  process_loop = False
+                  exit_event.set()
                   continue
-             print(line.rstrip('\n'))
+
+             print("%s:%s" % (prefix, line.rstrip('\n')))
+
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   #[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
                   #[INFO]  [0]->[1] txPackets: 10130148 rxPackets: 10130148 packetLoss: 0 txRate: 2.026430 rxRate: 2.026430 packetLossPct: 0.000000
@@ -459,7 +503,33 @@ def run_trial (trial_params):
              elif trial_params['traffic_generator'] == 'trex-txrx':
                   if line.rstrip('\n') == "Connection severed":
                        capture_output = False
+                       exit_event.set()
 
+def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit_event):
+    output_file = None
+    close_file = False
+    filename = "%s/trial-%03d.txt" % (trial_params['output_dir'], trial_params['trial'])
+    try:
+         output_file = open(filename, 'w')
+         close_file = True
+    except IOError:
+         print("ERROR: Could not open %s for writing" % filename)
+         output_file = sys.stdout
+
+    capture_output = True
+    while not exit_event.is_set():
+        stderr_lines = handle_process_output(process, process.stderr, capture_output)
+
+        for line in stderr_lines:
+             if line == "--END--":
+                  exit_event.set()
+                  continue
+
+             print(line.rstrip('\n'), file=output_file)
+
+             if trial_params['traffic_generator'] == 'moongen-txrx':
+                  print(line.rstrip('\n'))
+             elif trial_params['traffic_generator'] == 'trex-txrx':
                   #PARSABLE PORT INFO: [{"arp":"68:05:ca:32:0d:f0","src_ipv4":"1.1.1.1","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":0,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:14:d0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"2.2.2.2","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:81:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"},{"arp":"68:05:ca:32:14:d0","src_ipv4":"2.2.2.2","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":1,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:0d:f0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"1.1.1.1","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:84:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"}]
                   m = re.search(r"PARSABLE PORT INFO:\s+(.*)$", line)
                   if m:
@@ -620,22 +690,8 @@ def run_trial (trial_params):
 
                             print('tx_packets, tx_rate, tx_bandwidth, device', stats[1]['tx_packets'], stats[1]['tx_pps'], stats[1]['tx_bandwidth'], 1)
                             print('rx_packets, rx_rate, rx_bandwidth, device', stats[0]['rx_packets'], stats[0]['rx_pps'], stats[0]['rx_bandwidth'], 0)
-    retval = p.wait()
-    print('return code', retval)
-    return stats
-
-def handle_process_output(process, capture):
-     lines = []
-     process.stdout.flush()
-     line = process.stdout.readline()
-     if capture:
-          lines.append(line)
-     if process.poll() is not None:
-          for line in process.stdout:
-               if capture:
-                    lines.append(line)
-          lines.append("--END--")
-     return lines
+    if close_file:
+         output_file.close()
 
 def main():
     process_options()
@@ -668,6 +724,7 @@ def main():
     prev_fail_rate = rate
 
     # be verbose, dump all options to binary-search
+    print("output_dir", t_global.args.output_dir)
     print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
     print("rate_unit", t_global.args.rate_unit)
@@ -710,6 +767,7 @@ def main():
 
     trial_params = {} 
     # trial parameters which do not change during binary search
+    trial_params['output_dir'] = t_global.args.output_dir
     trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['latency_rate'] = t_global.args.latency_rate
     trial_params['max_loss_pct'] = t_global.args.max_loss_pct
@@ -764,6 +822,8 @@ def main():
          do_sniff = True
          do_search = False
 
+    trial_params['trial'] = 0
+
     retries = 0
     # the actual binary search to find the maximum packet rate
     while final_validation or do_sniff or do_search:
@@ -780,6 +840,7 @@ def main():
 
         trial_params['rate'] = rate
         # run the actual trial
+        trial_params['trial'] += 1
         stats = run_trial(trial_params)
 
         trial_result = 'pass'
