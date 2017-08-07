@@ -450,15 +450,17 @@ def run_trial (trial_params):
     print('running trial %03d, rate %f' % (trial_params['trial'], trial_params['rate']))
     print('cmd:', cmd)
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    exit_event = threading.Event()
+    stdout_exit_event = threading.Event()
+    stderr_exit_event = threading.Event()
 
-    stdout_thread = threading.Thread(target = handle_process_stdout, args = (tg_process, trial_params, stats, exit_event))
-    stderr_thread = threading.Thread(target = handle_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, exit_event))
+    stdout_thread = threading.Thread(target = handle_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
+    stderr_thread = threading.Thread(target = handle_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, stderr_exit_event))
 
     stdout_thread.start()
     stderr_thread.start()
 
-    exit_event.wait()
+    stdout_exit_event.wait()
+    stderr_exit_event.wait()
     retval = tg_process.wait()
 
     stdout_thread.join()
@@ -484,12 +486,14 @@ def handle_process_stdout(process, trial_params, stats, exit_event):
     prefix = "%03d" % trial_params['trial']
 
     capture_output = True
-    while not exit_event.is_set():
+    do_loop = True
+    while do_loop:
         stdout_lines = handle_process_output(process, process.stdout, capture_output)
 
         for line in stdout_lines:
              if line == "--END--":
                   exit_event.set()
+                  do_loop = False
                   continue
 
              print("%s:%s" % (prefix, line.rstrip('\n')))
@@ -524,12 +528,14 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
          output_file = sys.stdout
 
     capture_output = True
-    while not exit_event.is_set():
+    do_loop = True
+    while do_loop:
         stderr_lines = handle_process_output(process, process.stderr, capture_output)
 
         for line in stderr_lines:
              if line == "--END--":
                   exit_event.set()
+                  do_loop = False
                   continue
 
              print(line.rstrip('\n'), file=output_file)
