@@ -156,6 +156,12 @@ def process_options ():
                         default = 5,
                         type = float
                         )
+    parser.add_argument('--runtime-tolerance',
+                        dest='runtime_tolerance',
+                        help='percentage that runtime is allowed to vary from requested runtime and still be considered valid',
+                        default = 5,
+                        type = float
+                        )
     parser.add_argument('--search-granularity',
                         dest='search_granularity',
                         help='the binary search will stop once the percent throughput difference between the most recent passing and failing trial is lower than this',
@@ -390,6 +396,7 @@ def run_trial (trial_params):
         cmd = cmd + ' --rate-unit=' + str(trial_params['rate_unit'])
         cmd = cmd + ' --size=' + str(trial_params['frame_size'])
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
+        cmd = cmd + ' --runtime-tolerance=' + str(trial_params['runtime_tolerance'])
         cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
         cmd = cmd + ' --run-revunidirec=' + str(trial_params['run_revunidirec'])
         cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
@@ -470,6 +477,11 @@ def run_trial (trial_params):
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
                        results = json.loads(m.group(1))
+
+                       stats['global'] = dict()
+
+                       stats['global']['runtime'] = results['global']['runtime']
+                       stats['global']['timeout'] = results['global']['timeout']
 
                        if not trial_params['run_revunidirec']:
                             for pg_id, frame_size in zip(streams[0]['default']['pg_ids'], streams[0]['default']['frame_sizes']):
@@ -572,6 +584,7 @@ def main():
     print("rate", rate)
     print("rate_unit", t_global.args.rate_unit)
     print("rate_tolerance", t_global.args.rate_tolerance)
+    print("runtime_tolerance", t_global.args.runtime_tolerance)
     print("frame_size", t_global.args.frame_size)
     print("measure_latency", t_global.args.measure_latency)
     print("latency_rate", t_global.args.latency_rate)
@@ -613,6 +626,7 @@ def main():
     trial_params['latency_rate'] = t_global.args.latency_rate
     trial_params['rate_unit'] = t_global.args.rate_unit
     trial_params['rate_tolerance'] = t_global.args.rate_tolerance
+    trial_params['runtime_tolerance'] = t_global.args.runtime_tolerance
     trial_params['frame_size'] = t_global.args.frame_size
     trial_params['run_bidirec'] = t_global.args.run_bidirec
     trial_params['run_revunidirec'] = t_global.args.run_revunidirec
@@ -722,17 +736,42 @@ def main():
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
                        requirement_msg = "retry"
                        if trial_result == "pass":
-                           trial_result = "retry" 
+                           trial_result = "retry-to-quit"
              print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], tolerance_min, tolerance_max, tx_rate))
 
         if test_abort:
              print('Binary search aborting due to critical error')
              quit(1)
 
+        if 'global' in stats:
+             if stats['global']['timeout']:
+                  print("(trial timeout, forcing a retry, timeouts can cause inconclusive trial results)")
+                  trial_result = "retry-to-fail"
+             else:
+                  tolerance_min = float(trial_params['runtime']) * (1 - (float(trial_params['runtime_tolerance']) / 100))
+                  tolerance_max = float(trial_params['runtime']) * (1 + (float(trial_params['runtime_tolerance']) / 100))
+                  if stats['global']['runtime'] < tolerance_min or stats['global']['runtime'] > tolerance_max:
+                       print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %f - %f, achieved: %f)" % (tolerance_min, tolerance_max, stats['global']['runtime']))
+                       if trial_result == "pass":
+                            trial_result = "retry-to-fail"
+
         if trial_result == "pass":
 	    print('(trial passed all requirements)')
-        elif trial_result == "retry":
+        elif trial_result == "retry-to-fail" or trial_result == "retry-to-quit":
 	    print('(trial trial must be repeated because one or more requirements did not pass, but allow a retry)')
+
+            if retries >= trial_params['max_retries']:
+                 if trial_result == "retry-to-quit":
+                      print('---> The retry limit for a trial has been reached.  This is probably due to a rate tolerance failure.  <---')
+                      print('---> You must adjust the --rate-tolerance to a higher value, or use --rate to start with a lower rate. <---')
+                      quit(1)
+                 elif trial_result == "retry-to-fail":
+                      print('---> The retry limit has been reached.  Failing and continuing. <---')
+                      retries = 0
+                      trial_result = "fail"
+            else:
+                 # if trial_result is retry, then don't adjust anything and repeat
+                 retries = retries + 1
 	else:
 	    print('(trial failed one or more requirements)')
 
@@ -777,13 +816,6 @@ def main():
 	    prev_rate = rate
             rate = next_rate
             retries = 0
-	elif trial_result == "retry":
-            if retries >= trial_params['max_retries']:
-                print('The rety limit for a trial has been reached.  This is probably due to a rate tolerance failure.')
-                print('You must adjust the --rate-tolerance to a higher value, or use --rate to start with a lower rate')
-                quit(1)
-            # if trial_result is retry, then don't adjust anything and repeat
-            retries = retries + 1
 
         if rate < initial_rate * trial_params['search_granularity'] / 100:
              print("Binary search ended up at rate which is below minimum allowed")
