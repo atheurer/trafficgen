@@ -15,6 +15,17 @@ from trex_stl_lib.api import *
 class t_global(object):
      args=None;
 
+def myprint(*args, **kwargs):
+     stderr_only = False
+     if 'stderr_only' in kwargs:
+          stderr_only = kwargs['stderr_only']
+          del kwargs['stderr_only']
+     if not stderr_only:
+          print(*args, **kwargs)
+     if stderr_only or t_global.args.mirrored_log:
+          print(*args, file = sys.stderr, **kwargs)
+     return
+
 def dump_json_readable(obj):
      return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True)
 
@@ -191,18 +202,18 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
 
      for streams_index, streams_packet_type in enumerate(streams):
           for stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share, stream_next_stream_name, stream_self_start, stream_mode, stream_run_time in zip(streams[streams_packet_type]['protocol'], streams[streams_packet_type]['pps'], streams[streams_packet_type]['pg_ids'], streams[streams_packet_type]['names'], streams[streams_packet_type]['frame_sizes'], streams[streams_packet_type]['traffic_shares'], streams[streams_packet_type]['next_stream_names'], streams[streams_packet_type]['self_starts'], streams[streams_packet_type]['stream_modes'], streams[streams_packet_type]['run_time']):
-               print("Creating stream with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], run_time=[%f], and traffic_share=[%f]." %
-                     (streams_packet_type,
-                      stream_packet_protocol,
-                      stream_pps,
-                      stream_pg_id,
-                      stream_name,
-                      stream_frame_size,
-                      stream_next_stream_name,
-                      stream_self_start,
-                      stream_mode,
-                      stream_run_time,
-                      stream_traffic_share))
+               myprint("Creating stream with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], run_time=[%f], and traffic_share=[%f]." %
+                       (streams_packet_type,
+                        stream_packet_protocol,
+                        stream_pps,
+                        stream_pg_id,
+                        stream_name,
+                        stream_frame_size,
+                        stream_next_stream_name,
+                        stream_self_start,
+                        stream_mode,
+                        stream_run_time,
+                        stream_traffic_share))
 
                if streams_packet_type == "default":
                     stream_flow_stats = STLFlowStats(pg_id = stream_pg_id)
@@ -221,9 +232,9 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                                                 next = stream_next_stream_name,
                                                 self_start = stream_self_start))
 
-     print("READABLE STREAMS FOR DIRECTION '%s':" % direction, file=sys.stderr)
-     print(dump_json_readable(streams), file=sys.stderr)
-     print("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, dump_json_parsable(streams)), file=sys.stderr)
+     myprint("READABLE STREAMS FOR DIRECTION '%s':" % direction, stderr_only = True)
+     myprint(dump_json_readable(streams), stderr_only = True)
+     myprint("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, dump_json_parsable(streams)), stderr_only = True)
 
      return STLProfile(profile_streams)
 
@@ -333,6 +344,11 @@ def process_options ():
     generate network traffic and report packet loss
     """);
 
+    parser.add_argument('--mirrored-log',
+                        dest='mirrored_log',
+                        help='Should the logging sent to STDOUT be mirrored on STDERR',
+                        action = 'store_true',
+                        )
     parser.add_argument('--size', 
                         dest='frame_size',
                         help='L2 frame size in bytes or IMIX',
@@ -516,7 +532,7 @@ def process_options ():
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
-    print(t_global.args)
+    myprint(t_global.args)
 
 def main():
     process_options()
@@ -537,9 +553,9 @@ def main():
         #c.set_verbose("high")
 
         # connect to server
-        print("Establishing connection to TRex server...")
+        myprint("Establishing connection to TRex server...")
         c.connect()
-        print("Connection established")
+        myprint("Connection established")
 
         if t_global.args.run_bidirec and t_global.args.run_revunidirec:
              raise ValueError("It does not make sense for both --run-bidirec=1 and --run-revunidirec=1")
@@ -550,9 +566,9 @@ def main():
         c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
 
         port_info = c.get_port_info(ports = [port_a, port_b])
-        print("READABLE PORT INFO:", file=sys.stderr)
-        print(dump_json_readable(port_info), file=sys.stderr)
-        print("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), file=sys.stderr)
+        myprint("READABLE PORT INFO:", stderr_only = True)
+        myprint(dump_json_readable(port_info), stderr_only = True)
+        myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), stderr_only = True)
 
         port_a_src = 32768
         port_a_dst = 53
@@ -697,20 +713,20 @@ def main():
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
         stop_time = datetime.datetime.now()
         start_time = datetime.datetime.now()
-        print("Starting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("Starting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
         expected_end_time = start_time + datetime.timedelta(seconds = t_global.args.runtime)
         expected_timeout_time = start_time + datetime.timedelta(seconds = timeout_seconds)
-        print("The test should end at %s" % expected_end_time.strftime("%H:%M:%S on %Y-%m-%d"))
-        print("The test will timeout with an error at %s" % expected_timeout_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("The test should end at %s" % expected_end_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("The test will timeout with an error at %s" % expected_timeout_time.strftime("%H:%M:%S on %Y-%m-%d"))
 
         # here we multiply the traffic lineaer to whatever given in rate
         if t_global.args.run_revunidirec:
-             print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
+             myprint("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
              c.start(ports = [port_b], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
         else:
-             print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
+             myprint("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
              if t_global.args.run_bidirec:
-                  print("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
+                  myprint("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
                   c.start(ports = [port_a, port_b], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
              else:
                   c.start(ports = [port_a], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
@@ -735,13 +751,13 @@ def main():
                   else:
                        c.stop(ports = [port_a])
              stop_time = datetime.datetime.now()
-             print("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
+             myprint("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
              timeout = True
 
         # log end of test
-        print("Finished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("Finished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
         total_time = stop_time - start_time
-        print("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
+        myprint("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
 
         stats = c.get_stats(sync_now = True)
         stats["global"]["runtime"] = total_time.total_seconds()
@@ -785,24 +801,24 @@ def main():
 
         warning_events = c.get_warnings()
         if len(warning_events):
-             print("TRex Events:")
+             myprint("TRex Events:")
              for warning in warning_events:
-                  print("    WARNING: %s" % warning)
+                  myprint("    WARNING: %s" % warning)
 
-        print("READABLE RESULT:", file=sys.stderr)
-        print(dump_json_readable(stats), file=sys.stderr)
-        print("PARSABLE RESULT: %s" % dump_json_parsable(stats), file=sys.stderr)
+        myprint("READABLE RESULT:", stderr_only = True)
+        myprint(dump_json_readable(stats), stderr_only = True)
+        myprint("PARSABLE RESULT: %s" % dump_json_parsable(stats), stderr_only = True)
 
     except STLError as e:
-        print(e)
+        myprint(e)
 
     except ValueError as e:
-        print("ERROR: %s" % e)
+        myprint("ERROR: %s" % e)
 
     finally:
-        print("Disconnecting from TRex server...")
+        myprint("Disconnecting from TRex server...")
         c.disconnect()
-        print("Connection severed")
+        myprint("Connection severed")
 
 if __name__ == "__main__":
     main()

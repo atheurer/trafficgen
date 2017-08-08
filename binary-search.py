@@ -413,6 +413,7 @@ def run_trial (trial_params):
 
         cmd = 'python trex-txrx.py'
         #cmd = cmd + ' --devices=0,1' # fix to allow different devices
+        cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --measure-latency=' + str(trial_params['measure_latency'])
         cmd = cmd + ' --latency-rate=' + str(trial_params['latency_rate'])
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
