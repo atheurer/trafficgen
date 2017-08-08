@@ -272,6 +272,12 @@ def process_options ():
                         default = 3,
                         type = int
                         )
+    parser.add_argument('--stream-mode',
+                        dest='stream_mode',
+                        help='How the packet streams are constructed',
+                        default = "continuous",
+                        choices = [ 'continuous', 'segmented' ]
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -439,6 +445,7 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-dst-port-flows=' + str(trial_params['use_dst_port_flows'])
         cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
+        cmd = cmd + ' --stream-mode=' + trial_params['stream_mode']
 
     print('running trial %03d, rate %f' % (trial_params['trial'], trial_params['rate']))
     print('cmd:', cmd)
@@ -764,6 +771,7 @@ def main():
     print("src-ports", t_global.args.src_ports)
     print("dst-ports", t_global.args.dst_ports)
     print("packet-protocol", t_global.args.packet_protocol)
+    print("stream-mode", t_global.args.stream_mode)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -805,6 +813,7 @@ def main():
     trial_params['src_ports'] = t_global.args.src_ports
     trial_params['dst_ports'] = t_global.args.dst_ports
     trial_params['packet_protocol'] = t_global.args.packet_protocol
+    trial_params['stream_mode'] = t_global.args.stream_mode
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
