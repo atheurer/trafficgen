@@ -12,11 +12,16 @@ import json
 import string
 import threading
 import thread
+import select
+import signal
 # from decimal import *
 # from trex_stl_lib.api import *
 
 class t_global(object):
      args=None;
+
+def sigint_handler(signal, frame):
+     print('binary-search.py: CTRL+C detected and ignored')
 
 def process_options ():
     parser = argparse.ArgumentParser(usage=""" 
@@ -448,6 +453,8 @@ def run_trial (trial_params):
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
         cmd = cmd + ' --stream-mode=' + trial_params['stream_mode']
 
+    previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
+
     print('running trial %03d, rate %f' % (trial_params['trial'], trial_params['rate']))
     print('cmd:', cmd)
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -467,15 +474,20 @@ def run_trial (trial_params):
     stdout_thread.join()
     stderr_thread.join()
 
+    signal.signal(signal.SIGINT, previous_sig_handler)
+
     print('return code', retval)
     return stats
 
 def handle_process_output(process, process_stream, capture):
      lines = []
-     process_stream.flush()
-     line = process_stream.readline()
-     if capture:
-          lines.append(line)
+     if process.poll() is None:
+          process_stream.flush()
+          ready_streams = select.select([process_stream], [], [], 1)
+          if process_stream in ready_streams[0]:
+               line = process_stream.readline()
+               if capture:
+                    lines.append(line)
      if process.poll() is not None:
           for line in process_stream:
                if capture:
