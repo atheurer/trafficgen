@@ -543,6 +543,7 @@ def main():
     passed = True
 
     stats = 0
+    return_value = 1
 
     active_ports = 1
     if t_global.args.run_bidirec:
@@ -809,6 +810,8 @@ def main():
         myprint(dump_json_readable(stats), stderr_only = True)
         myprint("PARSABLE RESULT: %s" % dump_json_parsable(stats), stderr_only = True)
 
+        return_value = 0
+
     except STLError as e:
         myprint(e)
 
@@ -819,7 +822,7 @@ def main():
         myprint("Disconnecting from TRex server...")
         c.disconnect()
         myprint("Connection severed")
+        return return_value
 
 if __name__ == "__main__":
-    main()
-
+    exit(main())
