@@ -142,7 +142,7 @@ function master(args)
 						rssQueues = numRxQueues
 						}
 		end
-		devs[i]:setPromisc(false)
+		--devs[i]:setPromisc(false)
 
 		-- configure the connections
 		if ( i % 2 == 1) then -- for devices a, c
@@ -471,23 +471,20 @@ function adjustHeaders(devId, bufs, packetCount, args)
 			end
 	
 			if ( v == "srcMac" ) then
-				local addr = args.srcMacsU48[devId] + flowId
-				ethernetPacket.eth.src.uint8[5] = bit.band(addr, 0xFF)
-				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
-				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
+				local addr = args.srcMacsU48[devId] + flowId * 256
+				ethernetPacket.eth.src.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF) 
+				ethernetPacket.eth.src.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF) 
 				ethernetPacket.eth.src.uint8[2] = bit.band(bit.rshift(addr, 24), 0xFF)
-				ethernetPacket.eth.src.uint8[1] = bit.band(bit.rshift(addr + 0ULL, 32ULL), 0xFF)
-				ethernetPacket.eth.src.uint8[0] = bit.band(bit.rshift(addr + 0ULL, 40ULL), 0xFF)
 			end
 	
 			if ( v == "dstMac" ) then
-				local addr = args.dstMacsU48[devId] + flowId
-				ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
-				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF)
-				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF)
+				local addr = args.dstMacsU48[devId] + flowId * 256
+				--ethernetPacket.eth.dst.uint8[5] = bit.band(addr, 0xFF)
+				ethernetPacket.eth.dst.uint8[4] = bit.band(bit.rshift(addr, 8), 0xFF) 
+				ethernetPacket.eth.dst.uint8[3] = bit.band(bit.rshift(addr, 16), 0xFF) 
 				ethernetPacket.eth.dst.uint8[2] = bit.band(bit.rshift(addr, 24), 0xFF)
-				ethernetPacket.eth.dst.uint8[1] = bit.band(bit.rshift(addr + 0ULL, 32ULL), 0xFF)
-				ethernetPacket.eth.dst.uint8[0] = bit.band(bit.rshift(addr + 0ULL, 40ULL), 0xFF)
+				--ethernetPacket.eth.dst.uint8[1] = bit.band(bit.rshift(addr + 0ULL, 32ULL), 0xFF)
+				--ethernetPacket.eth.dst.uint8[0] = bit.band(bit.rshift(addr + 0ULL, 40ULL), 0xFF)
 			end
 		end
 
