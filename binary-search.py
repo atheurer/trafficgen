@@ -14,6 +14,7 @@ import threading
 import thread
 import select
 import signal
+import copy
 # from decimal import *
 # from trex_stl_lib.api import *
 
@@ -538,7 +539,8 @@ def handle_process_stdout(process, trial_params, stats, exit_event):
 def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit_event):
     output_file = None
     close_file = False
-    filename = "%s/trial-%03d.txt" % (trial_params['output_dir'], trial_params['trial'])
+    trial_params['trial_output_file'] = "trial-%03d.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_output_file'])
     try:
          output_file = open(filename, 'w')
          close_file = True
@@ -730,6 +732,8 @@ def main():
     final_validation = t_global.args.one_shot == 1
     rate = t_global.args.rate
 
+    trial_results = []
+
     if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
          print("The moongen-txrx traffic generator does not support --rate-unit=%")
          quit(1)
@@ -882,6 +886,7 @@ def main():
         # run the actual trial
         trial_params['trial'] += 1
         stats = run_trial(trial_params)
+        trial_stats = copy.deepcopy(stats)
 
         trial_result = 'pass'
         test_abort = False
@@ -926,7 +931,9 @@ def main():
                   print("(trial failed requirement, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['rx']]['rx_negative_loss_error']))
 
              lost_packets = stats[dev_pair['tx']]['tx_packets'] - stats[dev_pair['rx']]['rx_packets']
+             trial_stats[dev_pair['rx']]['rx_lost_packets'] = lost_packets
              pct_lost_packets = 100.0 * lost_packets / stats[dev_pair['tx']]['tx_packets']
+             trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] = pct_lost_packets
              requirement_msg = "passed"
              if pct_lost_packets > t_global.args.max_loss_pct:
                   requirement_msg = "failed"
@@ -944,6 +951,8 @@ def main():
                        requirement_msg = "retry"
                        if trial_result == "pass":
                            trial_result = "retry" 
+                  tolerance_min *= 1000000
+                  tolerance_max *= 1000000
              elif t_global.args.traffic_generator == 'moongen-txrx':
                   tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
                   tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
@@ -951,6 +960,8 @@ def main():
                        requirement_msg = "retry"
                        if trial_result == "pass":
                            trial_result = "retry-to-quit"
+             trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
+             trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
              print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], tolerance_min, tolerance_max, tx_rate))
 
         if test_abort:
@@ -958,16 +969,21 @@ def main():
              quit(1)
 
         if 'global' in stats:
+             tolerance_min = float(trial_params['runtime']) * (1 - (float(trial_params['runtime_tolerance']) / 100))
+             tolerance_max = float(trial_params['runtime']) * (1 + (float(trial_params['runtime_tolerance']) / 100))
+             trial_stats['global']['runtime_tolerance_min'] = tolerance_min
+             trial_stats['global']['runtime_tolerance_max'] = tolerance_max
+
              if stats['global']['timeout']:
                   print("(trial timeout, forcing a retry, timeouts can cause inconclusive trial results)")
                   trial_result = "retry-to-fail"
              else:
-                  tolerance_min = float(trial_params['runtime']) * (1 - (float(trial_params['runtime_tolerance']) / 100))
-                  tolerance_max = float(trial_params['runtime']) * (1 + (float(trial_params['runtime_tolerance']) / 100))
                   if stats['global']['runtime'] < tolerance_min or stats['global']['runtime'] > tolerance_max:
                        print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %f - %f, achieved: %f)" % (tolerance_min, tolerance_max, stats['global']['runtime']))
                        if trial_result == "pass":
                             trial_result = "retry-to-fail"
+
+        trial_results.append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_output_file'], 'stats': trial_stats })
 
         if trial_result == "pass":
 	    print('(trial passed all requirements)')
@@ -1059,6 +1075,16 @@ def main():
             print(']')
        else:    
            print("There is no trial which passed")
+
+    trial_json_filename = "%s/trials.json" % (trial_params['output_dir'])
+    try:
+         trial_json_file = open(trial_json_filename, 'w')
+         print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
+         trial_json_file.close()
+    except IOError:
+         print("ERROR: Could not open %s for writing" % trial_json_filename)
+         print("TRIALS:")
+         print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
 
 if __name__ == "__main__":
     exit(main())
