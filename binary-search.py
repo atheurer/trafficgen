@@ -950,7 +950,7 @@ def main():
                   if tx_rate > tolerance_max or tx_rate < tolerance_min:
                        requirement_msg = "retry"
                        if trial_result == "pass":
-                           trial_result = "retry" 
+                           trial_result = "retry-to-quit"
                   tolerance_min *= 1000000
                   tolerance_max *= 1000000
              elif t_global.args.traffic_generator == 'moongen-txrx':
