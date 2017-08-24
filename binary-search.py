@@ -179,7 +179,7 @@ def process_options ():
     parser.add_argument('--search-granularity',
                         dest='search_granularity',
                         help='the binary search will stop once the percent throughput difference between the most recent passing and failing trial is lower than this',
-                        default = 2,
+                        default = 0.1,
                         type = float
                         )
     parser.add_argument('--max-loss-pct', 
