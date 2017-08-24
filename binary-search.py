@@ -148,7 +148,13 @@ def process_options ():
                         )
     parser.add_argument('--rate', 
                         dest='rate',
-                        help='rate in millions of packets per second per device',
+                        help='rate per device',
+                        default = 0.0,
+                        type = float
+                        )
+    parser.add_argument('--min-rate',
+                        dest='min_rate',
+                        help='minimum rate per device',
                         default = 0.0,
                         type = float
                         )
@@ -753,6 +759,7 @@ def main():
     print("output_dir", t_global.args.output_dir)
     print("traffic_generator", t_global.args.traffic_generator)
     print("rate", rate)
+    print("min_rate", t_global.args.min_rate)
     print("rate_unit", t_global.args.rate_unit)
     print("rate_tolerance", t_global.args.rate_tolerance)
     print("runtime_tolerance", t_global.args.runtime_tolerance)
@@ -798,6 +805,7 @@ def main():
     trial_params['measure_latency'] = t_global.args.measure_latency
     trial_params['latency_rate'] = t_global.args.latency_rate
     trial_params['max_loss_pct'] = t_global.args.max_loss_pct
+    trial_params['min_rate'] = t_global.args.min_rate
     trial_params['rate_unit'] = t_global.args.rate_unit
     trial_params['rate_tolerance'] = t_global.args.rate_tolerance
     trial_params['runtime_tolerance'] = t_global.args.runtime_tolerance
@@ -851,6 +859,10 @@ def main():
          do_search = False
 
     trial_params['trial'] = 0
+
+    minimum_rate = initial_rate * trial_params['search_granularity'] / 100
+    if trial_params['min_rate'] != 0:
+         minimum_rate = trial_params['min_rate']
 
     retries = 0
     # the actual binary search to find the maximum packet rate
@@ -1019,7 +1031,11 @@ def main():
             rate = next_rate
             retries = 0
 
-        if rate < initial_rate * trial_params['search_granularity'] / 100:
+        if rate < minimum_rate and prev_rate > minimum_rate:
+             print("Setting the rate to the minimum allowed by the search granularity as a last attempt at passing.")
+             prev_rate = rate
+             rate = minimum_rate
+        elif (rate == minimum_rate or prev_rate <= minimum_rate) and trial_result == 'fail':
              print("Binary search ended up at rate which is below minimum allowed")
              quit(1)
 
