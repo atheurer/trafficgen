@@ -290,6 +290,11 @@ def process_options ():
                         default = "continuous",
                         choices = [ 'continuous', 'segmented' ]
                         )
+    parser.add_argument('--use-device-stats',
+                        dest='use_device_stats',
+                        help='Should device stats be used instead of stream stats',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -459,6 +464,8 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
         cmd = cmd + ' --stream-mode=' + trial_params['stream_mode']
+        if trial_params['use_device_stats']:
+             cmd = cmd + ' --skip-hw-flow-stats'
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -595,36 +602,23 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
                        stats['global']['runtime'] = results['global']['runtime']
                        stats['global']['timeout'] = results['global']['timeout']
 
-                       if not trial_params['run_revunidirec']:
-                            for pg_id, frame_size in zip(streams[0]['default']['pg_ids'], streams[0]['default']['frame_sizes']):
-                                 if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]):
-                                      stats_error_append_pg_id(stats[0], "rx_invalid", pg_id)
+                       if trial_params['use_device_stats']:
+                            if not trial_params['run_revunidirec']:
+                                 stats[0]['tx_packets'] += int(results['0']['opackets'])
+                                 stats[1]['rx_packets'] += int(results['1']['ipackets'])
 
-                                 if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]):
-                                      stats_error_append_pg_id(stats[1], "tx_invalid", pg_id)
+                                 stats[0]['tx_bandwidth'] += (int(results['0']['opackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['0']['obytes'])
+                                 stats[1]['rx_bandwidth'] += (int(results['1']['ipackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['1']['ibytes'])
 
-                                 if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
-                                      stats[0]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"])
-                                 else:
-                                      stats_error_append_pg_id(stats[0], "tx_missing", pg_id)
+                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                                 stats[1]['tx_packets'] += int(results['1']['opackets'])
+                                 stats[0]['rx_packets'] += int(results['0']['ipackets'])
 
-                                 if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[1]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"])
-                                 else:
-                                      stats_error_append_pg_id(stats[1], "rx_missing", pg_id)
-
-                                 if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[0]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
-                                      stats[1]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
-
-                                 if results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"] != "N/A":
-                                      if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) < 0:
-                                           stats_error_append_pg_id(stats[1], "rx_negative_loss", pg_id)
-                                      elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) > trial_params["max_loss_pct"]:
-                                           stats_error_append_pg_id(stats[1], "rx_loss", pg_id)
-
-                            if trial_params['measure_latency']:
-                                 for pg_id, frame_size in zip(streams[0]['latency']['pg_ids'], streams[0]['latency']['frame_sizes']):
+                                 stats[1]['tx_bandwidth'] += (int(results['1']['opackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['1']['obytes'])
+                                 stats[0]['rx_bandwidth'] += (int(results['0']['ipackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['0']['ibytes'])
+                       else:
+                            if not trial_params['run_revunidirec']:
+                                 for pg_id, frame_size in zip(streams[0]['default']['pg_ids'], streams[0]['default']['frame_sizes']):
                                       if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]):
                                            stats_error_append_pg_id(stats[0], "rx_invalid", pg_id)
 
@@ -651,45 +645,36 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
                                            elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) > trial_params["max_loss_pct"]:
                                                 stats_error_append_pg_id(stats[1], "rx_loss", pg_id)
 
-                            stats[0]['tx_pps'] = float(stats[0]['tx_packets']) / float(results["global"]["runtime"])
-                            stats[1]['rx_pps'] = float(stats[1]['rx_packets']) / float(results["global"]["runtime"])
+                                 if trial_params['measure_latency']:
+                                      for pg_id, frame_size in zip(streams[0]['latency']['pg_ids'], streams[0]['latency']['frame_sizes']):
+                                           if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]):
+                                                stats_error_append_pg_id(stats[0], "rx_invalid", pg_id)
 
-                            stats[0]['tx_bandwidth'] = float(stats[0]['tx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
-                            stats[1]['rx_bandwidth'] = float(stats[1]['rx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
+                                           if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]):
+                                                stats_error_append_pg_id(stats[1], "tx_invalid", pg_id)
 
-                            print('tx_packets, tx_rate, tx_bandwidth, device', stats[0]['tx_packets'], stats[0]['tx_pps'], stats[0]['tx_bandwidth'], 0)
-                            print('rx_packets, rx_rate, rx_bandwidth, device', stats[1]['rx_packets'], stats[1]['rx_pps'], stats[1]['rx_bandwidth'], 1)
+                                           if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
+                                                stats[0]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"])
+                                           else:
+                                                stats_error_append_pg_id(stats[0], "tx_missing", pg_id)
 
-                       if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
-                            for pg_id, frame_size in zip(streams[1]['default']['pg_ids'], streams[1]['default']['frame_sizes']):
-                                 if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]):
-                                      stats_error_append_pg_id(stats[1], "rx_invalid", pg_id)
+                                           if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[1]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"])
+                                           else:
+                                                stats_error_append_pg_id(stats[1], "rx_missing", pg_id)
 
-                                 if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]):
-                                      stats_error_append_pg_id(stats[0], "tx_invalid", pg_id)
+                                           if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[0]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
+                                                stats[1]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
 
-                                 if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
-                                      stats[1]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"])
-                                 else:
-                                      stats_error_append_pg_id(stats[1], "tx_missing", pg_id)
+                                           if results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"] != "N/A":
+                                                if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) < 0:
+                                                     stats_error_append_pg_id(stats[1], "rx_negative_loss", pg_id)
+                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) > trial_params["max_loss_pct"]:
+                                                     stats_error_append_pg_id(stats[1], "rx_loss", pg_id)
 
-                                 if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[0]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"])
-                                 else:
-                                      stats_error_append_pg_id(stats[0], "rx_missing", pg_id)
-
-                                 if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[1]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
-                                      stats[0]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
-
-                                 if results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"] != "N/A":
-                                      if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) < 0:
-                                           stats_error_append_pg_id(stats[0], "rx_negative_loss", pg_id)
-                                      elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) > trial_params["max_loss_pct"]:
-                                           stats_error_append_pg_id(stats[0], "rx_loss", pg_id)
-
-                            if trial_params['measure_latency']:
-                                 for pg_id, frame_size in zip(streams[1]['latency']['pg_ids'], streams[1]['latency']['frame_sizes']):
+                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                                 for pg_id, frame_size in zip(streams[1]['default']['pg_ids'], streams[1]['default']['frame_sizes']):
                                       if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]):
                                            stats_error_append_pg_id(stats[1], "rx_invalid", pg_id)
 
@@ -716,6 +701,45 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
                                            elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) > trial_params["max_loss_pct"]:
                                                 stats_error_append_pg_id(stats[0], "rx_loss", pg_id)
 
+                                 if trial_params['measure_latency']:
+                                      for pg_id, frame_size in zip(streams[1]['latency']['pg_ids'], streams[1]['latency']['frame_sizes']):
+                                           if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]):
+                                                stats_error_append_pg_id(stats[1], "rx_invalid", pg_id)
+
+                                           if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]):
+                                                stats_error_append_pg_id(stats[0], "tx_invalid", pg_id)
+
+                                           if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
+                                                stats[1]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"])
+                                           else:
+                                                stats_error_append_pg_id(stats[1], "tx_missing", pg_id)
+
+                                           if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[0]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"])
+                                           else:
+                                                stats_error_append_pg_id(stats[0], "rx_missing", pg_id)
+
+                                           if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[1]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
+                                                stats[0]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
+
+                                           if results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"] != "N/A":
+                                                if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) < 0:
+                                                     stats_error_append_pg_id(stats[0], "rx_negative_loss", pg_id)
+                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) > trial_params["max_loss_pct"]:
+                                                     stats_error_append_pg_id(stats[0], "rx_loss", pg_id)
+
+                       if not trial_params['run_revunidirec']:
+                            stats[0]['tx_pps'] = float(stats[0]['tx_packets']) / float(results["global"]["runtime"])
+                            stats[1]['rx_pps'] = float(stats[1]['rx_packets']) / float(results["global"]["runtime"])
+
+                            stats[0]['tx_bandwidth'] = float(stats[0]['tx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
+                            stats[1]['rx_bandwidth'] = float(stats[1]['rx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
+
+                            print('tx_packets, tx_rate, tx_bandwidth, device', stats[0]['tx_packets'], stats[0]['tx_pps'], stats[0]['tx_bandwidth'], 0)
+                            print('rx_packets, rx_rate, rx_bandwidth, device', stats[1]['rx_packets'], stats[1]['rx_pps'], stats[1]['rx_bandwidth'], 1)
+
+                       if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
                             stats[1]['tx_pps'] = float(stats[1]['tx_packets']) / float(results["global"]["runtime"])
                             stats[0]['rx_pps'] = float(stats[0]['rx_packets']) / float(results["global"]["runtime"])
 
@@ -724,6 +748,7 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
 
                             print('tx_packets, tx_rate, tx_bandwidth, device', stats[1]['tx_packets'], stats[1]['tx_pps'], stats[1]['tx_bandwidth'], 1)
                             print('rx_packets, rx_rate, rx_bandwidth, device', stats[0]['rx_packets'], stats[0]['rx_pps'], stats[0]['rx_bandwidth'], 0)
+
     if close_file:
          output_file.close()
 
@@ -802,6 +827,7 @@ def main():
     print("dst-ports", t_global.args.dst_ports)
     print("packet-protocol", t_global.args.packet_protocol)
     print("stream-mode", t_global.args.stream_mode)
+    print("use-device-stats", t_global.args.use_device_stats)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -845,6 +871,7 @@ def main():
     trial_params['dst_ports'] = t_global.args.dst_ports
     trial_params['packet_protocol'] = t_global.args.packet_protocol
     trial_params['stream_mode'] = t_global.args.stream_mode
+    trial_params['use_device_stats'] = t_global.args.use_device_stats
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
