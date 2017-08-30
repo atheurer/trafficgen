@@ -42,7 +42,7 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, pg_id, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan):
+def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, pg_id, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan, skip_hw_flow_stats):
      streams = { 'default': { 'protocol': [],
                               'pps': [],
                               'pg_ids': [],
@@ -215,7 +215,8 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                         stream_run_time,
                         stream_traffic_share))
 
-               if streams_packet_type == "default":
+               stream_flow_stats = None
+               if streams_packet_type == "default" and not skip_hw_flow_stats:
                     stream_flow_stats = STLFlowStats(pg_id = stream_pg_id)
                elif streams_packet_type == "latency":
                     stream_flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
@@ -529,6 +530,12 @@ def process_options ():
                         default = "continuous",
                         choices = [ 'continuous', 'segmented' ]
                         )
+    parser.add_argument('--skip-hw-flow-stats',
+                        dest='skip_hw_flow_stats',
+                        help='Should hardware flow stat support be used',
+                        action = 'store_true',
+                        )
+
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
@@ -689,14 +696,14 @@ def main():
              rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
 
         if t_global.args.run_revunidirec:
-             traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
+             traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b, t_global.args.skip_hw_flow_stats)
              c.add_streams(streams = traffic_profile, ports = [port_b])
         else:
-             traffic_profile = create_traffic_profile("a", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a)
+             traffic_profile = create_traffic_profile("a", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a, t_global.args.skip_hw_flow_stats)
              c.add_streams(streams = traffic_profile, ports = [port_a])
 
              if t_global.args.run_bidirec:
-                  traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["b"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b)
+                  traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["b"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b, t_global.args.skip_hw_flow_stats)
                   c.add_streams(streams = traffic_profile, ports = [port_b])
 
         # clear the stats before injecting
@@ -709,6 +716,15 @@ def main():
              rate_multiplier = str(rate_multiplier) + t_global.args.rate_unit
         elif t_global.args.stream_mode == "segmented":
              rate_multiplier = str(1)
+
+        # clear the stats
+        if t_global.args.run_revunidirec:
+             c.clear_stats(ports = [port_b])
+        else:
+             if t_global.args.run_bidirec:
+                  c.clear_stats(ports = [port_a, port_b])
+             else:
+                  c.clear_stats(ports = [port_a])
 
         # log start of test
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))

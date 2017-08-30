@@ -290,11 +290,110 @@ def process_options ():
                         default = "continuous",
                         choices = [ 'continuous', 'segmented' ]
                         )
+    parser.add_argument('--use-device-stats',
+                        dest='use_device_stats',
+                        help='Should device stats be used instead of stream stats',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
     print(t_global.args)
+
+def get_trex_port_info(trial_params, test_dev_pairs):
+     devices = dict()
+     device_string = ""
+
+     for dev_pair in test_dev_pairs:
+          for direction in [ 'tx', 'tx' ]:
+               if not dev_pair[direction] in devices:
+                    devices[dev_pair[direction]] = 1
+                    device_string = device_string + ' --device ' + str(dev_pair[direction])
+               else:
+                    devices[dev_pair[direction]] += 1
+
+     cmd = 'python trex-query.py'
+     cmd = cmd + ' --mirrored-log'
+     cmd = cmd + device_string
+
+     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
+
+     port_info = { 'json': None }
+
+     print('querying TRex...')
+     print('cmd:', cmd)
+     query_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+     stdout_exit_event = threading.Event()
+     stderr_exit_event = threading.Event()
+
+     stdout_thread = threading.Thread(target = handle_query_process_stdout, args = (query_process, stdout_exit_event))
+     stderr_thread = threading.Thread(target = handle_query_process_stderr, args = (query_process, trial_params, port_info, stderr_exit_event))
+
+     stdout_thread.start()
+     stderr_thread.start()
+
+     stdout_exit_event.wait()
+     stderr_exit_event.wait()
+     retval = query_process.wait()
+
+     stdout_thread.join()
+     stderr_thread.join()
+
+     signal.signal(signal.SIGINT, previous_sig_handler)
+
+     print('return code', retval)
+     return port_info['json']
+
+def handle_query_process_stdout(process, exit_event):
+     capture_output = True
+     do_loop = True
+     while do_loop:
+          stdout_lines = handle_process_output(process, process.stdout, capture_output)
+
+          for line in stdout_lines:
+               if line == "--END--":
+                    exit_event.set()
+                    do_loop = False
+                    continue
+
+               if line.rstrip('\n') == "Connection severed":
+                    capture_output = False
+                    exit_event.set()
+
+def handle_query_process_stderr(process, trial_params, port_info, exit_event):
+     output_file = None
+     close_file = False
+     trial_params['port_info_file'] = "binary-search.port-info.txt"
+     filename = "%s/%s" % (trial_params['output_dir'], trial_params['port_info_file'])
+     try:
+          output_file = open(filename, 'w')
+          close_file = True
+     except IOError:
+          print("ERROR: Could not open %s for writing" % filename)
+          output_file = sys.stdout
+
+     capture_output = True
+     do_loop = True
+     while do_loop:
+          stderr_lines = handle_process_output(process, process.stderr, capture_output)
+
+          for line in stderr_lines:
+               if line == "--END--":
+                    exit_event.set()
+                    do_loop = False
+                    continue
+
+               m = re.search(r"PARSABLE PORT INFO:\s+(.*)$", line)
+               if m:
+                    port_info['json'] = json.loads(m.group(1))
+
+               if close_file:
+                    print(line.rstrip('\n'))
+               print(line.rstrip('\n'), file=output_file)
+
+     if close_file:
+          output_file.close()
 
 def calculate_tx_pps_target(trial_params, streams, tmp_stats):
      rate_target = 0.0
@@ -348,7 +447,7 @@ def stats_error_append_pg_id(stats, action, pg_id):
           stats[action] = str(pg_id)
      return
 
-def run_trial (trial_params):
+def run_trial (trial_params, port_info, stream_info, detailed_stats):
     stats = dict()
     stats[0] = dict()
     stats[0]['tx_packets'] = 0
@@ -423,6 +522,12 @@ def run_trial (trial_params):
         stats[1]['rx_bandwidth'] = 0
         stats[1]['tx_pps_target'] = 0
 
+        if not trial_params['run_revunidirec']:
+             tmp_stats[0]['tx_available_bandwidth'] = port_info[0]['speed'] * 1000 * 1000 * 1000
+
+        if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+             tmp_stats[1]['tx_available_bandwidth'] = port_info[1]['speed'] * 1000 * 1000 * 1000
+
         cmd = 'python trex-txrx.py'
         #cmd = cmd + ' --devices=0,1' # fix to allow different devices
         cmd = cmd + ' --mirrored-log'
@@ -459,6 +564,8 @@ def run_trial (trial_params):
         cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
         cmd = cmd + ' --stream-mode=' + trial_params['stream_mode']
+        if trial_params['use_device_stats']:
+             cmd = cmd + ' --skip-hw-flow-stats'
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -468,8 +575,8 @@ def run_trial (trial_params):
     stdout_exit_event = threading.Event()
     stderr_exit_event = threading.Event()
 
-    stdout_thread = threading.Thread(target = handle_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
-    stderr_thread = threading.Thread(target = handle_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, stderr_exit_event))
+    stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
+    stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, stderr_exit_event))
 
     stdout_thread.start()
     stderr_thread.start()
@@ -484,6 +591,7 @@ def run_trial (trial_params):
     signal.signal(signal.SIGINT, previous_sig_handler)
 
     print('return code', retval)
+    stream_info['streams'] = streams
     return stats
 
 def handle_process_output(process, process_stream, capture):
@@ -502,7 +610,7 @@ def handle_process_output(process, process_stream, capture):
           lines.append("--END--")
      return lines
 
-def handle_process_stdout(process, trial_params, stats, exit_event):
+def handle_trial_process_stdout(process, trial_params, stats, exit_event):
     prefix = "%03d" % trial_params['trial']
 
     capture_output = True
@@ -536,10 +644,10 @@ def handle_process_stdout(process, trial_params, stats, exit_event):
                        capture_output = False
                        exit_event.set()
 
-def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit_event):
+def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams, detailed_stats, exit_event):
     output_file = None
     close_file = False
-    trial_params['trial_output_file'] = "trial-%03d.txt" % (trial_params['trial'])
+    trial_params['trial_output_file'] = "binary-search.trial-%03d.txt" % (trial_params['trial'])
     filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_output_file'])
     try:
          output_file = open(filename, 'w')
@@ -564,16 +672,6 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   print(line.rstrip('\n'))
              elif trial_params['traffic_generator'] == 'trex-txrx':
-                  #PARSABLE PORT INFO: [{"arp":"68:05:ca:32:0d:f0","src_ipv4":"1.1.1.1","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":0,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:14:d0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"2.2.2.2","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:81:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"},{"arp":"68:05:ca:32:14:d0","src_ipv4":"2.2.2.2","supp_speeds":[40000],"is_link_supported":true,"grat_arp":"off","rx_sniffer":"off","speed":40,"index":1,"link_change_supported":"yes","rx":{"counters":127,"caps":["flow_stats","latency"]},"is_virtual":"no","prom":"on","src_mac":"68:05:ca:32:0d:f0","status":"IDLE","description":"Ethernet Controller XL710 for 40GbE QSFP+","dest":"1.1.1.1","is_fc_supported":false,"driver":"rte_i40e_pmd","led_change_supported":"yes","rx_filter_mode":"hardware match","fc":"none","link":"UP","numa":1,"pci_addr":"0000:84:00.0","fc_supported":"no","is_led_supported":true,"rx_queue":"off","layer_mode":"IPv4"}]
-                  m = re.search(r"PARSABLE PORT INFO:\s+(.*)$", line)
-                  if m:
-                       results = json.loads(m.group(1))
-
-                       if not trial_params['run_revunidirec']:
-                            tmp_stats[0]['tx_available_bandwidth'] = results[0]['speed'] * 1000 * 1000 * 1000
-
-                       if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
-                            tmp_stats[1]['tx_available_bandwidth'] = results[1]['speed'] * 1000 * 1000 * 1000
                   #PARSABLE STREAMS FOR DIRECTION 'a': {"default": {"traffic_shares": [0.5833333333333334,0.3333333333333333,0.08333333333333333],"names": ["small_stream_a","medium_stream_a","large_stream_a"],"pg_ids": [128,129,130],"frame_sizes": [40,576,1500]},"latency": {"traffic_shares": [0.5833333333333334,0.3333333333333333,0.08333333333333333],"names": ["small_latency_stream_a","medium_latency_stream_a","large_latency_stream_a"],"pg_ids": [0,1,2],"frame_sizes": [40,576,1500]}}
                   m = re.search(r"PARSABLE STREAMS FOR DIRECTION '([ab])':\s+(.*)$", line)
                   if m:
@@ -589,42 +687,30 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
                        results = json.loads(m.group(1))
+                       detailed_stats['stats'] = copy.deepcopy(results)
 
                        stats['global'] = dict()
 
                        stats['global']['runtime'] = results['global']['runtime']
                        stats['global']['timeout'] = results['global']['timeout']
 
-                       if not trial_params['run_revunidirec']:
-                            for pg_id, frame_size in zip(streams[0]['default']['pg_ids'], streams[0]['default']['frame_sizes']):
-                                 if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]):
-                                      stats_error_append_pg_id(stats[0], "rx_invalid", pg_id)
+                       if trial_params['use_device_stats']:
+                            if not trial_params['run_revunidirec']:
+                                 stats[0]['tx_packets'] += int(results['0']['opackets'])
+                                 stats[1]['rx_packets'] += int(results['1']['ipackets'])
 
-                                 if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]):
-                                      stats_error_append_pg_id(stats[1], "tx_invalid", pg_id)
+                                 stats[0]['tx_bandwidth'] += (int(results['0']['opackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['0']['obytes'])
+                                 stats[1]['rx_bandwidth'] += (int(results['1']['ipackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['1']['ibytes'])
 
-                                 if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
-                                      stats[0]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"])
-                                 else:
-                                      stats_error_append_pg_id(stats[0], "tx_missing", pg_id)
+                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                                 stats[1]['tx_packets'] += int(results['1']['opackets'])
+                                 stats[0]['rx_packets'] += int(results['0']['ipackets'])
 
-                                 if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[1]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"])
-                                 else:
-                                      stats_error_append_pg_id(stats[1], "rx_missing", pg_id)
-
-                                 if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[0]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
-                                      stats[1]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
-
-                                 if results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"] != "N/A":
-                                      if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) < 0:
-                                           stats_error_append_pg_id(stats[1], "rx_negative_loss", pg_id)
-                                      elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) > trial_params["max_loss_pct"]:
-                                           stats_error_append_pg_id(stats[1], "rx_loss", pg_id)
-
-                            if trial_params['measure_latency']:
-                                 for pg_id, frame_size in zip(streams[0]['latency']['pg_ids'], streams[0]['latency']['frame_sizes']):
+                                 stats[1]['tx_bandwidth'] += (int(results['1']['opackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['1']['obytes'])
+                                 stats[0]['rx_bandwidth'] += (int(results['0']['ipackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['0']['ibytes'])
+                       else:
+                            if not trial_params['run_revunidirec']:
+                                 for pg_id, frame_size in zip(streams[0]['default']['pg_ids'], streams[0]['default']['frame_sizes']):
                                       if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]):
                                            stats_error_append_pg_id(stats[0], "rx_invalid", pg_id)
 
@@ -651,45 +737,36 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
                                            elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) > trial_params["max_loss_pct"]:
                                                 stats_error_append_pg_id(stats[1], "rx_loss", pg_id)
 
-                            stats[0]['tx_pps'] = float(stats[0]['tx_packets']) / float(results["global"]["runtime"])
-                            stats[1]['rx_pps'] = float(stats[1]['rx_packets']) / float(results["global"]["runtime"])
+                                 if trial_params['measure_latency']:
+                                      for pg_id, frame_size in zip(streams[0]['latency']['pg_ids'], streams[0]['latency']['frame_sizes']):
+                                           if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]):
+                                                stats_error_append_pg_id(stats[0], "rx_invalid", pg_id)
 
-                            stats[0]['tx_bandwidth'] = float(stats[0]['tx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
-                            stats[1]['rx_bandwidth'] = float(stats[1]['rx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
+                                           if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]):
+                                                stats_error_append_pg_id(stats[1], "tx_invalid", pg_id)
 
-                            print('tx_packets, tx_rate, tx_bandwidth, device', stats[0]['tx_packets'], stats[0]['tx_pps'], stats[0]['tx_bandwidth'], 0)
-                            print('rx_packets, rx_rate, rx_bandwidth, device', stats[1]['rx_packets'], stats[1]['rx_pps'], stats[1]['rx_bandwidth'], 1)
+                                           if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
+                                                stats[0]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"])
+                                           else:
+                                                stats_error_append_pg_id(stats[0], "tx_missing", pg_id)
 
-                       if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
-                            for pg_id, frame_size in zip(streams[1]['default']['pg_ids'], streams[1]['default']['frame_sizes']):
-                                 if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]):
-                                      stats_error_append_pg_id(stats[1], "rx_invalid", pg_id)
+                                           if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[1]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"])
+                                           else:
+                                                stats_error_append_pg_id(stats[1], "rx_missing", pg_id)
 
-                                 if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]):
-                                      stats_error_append_pg_id(stats[0], "tx_invalid", pg_id)
+                                           if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "1" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[0]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
+                                                stats[1]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]) * (frame_size + tmp_stats[0]['packet_overhead_bytes'])
 
-                                 if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
-                                      stats[1]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"])
-                                 else:
-                                      stats_error_append_pg_id(stats[1], "tx_missing", pg_id)
+                                           if results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"] != "N/A":
+                                                if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) < 0:
+                                                     stats_error_append_pg_id(stats[1], "rx_negative_loss", pg_id)
+                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["0->1"]) > trial_params["max_loss_pct"]:
+                                                     stats_error_append_pg_id(stats[1], "rx_loss", pg_id)
 
-                                 if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[0]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"])
-                                 else:
-                                      stats_error_append_pg_id(stats[0], "rx_missing", pg_id)
-
-                                 if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
-                                      stats[1]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
-                                      stats[0]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
-
-                                 if results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"] != "N/A":
-                                      if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) < 0:
-                                           stats_error_append_pg_id(stats[0], "rx_negative_loss", pg_id)
-                                      elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) > trial_params["max_loss_pct"]:
-                                           stats_error_append_pg_id(stats[0], "rx_loss", pg_id)
-
-                            if trial_params['measure_latency']:
-                                 for pg_id, frame_size in zip(streams[1]['latency']['pg_ids'], streams[1]['latency']['frame_sizes']):
+                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                                 for pg_id, frame_size in zip(streams[1]['default']['pg_ids'], streams[1]['default']['frame_sizes']):
                                       if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]):
                                            stats_error_append_pg_id(stats[1], "rx_invalid", pg_id)
 
@@ -716,6 +793,45 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
                                            elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) > trial_params["max_loss_pct"]:
                                                 stats_error_append_pg_id(stats[0], "rx_loss", pg_id)
 
+                                 if trial_params['measure_latency']:
+                                      for pg_id, frame_size in zip(streams[1]['latency']['pg_ids'], streams[1]['latency']['frame_sizes']):
+                                           if "1" in results["flow_stats"][str(pg_id)]["rx_pkts"] and int(results["flow_stats"][str(pg_id)]["rx_pkts"]["1"]):
+                                                stats_error_append_pg_id(stats[1], "rx_invalid", pg_id)
+
+                                           if "0" in results["flow_stats"][str(pg_id)]["tx_pkts"] and int(results["flow_stats"][str(pg_id)]["tx_pkts"]["0"]):
+                                                stats_error_append_pg_id(stats[0], "tx_invalid", pg_id)
+
+                                           if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"]:
+                                                stats[1]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"])
+                                           else:
+                                                stats_error_append_pg_id(stats[1], "tx_missing", pg_id)
+
+                                           if "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[0]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"])
+                                           else:
+                                                stats_error_append_pg_id(stats[0], "rx_missing", pg_id)
+
+                                           if "1" in results["flow_stats"][str(pg_id)]["tx_pkts"] and "0" in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                                stats[1]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"]["1"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
+                                                stats[0]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"]["0"]) * (frame_size + tmp_stats[1]['packet_overhead_bytes'])
+
+                                           if results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"] != "N/A":
+                                                if float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) < 0:
+                                                     stats_error_append_pg_id(stats[0], "rx_negative_loss", pg_id)
+                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"]["1->0"]) > trial_params["max_loss_pct"]:
+                                                     stats_error_append_pg_id(stats[0], "rx_loss", pg_id)
+
+                       if not trial_params['run_revunidirec']:
+                            stats[0]['tx_pps'] = float(stats[0]['tx_packets']) / float(results["global"]["runtime"])
+                            stats[1]['rx_pps'] = float(stats[1]['rx_packets']) / float(results["global"]["runtime"])
+
+                            stats[0]['tx_bandwidth'] = float(stats[0]['tx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
+                            stats[1]['rx_bandwidth'] = float(stats[1]['rx_bandwidth']) / float(results["global"]["runtime"]) * tmp_stats[0]['bits_per_byte']
+
+                            print('tx_packets, tx_rate, tx_bandwidth, device', stats[0]['tx_packets'], stats[0]['tx_pps'], stats[0]['tx_bandwidth'], 0)
+                            print('rx_packets, rx_rate, rx_bandwidth, device', stats[1]['rx_packets'], stats[1]['rx_pps'], stats[1]['rx_bandwidth'], 1)
+
+                       if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
                             stats[1]['tx_pps'] = float(stats[1]['tx_packets']) / float(results["global"]["runtime"])
                             stats[0]['rx_pps'] = float(stats[0]['rx_packets']) / float(results["global"]["runtime"])
 
@@ -724,6 +840,7 @@ def handle_process_stderr(process, trial_params, stats, tmp_stats, streams, exit
 
                             print('tx_packets, tx_rate, tx_bandwidth, device', stats[1]['tx_packets'], stats[1]['tx_pps'], stats[1]['tx_bandwidth'], 1)
                             print('rx_packets, rx_rate, rx_bandwidth, device', stats[0]['rx_packets'], stats[0]['rx_pps'], stats[0]['rx_bandwidth'], 0)
+
     if close_file:
          output_file.close()
 
@@ -732,7 +849,7 @@ def main():
     final_validation = t_global.args.one_shot == 1
     rate = t_global.args.rate
 
-    trial_results = []
+    trial_results = { 'trials': [] }
 
     if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
          print("The moongen-txrx traffic generator does not support --rate-unit=%")
@@ -802,6 +919,7 @@ def main():
     print("dst-ports", t_global.args.dst_ports)
     print("packet-protocol", t_global.args.packet_protocol)
     print("stream-mode", t_global.args.stream_mode)
+    print("use-device-stats", t_global.args.use_device_stats)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -845,6 +963,7 @@ def main():
     trial_params['dst_ports'] = t_global.args.dst_ports
     trial_params['packet_protocol'] = t_global.args.packet_protocol
     trial_params['stream_mode'] = t_global.args.stream_mode
+    trial_params['use_device_stats'] = t_global.args.use_device_stats
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
@@ -853,6 +972,16 @@ def main():
 
          if trial_params['run_bidirec']:
               test_dev_pairs.append({ 'tx': 1, 'rx': 0 })
+
+    port_info = None
+    if t_global.args.traffic_generator == "trex-txrx":
+         port_info = get_trex_port_info(trial_params, test_dev_pairs)
+         trial_results['port_info'] = port_info
+
+         for port in port_info:
+              if port['driver'] == "net_ixgbe" and not trial_params['use_device_stats']:
+                   print("WARNING: Forcing use of device stats instead of stream stats due to issue with Intel 82599/Niantic flow programming")
+                   trial_params['use_device_stats'] = True
 
     perform_sniffs = False
     do_sniff = False
@@ -886,7 +1015,9 @@ def main():
               trial_params['rate'] = rate
               # run the actual trial
               trial_params['trial'] += 1
-              stats = run_trial(trial_params)
+              stream_info = { 'streams': None }
+              detailed_stats = { 'stats': None }
+              stats = run_trial(trial_params, port_info, stream_info, detailed_stats)
               trial_stats = copy.deepcopy(stats)
 
               trial_result = 'pass'
@@ -984,7 +1115,7 @@ def main():
                              if trial_result == "pass":
                                   trial_result = "retry-to-fail"
 
-              trial_results.append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_output_file'], 'stats': trial_stats })
+              trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_output_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
 
               if trial_result == "pass":
                    print('(trial passed all requirements)')
@@ -1078,16 +1209,15 @@ def main():
                    print("There is no trial which passed")
 
     finally:
-         if len(trial_results):
-              trial_json_filename = "%s/trials.json" % (trial_params['output_dir'])
-              try:
-                   trial_json_file = open(trial_json_filename, 'w')
-                   print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
-                   trial_json_file.close()
-              except IOError:
-                   print("ERROR: Could not open %s for writing" % trial_json_filename)
-                   print("TRIALS:")
-                   print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
+         trial_json_filename = "%s/binary-search.json" % (trial_params['output_dir'])
+         try:
+              trial_json_file = open(trial_json_filename, 'w')
+              print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
+              trial_json_file.close()
+         except IOError:
+              print("ERROR: Could not open %s for writing" % trial_json_filename)
+              print("TRIALS:")
+              print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
 
 if __name__ == "__main__":
     exit(main())

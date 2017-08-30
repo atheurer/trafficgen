@@ -75,9 +75,9 @@ def main():
         c.reset(ports = t_global.args.device)
 
         port_info = c.get_port_info(ports = t_global.args.device)
-        myprint("READABLE PORT INFO:")
-        myprint(dump_json_readable(port_info))
-        myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info))
+        myprint("READABLE PORT INFO:", stderr_only = True)
+        myprint(dump_json_readable(port_info), stderr_only = True)
+        myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), stderr_only = True)
 
         return_value = 0
 
