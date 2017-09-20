@@ -1094,7 +1094,7 @@ def main():
                                   trial_result = "retry-to-quit"
                    trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
                    trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
-                   print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], tolerance_min, tolerance_max, tx_rate))
+                   print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], (tolerance_min/1000000), (tolerance_max/1000000), tx_rate))
 
               if test_abort:
                    print('Binary search aborting due to critical error')
@@ -1120,7 +1120,7 @@ def main():
               if trial_result == "pass":
                    print('(trial passed all requirements)')
               elif trial_result == "retry-to-fail" or trial_result == "retry-to-quit":
-                   print('(trial trial must be repeated because one or more requirements did not pass, but allow a retry)')
+                   print('(trial must be repeated because one or more requirements did not pass, but allow a retry)')
 
                    if retries >= trial_params['max_retries']:
                         if trial_result == "retry-to-quit":
