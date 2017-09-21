@@ -873,7 +873,7 @@ def main():
              rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
     initial_rate = rate
     prev_rate = 0
-    prev_pass_rate = 0
+    prev_pass_rate = [0]
     prev_fail_rate = rate
 
     # be verbose, dump all options to binary-search
@@ -1144,7 +1144,13 @@ def main():
                         final_validation = False
                         next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
                    else:
-                        next_rate = (prev_pass_rate + rate) / 2
+                        if len(prev_pass_rate) > 1 and rate < prev_pass_rate[len(prev_pass_rate)-1]:
+                             # if the attempted rate drops below the most recent passing rate then that
+                             # passing rate is considered a false positive and should be removed; ensure
+                             # that at least the original passing rate (which is a special rate of 0) is never
+                             # removed from the stack
+                             print("Removing false positive passing result: %f" % (prev_pass_rate.pop()))
+                        next_rate = (prev_pass_rate[len(prev_pass_rate)-1] + rate) / 2 # use the most recently added passing rate present in stack to calculate the next rate
                         if abs(rate - next_rate) < (trial_params['search_granularity'] * rate / 100):
                              next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
                    if perform_sniffs:
@@ -1166,7 +1172,7 @@ def main():
                         do_search = True
                         next_rate = rate # since this was only the sniff test, keep the current rate
                    else:
-                        prev_pass_rate = rate
+                        prev_pass_rate.append(rate) # add the newly passed rate to the stack of passed rates; this will become the new reference for passed rates
                         next_rate = (prev_fail_rate + rate) / 2
                         if abs(rate - next_rate)/rate * 100 < trial_params['search_granularity']: # trigger final validation
                              final_validation = True
@@ -1192,7 +1198,7 @@ def main():
                    time.sleep(t_global.args.trial_gap)
 
          print("RESULT:")
-         if prev_pass_rate != 0: # show the stats for the most recent passing trial
+         if prev_pass_rate[len(prev_pass_rate)-1] != 0: # show the stats for the most recent passing trial
               print('[')
               print(json.dumps(passed_stats[0], indent = 4, separators=(',', ': '), sort_keys = True))
               print(',')
