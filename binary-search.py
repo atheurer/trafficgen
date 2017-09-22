@@ -15,6 +15,7 @@ import thread
 import select
 import signal
 import copy
+import random
 # from decimal import *
 # from trex_stl_lib.api import *
 
@@ -257,7 +258,7 @@ def process_options ():
                         )
     parser.add_argument('--traffic-generator', 
                         dest='traffic_generator',
-                        help='name of traffic generator: trex-txrx or moongen-txrx',
+                        help='name of traffic generator: trex-txrx or moongen-txrx of null-txrx',
                         default="moongen-txrx"
                         )
     parser.add_argument('--measure-latency',
@@ -514,6 +515,10 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 	    flow_mods_opt = flow_mods_opt + ',encapDstMac'
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
+    elif trial_params['traffic_generator'] == 'null-txrx':
+         cmd = 'python null-txrx.py'
+         cmd = cmd + ' --mirrored-log'
+         cmd = cmd + ' --rate=' + str(trial_params['rate'])
     elif trial_params['traffic_generator'] == 'trex-txrx':
         stats[0]['tx_bandwidth'] = 0
         stats[0]['rx_bandwidth'] = 0
@@ -639,6 +644,41 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                        stats[int(m.group(1))]['tx_pps'] = float(m.group(3)) / float(trial_params['runtime'])
                        stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
                        stats[int(m.group(2))]['rx_pps'] = float(m.group(4)) / float(trial_params['runtime'])
+             elif trial_params['traffic_generator'] == 'null-txrx':
+                  if line.rstrip('\n') == "exiting":
+                       capture_output = False
+                       exit_event.set()
+                  m = re.search(r"result=(.*)$", line)
+                  if m:
+                       print("trial result: %s" % m.group(1))
+
+                       total_packets = 1000000
+                       max_lost_packets = total_packets * (trial_params['max_loss_pct'] / 100)
+                       pass_packets = total_packets - random.randint(0, max_lost_packets - 1)
+                       fail_packets = total_packets - random.randint(max_lost_packets + 1, total_packets)
+
+                       if m.group(1) == "pass":
+                            if not trial_params['run_revunidirec']:
+                                 stats[0]['tx_packets'] = total_packets
+                                 stats[0]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
+                                 stats[1]['rx_packets'] = pass_packets
+                                 stats[1]['rx_pps'] = float(pass_packets) / float(trial_params['runtime'])
+                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                                 stats[1]['tx_packets'] = total_packets
+                                 stats[1]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
+                                 stats[0]['rx_packets'] = pass_packets
+                                 stats[0]['rx_pps'] = float(pass_packets) / float(trial_params['runtime'])
+                       elif m.group(1) == "fail":
+                            if not trial_params['run_revunidirec']:
+                                 stats[0]['tx_packets'] = total_packets
+                                 stats[0]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
+                                 stats[1]['rx_packets'] = fail_packets
+                                 stats[1]['rx_pps'] = float(fail_packets) / float(trial_params['runtime'])
+                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                                 stats[1]['tx_packets'] = total_packets
+                                 stats[1]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
+                                 stats[0]['rx_packets'] = fail_packets
+                                 stats[0]['rx_pps'] = float(fail_packets) / float(trial_params['runtime'])
              elif trial_params['traffic_generator'] == 'trex-txrx':
                   if line.rstrip('\n') == "Connection severed":
                        capture_output = False
@@ -851,8 +891,15 @@ def main():
 
     trial_results = { 'trials': [] }
 
+    if t_global.args.traffic_generator == 'null-txrx':
+         random.seed()
+
     if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
          print("The moongen-txrx traffic generator does not support --rate-unit=%")
+         quit(1)
+
+    if t_global.args.traffic_generator == 'null-txrx' and t_global.args.rate_unit == "mpps":
+         print("The null-txrx traffic generator does not support --rate-unit=mpps")
          quit(1)
 
     if t_global.args.frame_size == "imix":
@@ -867,7 +914,7 @@ def main():
 
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
-        if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%":
+        if t_global.args.traffic_generator == "null-txrx" or (t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%"):
              rate = 100
         else:
              rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
@@ -1073,29 +1120,30 @@ def main():
                         trial_result = 'fail'
                    print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets, lost_packets))
 
-                   requirement_msg = "passed"
-                   tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
-                   tolerance_min = 0.0
-                   tolerance_max = 0.0
-                   if t_global.args.traffic_generator == 'trex-txrx':
-                        tolerance_min = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
-                        tolerance_max = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
-                        if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                             requirement_msg = "retry"
-                             if trial_result == "pass":
-                                  trial_result = "retry-to-quit"
-                        tolerance_min *= 1000000
-                        tolerance_max *= 1000000
-                   elif t_global.args.traffic_generator == 'moongen-txrx':
-                        tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
-                        tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
-                        if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                             requirement_msg = "retry"
-                             if trial_result == "pass":
-                                  trial_result = "retry-to-quit"
-                   trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
-                   trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
-                   print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], (tolerance_min/1000000), (tolerance_max/1000000), tx_rate))
+                   if t_global.args.traffic_generator != 'null-txrx':
+                        requirement_msg = "passed"
+                        tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
+                        tolerance_min = 0.0
+                        tolerance_max = 0.0
+                        if t_global.args.traffic_generator == 'trex-txrx':
+                             tolerance_min = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
+                             tolerance_max = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
+                             if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                                  requirement_msg = "retry"
+                                  if trial_result == "pass":
+                                       trial_result = "retry-to-quit"
+                             tolerance_min *= 1000000
+                             tolerance_max *= 1000000
+                        elif t_global.args.traffic_generator == 'moongen-txrx':
+                             tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
+                             tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
+                             if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                                  requirement_msg = "retry"
+                                  if trial_result == "pass":
+                                       trial_result = "retry-to-quit"
+                        trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
+                        trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
+                        print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], (tolerance_min/1000000), (tolerance_max/1000000), tx_rate))
 
               if test_abort:
                    print('Binary search aborting due to critical error')
