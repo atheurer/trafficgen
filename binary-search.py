@@ -920,6 +920,7 @@ def main():
     print("packet-protocol", t_global.args.packet_protocol)
     print("stream-mode", t_global.args.stream_mode)
     print("use-device-stats", t_global.args.use_device_stats)
+    print("search-granularity", t_global.args.search_granularity)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
