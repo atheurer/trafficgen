@@ -357,10 +357,6 @@ def handle_query_process_stdout(process, exit_event):
                     do_loop = False
                     continue
 
-               if line.rstrip('\n') == "Connection severed":
-                    capture_output = False
-                    exit_event.set()
-
 def handle_query_process_stderr(process, trial_params, port_info, exit_event):
      output_file = None
      close_file = False
@@ -391,6 +387,10 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
                if close_file:
                     print(line.rstrip('\n'))
                print(line.rstrip('\n'), file=output_file)
+
+               if line.rstrip('\n') == "Connection severed":
+                    capture_output = False
+                    exit_event.set()
 
      if close_file:
           output_file.close()
