@@ -915,7 +915,7 @@ def main():
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
         if t_global.args.traffic_generator == "null-txrx" or (t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%"):
-             rate = 100
+             rate = 100.0
         else:
              rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
     initial_rate = rate
