@@ -34,7 +34,7 @@ def dump_json_parsable(obj):
 
 def process_options ():
     parser = argparse.ArgumentParser(usage=""" 
-    generate network traffic and report packet loss
+    query TRex for information about it's ports
     """);
 
     parser.add_argument('--mirrored-log',
