@@ -307,7 +307,7 @@ def get_trex_port_info(trial_params, test_dev_pairs):
      device_string = ""
 
      for dev_pair in test_dev_pairs:
-          for direction in [ 'tx', 'tx' ]:
+          for direction in [ 'tx', 'rx' ]:
                if not dev_pair[direction] in devices:
                     devices[dev_pair[direction]] = 1
                     device_string = device_string + ' --device ' + str(dev_pair[direction])
