@@ -1240,7 +1240,23 @@ def main():
                    rate = minimum_rate
               elif (rate == minimum_rate or prev_rate <= minimum_rate) and trial_result == 'fail':
                    print("Binary search ended up at rate which is below minimum allowed")
-                   quit(1)
+                   print("There is no trial which passed")
+                   failed_stats = []
+                   failed_stats.append({ 'rx_bandwidth':  0.0,
+                                         'rx_packets':    0,
+                                         'rx_pps':        0.0,
+                                         'tx_bandwidth':  0.0,
+                                         'tx_packets':    0,
+                                         'tx_pps':        0.0,
+                                         'tx_pps_target': 0.0 })
+                   failed_stats.append(copy.deepcopy(failed_stats[0]))
+                   print("RESULT:")
+                   print('[')
+                   print(json.dumps(failed_stats[0], indent = 4, separators=(',', ': '), sort_keys = True))
+                   print(',')
+                   print(json.dumps(failed_stats[1], indent = 4, separators=(',', ': '), sort_keys = True))
+                   print(']')
+                   return(0)
 
               if t_global.args.trial_gap:
                    print("Sleeping for %d seconds between trial attempts" % t_global.args.trial_gap)
