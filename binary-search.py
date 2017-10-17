@@ -296,6 +296,11 @@ def process_options ():
                         help='Should device stats be used instead of stream stats',
                         action = 'store_true',
                         )
+    parser.add_argument('--enable-segment-monitor',
+                        dest='enable_segment_monitor',
+                        help='Should individual segments be monitored for pass/fail status relative to --max-loss-pct in order to short circuit trials',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -569,6 +574,9 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
         cmd = cmd + ' --stream-mode=' + trial_params['stream_mode']
+        if trial_params['stream_mode'] == "segmented" and trial_params['enable_segment_monitor']:
+             cmd = cmd + ' --max-loss-pct=' + str(trial_params['max_loss_pct'])
+             cmd = cmd + ' --enable-segment-monitor'
         if trial_params['use_device_stats']:
              cmd = cmd + ' --skip-hw-flow-stats'
 
@@ -733,6 +741,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                        stats['global']['runtime'] = results['global']['runtime']
                        stats['global']['timeout'] = results['global']['timeout']
+                       stats['global']['early_exit'] = results['global']['early_exit']
+                       stats['global']['force_quit'] = results['global']['force_quit']
 
                        if trial_params['use_device_stats']:
                             if not trial_params['run_revunidirec']:
@@ -968,6 +978,7 @@ def main():
     print("stream-mode", t_global.args.stream_mode)
     print("use-device-stats", t_global.args.use_device_stats)
     print("search-granularity", t_global.args.search_granularity)
+    print("enable-segment-monitor", t_global.args.enable_segment_monitor)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -1012,6 +1023,7 @@ def main():
     trial_params['packet_protocol'] = t_global.args.packet_protocol
     trial_params['stream_mode'] = t_global.args.stream_mode
     trial_params['use_device_stats'] = t_global.args.use_device_stats
+    trial_params['enable_segment_monitor'] = t_global.args.enable_segment_monitor
 
     if trial_params['run_revunidirec']:
          test_dev_pairs = [ { 'tx': 1, 'rx': 0 } ]
@@ -1052,12 +1064,15 @@ def main():
               # support a longer measurement for the last trial, AKA "final validation"
               if final_validation:
                    trial_params['runtime'] = t_global.args.validation_runtime
+                   trial_params['trial_mode'] = 'validation'
                    print('\nTrial Mode: Final Validation')
               elif do_search:
                    trial_params['runtime'] = t_global.args.search_runtime
+                   trial_params['trial_mode'] = 'search'
                    print('\nTrial Mode: Search')
               else:
                    trial_params['runtime'] = t_global.args.sniff_runtime
+                   trial_params['trial_mode'] = 'sniff'
                    print('\nTrial Mode: Sniff')
 
               trial_params['rate'] = rate
@@ -1163,6 +1178,14 @@ def main():
                              print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %f - %f, achieved: %f)" % (tolerance_min, tolerance_max, stats['global']['runtime']))
                              if trial_result == "pass":
                                   trial_result = "retry-to-fail"
+
+                   if stats['global']['early_exit']:
+                        print("(trial failed due to early exit)")
+                        trial_result = 'fail'
+
+                   if stats['global']['force_quit']:
+                        print("Received Force Quit")
+                        return(1)
 
               trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_output_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
 
