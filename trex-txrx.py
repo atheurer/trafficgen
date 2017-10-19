@@ -9,6 +9,8 @@ import json
 import string
 import datetime
 import math
+import threading
+import thread
 from decimal import *
 from trex_stl_lib.api import *
 
@@ -535,11 +537,128 @@ def process_options ():
                         help='Should hardware flow stat support be used',
                         action = 'store_true',
                         )
+    parser.add_argument('--enable-segment-monitor',
+                        dest='enable_segment_monitor',
+                        help='Should individual segments be monitored for pass/fail status relative to --max-loss-pct in order to short circuit trials',
+                        action = 'store_true',
+                        )
+    parser.add_argument('--max-loss-pct',
+                        dest='max_loss_pct',
+                        help='Maximum percentage of packet loss',
+                        default=0.002,
+                        type = float
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
     myprint(t_global.args)
+
+def segment_monitor(connection, port_a, port_b, bidirec, revunidirec, measure_latency, pg_ids, max_loss_pct, normal_exit_event, early_exit_event):
+    try:
+         myprint("Segment Monitor: Running")
+
+         if not revunidirec:
+              pg_ids["a"]["default"]["stop_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"] - 2
+              pg_ids["a"]["default"]["current_index"] = pg_ids["a"]["default"]["start_index"] + 2
+              if measure_latency:
+                   pg_ids["a"]["latency"]["stop_index"] = pg_ids["a"]["latency"]["start_index"] + pg_ids["a"]["latency"]["available"] - 2
+                   pg_ids["a"]["latency"]["current_index"] = pg_ids["a"]["latency"]["start_index"] + 2
+
+         if revunidirec or bidirec:
+              pg_ids["b"]["default"]["stop_index"] = pg_ids["b"]["default"]["start_index"] + pg_ids["b"]["default"]["available"] - 2
+              pg_ids["b"]["default"]["current_index"] = pg_ids["b"]["default"]["start_index"] + 2
+              if measure_latency:
+                   pg_ids["b"]["latency"]["stop_index"] = pg_ids["b"]["latency"]["start_index"] + pg_ids["b"]["latency"]["available"] - 2
+                   pg_ids["b"]["latency"]["current_index"] = pg_ids["b"]["latency"]["start_index"] + 2
+
+         analyzed_pg_ids = dict()
+
+         while not normal_exit_event.is_set():
+              time.sleep(1)
+
+              pg_id_list = []
+              pg_id_details = dict()
+              if not revunidirec:
+                   if pg_ids["a"]["default"]["current_index"] <= pg_ids["a"]["default"]["stop_index"]:
+                        pg_id_list.append(pg_ids["a"]["default"]["current_index"])
+                        pg_id_details[str(pg_ids["a"]["default"]["current_index"])] = dict()
+                        pg_id_details[str(pg_ids["a"]["default"]["current_index"])]["direction"] = "a"
+                        pg_id_details[str(pg_ids["a"]["default"]["current_index"])]["type"] = "default"
+
+                   if measure_latency and pg_ids["a"]["latency"]["current_index"] <= pg_ids["a"]["latency"]["stop_index"]:
+                        pg_id_list.append(pg_ids["a"]["latency"]["current_index"])
+                        pg_id_details[str(pg_ids["a"]["latency"]["current_index"])] = dict()
+                        pg_id_details[str(pg_ids["a"]["latency"]["current_index"])]["direction"] = "a"
+                        pg_id_details[str(pg_ids["a"]["latency"]["current_index"])]["type"] = "latency"
+
+              if revunidirec or bidirec:
+                   if pg_ids["b"]["default"]["current_index"] <= pg_ids["b"]["default"]["stop_index"]:
+                        pg_id_list.append(pg_ids["b"]["default"]["current_index"])
+                        pg_id_details[str(pg_ids["b"]["default"]["current_index"])] = dict()
+                        pg_id_details[str(pg_ids["b"]["default"]["current_index"])]["direction"] = "b"
+                        pg_id_details[str(pg_ids["b"]["default"]["current_index"])]["type"] = "default"
+
+              if measure_latency and pg_ids["b"]["latency"]["current_index"] <= pg_ids["b"]["latency"]["stop_index"]:
+                   pg_id_list.append(pg_ids["b"]["latency"]["current_index"])
+                   pg_id_details[str(pg_ids["b"]["latency"]["current_index"])] = dict()
+                   pg_id_details[str(pg_ids["b"]["latency"]["current_index"])]["direction"] = "b"
+                   pg_id_details[str(pg_ids["b"]["latency"]["current_index"])]["type"] = "latency"
+
+              if len(pg_id_list):
+                   pg_id_to_analyze = dict()
+                   pg_id_to_analyze_list = []
+
+                   pg_id_stats = connection.get_pgid_stats(pgid_list = pg_id_list)
+
+                   for pg_id in pg_id_list:
+                        if pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'] > 0 and not str(pg_id - 2) in analyzed_pg_ids:
+                             pg_ids[pg_id_details[str(pg_id)]["direction"]][pg_id_details[str(pg_id)]["type"]]["current_index"] += 1
+                             pg_id_to_analyze_list.append(pg_id - 2)
+                             pg_id_to_analyze[str(pg_id - 2)] = copy.deepcopy(pg_id_details[str(pg_id)])
+
+                   if len(pg_id_to_analyze_list):
+                        pg_id_stats = connection.get_pgid_stats(pgid_list = pg_id_to_analyze_list)
+
+                        for pg_id in pg_id_to_analyze_list:
+                             analyzed_pg_ids[str(pg_id)] = True
+                             loss_ratio = 100.0 * (1.0 - float(pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']) / float(pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total']))
+                             if loss_ratio > max_loss_pct:
+                                  normal_exit_event.set()
+                                  early_exit_event.set()
+                                  myprint("Segment Monitor: pg_id=%d (direction=%s/type=%s) failed max loss percentage requirement: %f%% > %f%% (TX:%d/RX:%d)" %
+                                          (
+                                               pg_id,
+                                               pg_id_to_analyze[str(pg_id)]["direction"],
+                                               pg_id_to_analyze[str(pg_id)]["type"],
+                                               loss_ratio,
+                                               max_loss_pct,
+                                               pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'],
+                                               pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']
+                                          )
+                                     )
+
+    except STLError as e:
+         myprint("Segment Monitor: STLERROR: %s" % e)
+
+    except StandardError as e:
+         myprint("Segment Monitor: STANDARDERROR: %s" % e)
+
+    finally:
+         if early_exit_event.is_set():
+              myprint("Segment Monitor: Exiting early")
+
+              if bidirec:
+                   connection.stop(ports = [port_a, port_b])
+              else:
+                   if revunidirec:
+                        connection.stop(ports = [port_b])
+                   else:
+                        connection.stop(ports = [port_a])
+         else:
+               myprint("Segment Monitor: Did not detect any segment failures")
+
+         return(0)
 
 def main():
     process_options()
@@ -676,6 +795,8 @@ def main():
              pg_ids["a"]["default"]["start_index"] = 1
              pg_ids["a"]["latency"]["available"] = max_latency_pg_ids
              pg_ids["a"]["latency"]["start_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"]
+
+             pg_ids["b"] = copy.deepcopy(pg_ids["a"])
         else:
              pg_ids["b"] = copy.deepcopy(pg_ids["a"])
 
@@ -696,7 +817,7 @@ def main():
              rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
 
         if t_global.args.run_revunidirec:
-             traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b, t_global.args.skip_hw_flow_stats)
+             traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["b"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b, t_global.args.skip_hw_flow_stats)
              c.add_streams(streams = traffic_profile, ports = [port_b])
         else:
              traffic_profile = create_traffic_profile("a", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a, t_global.args.skip_hw_flow_stats)
@@ -726,6 +847,10 @@ def main():
              else:
                   c.clear_stats(ports = [port_a])
 
+        thread_normal_exit = threading.Event()
+        thread_early_exit = threading.Event()
+        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, port_a, port_b, t_global.args.run_bidirec, t_global.args.run_revunidirec, t_global.args.measure_latency, pg_ids, t_global.args.max_loss_pct, thread_normal_exit, thread_early_exit))
+
         # log start of test
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
         stop_time = datetime.datetime.now()
@@ -748,9 +873,14 @@ def main():
              else:
                   c.start(ports = [port_a], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
 
+        if t_global.args.stream_mode == "segmented" and t_global.args.enable_segment_monitor:
+             segment_monitor_thread.start()
+
         timeout = False
+        force_quit = False
 
         try:
+             myprint("Waiting...")
              if t_global.args.run_bidirec:
                   c.wait_on_traffic(ports = [port_a, port_b], timeout = timeout_seconds)
              else:
@@ -770,15 +900,34 @@ def main():
              stop_time = datetime.datetime.now()
              myprint("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
              timeout = True
+        except STLError as e:
+             if t_global.args.run_bidirec:
+                  c.stop(ports = [port_a, port_b])
+             else:
+                  if t_global.args.run_revunidirec:
+                       c.stop(ports = [port_b])
+                  else:
+                       c.stop(ports = [port_a])
+             stop_time = datetime.datetime.now()
+             myprint("ERROR: wait_on_traffic: STLError: %s" % e)
+             force_quit = True
 
         # log end of test
         myprint("Finished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
         total_time = stop_time - start_time
         myprint("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
 
+        if t_global.args.stream_mode == "segmented" and t_global.args.enable_segment_monitor:
+             thread_normal_exit.set()
+             segment_monitor_thread.join()
+
         stats = c.get_stats(sync_now = True)
         stats["global"]["runtime"] = total_time.total_seconds()
         stats["global"]["timeout"] = timeout
+        stats["global"]["force_quit"] = force_quit
+        stats["global"]["early_exit"] = False
+        if thread_early_exit.is_set():
+             stats["global"]["early_exit"] = True
 
         for flows_index, flows_id in enumerate(stats["flow_stats"]):
              if flows_id == "global":
@@ -818,9 +967,15 @@ def main():
 
         warning_events = c.get_warnings()
         if len(warning_events):
-             myprint("TRex Events:")
+             myprint("TRex Warning Events:")
              for warning in warning_events:
                   myprint("    WARNING: %s" % warning)
+
+        events = c.get_events()
+        if len(events):
+             myprint("TRex Events:")
+             for event in events:
+                  myprint("    EVENT: %s" % event)
 
         myprint("READABLE RESULT:", stderr_only = True)
         myprint(dump_json_readable(stats), stderr_only = True)
@@ -829,7 +984,7 @@ def main():
         return_value = 0
 
     except STLError as e:
-        myprint(e)
+        myprint("STLERROR: %s" % e)
 
     except ValueError as e:
         myprint("ERROR: %s" % e)
