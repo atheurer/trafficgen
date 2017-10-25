@@ -247,11 +247,8 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
     size = int(size)
     size -= 4
 
-    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
-
     port_range = { "start": 0, "end": 65535 }
-    if src_port_flows or dst_port_flows:
+    if num_flows > 1 and (src_port_flows or dst_port_flows):
          if num_flows < 1000:
               num_flows_divisor = num_flows
          elif (num_flows % 1000) == 0:
@@ -260,67 +257,74 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
               num_flows_divisor = 1024
 
          if (port_src + num_flows_divisor) > port_range["end"]:
-              port_start = port_range["end"] - num_flows_divisor
+              port_start = port_range["end"] - num_flows_divisor + 1
               port_end = port_range["end"]
          else:
               port_start = port_src
-              port_end = port_src + num_flows_divisor
+              port_end = port_src + num_flows_divisor - 1
 
          port_src = { "start": port_start, "end": port_end, "init": port_src }
 
          if (port_dst + num_flows_divisor) > port_range["end"]:
-              port_start = port_range["end"] - num_flows_divisor
+              port_start = port_range["end"] - num_flows_divisor + 1
               port_end = port_range["end"]
          else:
               port_start = port_dst
-              port_end = port_dst + num_flows_divisor
+              port_end = port_dst + num_flows_divisor - 1
 
          port_dst = { "start": port_start, "end": port_end, "init": port_dst }
     else:
          port_src = { "init": port_src }
          port_dst = { "init": port_dst }
 
+    num_flows -= 1
+
+    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
+    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
+
     vm = []
-    if src_ip_flows:
+    if src_ip_flows and num_flows:
         vm = vm + [
             STLVmFlowVar(name="ip_src",min_value=ip_src['start'],max_value=ip_src['end'],size=4,op="inc"),
             STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src")
         ]
 
-    if dst_ip_flows:
+    if dst_ip_flows and num_flows:
         vm = vm + [
             STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
             STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst")
         ]
 
-    if src_mac_flows:
+    if src_mac_flows and num_flows:
         vm = vm + [
             STLVmFlowVar(name="mac_src",min_value=0,max_value=num_flows,size=4,op="inc"),
             STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7)
         ]
 
-    if dst_mac_flows:
+    if dst_mac_flows and num_flows:
         vm = vm + [
             STLVmFlowVar(name="mac_dst",min_value=0,max_value=num_flows,size=4,op="inc"),
             STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1)
         ]
 
-    if src_port_flows:
+    if src_port_flows and num_flows:
         vm = vm + [
             STLVmFlowVar(name = "port_src", init_value = port_src['init'], min_value = port_src['start'], max_value = port_src['end'], size = 2, op = "inc"),
             STLVmWrFlowVar(fv_name = "port_src", pkt_offset = packet_protocol + ".sport"),
         ]
 
-    if dst_port_flows:
+    if dst_port_flows and num_flows:
         vm = vm + [
             STLVmFlowVar(name = "port_dst", init_value = port_dst['init'], min_value = port_dst['start'], max_value = port_dst['end'], size = 2, op = "inc"),
             STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = packet_protocol + ".dport"),
         ]
 
+    base = Ether(src = mac_src, dst = mac_dst)
+
     if vlan_id > 1:
-        base = Ether(src = mac_src, dst = mac_dst)/Dot1Q(vlan = vlan_id)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
-    else:
-        base = Ether(src = mac_src, dst = mac_dst)/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
+        base = base/Dot1Q(vlan = vlan_id)
+
+    base = base/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
 
     if packet_protocol == "UDP":
          base = base/UDP(sport = port_src['init'], dport = port_dst['init'] )
@@ -331,7 +335,7 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
     the_packet = base/pad
     #the_packet.show2()
 
-    if src_ip_flows or dst_ip_flows or src_mac_flows or dst_mac_flows or src_port_flows or dst_port_flows:
+    if num_flows and (src_ip_flows or dst_ip_flows or src_mac_flows or dst_mac_flows or src_port_flows or dst_port_flows):
          if packet_protocol == "UDP":
               vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="UDP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_UDP)]
          elif packet_protocol == "TCP":
