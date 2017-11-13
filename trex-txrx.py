@@ -28,11 +28,14 @@ def myprint(*args, **kwargs):
           print(*args, file = sys.stderr, **kwargs)
      return
 
+def not_json_serializable(obj):
+     return "not JSON serializable"
+
 def dump_json_readable(obj):
-     return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True)
+     return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True, default = not_json_serializable)
 
 def dump_json_parsable(obj):
-     return json.dumps(obj, separators=(',', ':'))
+     return json.dumps(obj, separators=(',', ':'), default = not_json_serializable)
 
 def ip_to_int (ip):
     ip_fields = ip.split(".")
