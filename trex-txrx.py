@@ -996,6 +996,9 @@ def main():
     except ValueError as e:
         myprint("ERROR: %s" % e)
 
+    except:
+        myprint("EXCEPTION: %s" % traceback.format_exc())
+
     finally:
         myprint("Disconnecting from TRex server...")
         c.disconnect()
