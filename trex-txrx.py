@@ -47,7 +47,7 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, pg_id, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan, skip_hw_flow_stats):
+def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, packet_protocol, skip_hw_flow_stats):
      streams = { 'default': { 'protocol': [],
                               'pps': [],
                               'pg_ids': [],
@@ -88,9 +88,9 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                medium_packet_bytes = 576 + ethernet_frame_overhead
                large_packet_bytes = 1500 + ethernet_frame_overhead
 
-               small_stream_pg_id = pg_id["default"]["start_index"] + protocols_index
-               medium_stream_pg_id =  pg_id["default"]["start_index"] + 2 + protocols_index
-               large_stream_pg_id = pg_id["default"]["start_index"] + 4 + protocols_index
+               small_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + protocols_index
+               medium_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + 2 + protocols_index
+               large_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + 4 + protocols_index
 
                small_stream_name = "small_stream_" + direction + "_" + protocols_value
                medium_stream_name = "medium_stream_" + direction + "_" + protocols_value
@@ -108,9 +108,9 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                streams['default']['run_time'].extend([-1, -1, -1])
 
                if measure_latency:
-                    small_latency_stream_pg_id = pg_id["latency"]["start_index"] + protocols_index
-                    medium_latency_stream_pg_id = pg_id["latency"]["start_index"] + 2 + protocols_index
-                    large_latency_stream_pg_id = pg_id["latency"]["start_index"] + 4 + protocols_index
+                    small_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
+                    medium_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + 2 + protocols_index
+                    large_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + 4 + protocols_index
 
                     small_latency_stream_name = "small_latency_stream_" + direction + "_" + protocols_value
                     medium_latency_stream_name = "medium_latency_stream_" + direction + "_" + protocols_value
@@ -130,7 +130,7 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
           elif frame_size == "imix" and stream_mode == "segmented":
                print("Support for segmented IMIX needs to be coded...")
           elif stream_mode == "continuous":
-               default_stream_pg_id = pg_id["default"]["start_index"] + protocols_index
+               default_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + protocols_index
 
                default_stream_name = "default_stream_" + direction + "_" + protocols_value
 
@@ -146,7 +146,7 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                streams['default']['run_time'].extend([-1])
 
                if measure_latency:
-                    latency_stream_pg_id = pg_id["latency"]["start_index"] + protocols_index
+                    latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
 
                     latency_stream_name = "latency_stream_" + direction + "_" + protocols_value
 
@@ -166,11 +166,11 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                     stream_types.append("latency")
 
                for streams_type_index, streams_type_value in enumerate(stream_types):
-                    if len(protocols) > 1 and (pg_id[streams_type_value]["available"] % 2) != 0:
-                         pg_id[streams_type_value]["available"] -= 1
+                    if len(protocols) > 1 and (device_pair[direction]['pg_ids'][streams_type_value]['available'] % 2) != 0:
+                         device_pair[direction]['pg_ids'][streams_type_value]['available'] -= 1
 
-                    min_pg_id = pg_id[streams_type_value]["start_index"] + protocols_index
-                    max_pg_id = pg_id[streams_type_value]["start_index"] + pg_id["default"]["available"]
+                    min_pg_id = device_pair[direction]['pg_ids'][streams_type_value]['start_index'] + protocols_index
+                    max_pg_id = device_pair[direction]['pg_ids'][streams_type_value]['start_index'] + device_pair[direction]['pg_ids'][streams_type_value]['available']
 
                     counter=1
                     for current_pg_id in range(min_pg_id, max_pg_id, len(protocols)):
@@ -198,10 +198,10 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                          streams[streams_type_value]['names'].extend([stream_name])
                          streams[streams_type_value]['next_stream_names'].extend([next_stream_name])
                          streams[streams_type_value]['frame_sizes'].extend([int(frame_size)])
-                         streams[streams_type_value]['traffic_shares'].extend([1.0/pg_id[streams_type_value]["available"]])
+                         streams[streams_type_value]['traffic_shares'].extend([1.0/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
                          streams[streams_type_value]['self_starts'].extend([self_start])
                          streams[streams_type_value]['stream_modes'].extend(["burst"])
-                         streams[streams_type_value]['run_time'].extend([float(run_time)/(pg_id[streams_type_value]["available"]/len(protocols))])
+                         streams[streams_type_value]['run_time'].extend([float(run_time)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
 
                          counter += 1
 
@@ -225,22 +225,23 @@ def create_traffic_profile (direction, rate_multiplier, port_speed, rate_unit, r
                     stream_flow_stats = STLFlowStats(pg_id = stream_pg_id)
                elif streams_packet_type == "latency":
                     stream_flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
+               device_pair[direction]['pg_ids'][streams_packet_type]['list'].append(stream_pg_id)
 
                if stream_mode == "burst":
                     stream_mode_obj = STLTXSingleBurst(pps = stream_pps, total_pkts = int(stream_run_time * stream_pps))
                elif stream_mode == "continuous":
                     stream_mode_obj = STLTXCont(pps = stream_pps)
 
-               profile_streams.append(STLStream(packet = create_pkt(stream_frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, stream_packet_protocol, vlan),
+               profile_streams.append(STLStream(packet = create_pkt(stream_frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, device_pair[direction]['packet_values']['macs']['src'], device_pair[direction]['packet_values']['macs']['dst'], device_pair[direction]['packet_values']['ips']['src'], device_pair[direction]['packet_values']['ips']['dst'], device_pair[direction]['packet_values']['ports']['src'], device_pair[direction]['packet_values']['ports']['dst'], stream_packet_protocol, device_pair[direction]['packet_values']['vlan']),
                                                 flow_stats = stream_flow_stats,
                                                 mode = stream_mode_obj,
                                                 name = stream_name,
                                                 next = stream_next_stream_name,
                                                 self_start = stream_self_start))
 
-     myprint("READABLE STREAMS FOR DIRECTION '%s':" % direction, stderr_only = True)
+     myprint("DEVICE PAIR %d:%d | READABLE STREAMS FOR DIRECTION '%s':" % (device_pair['a']['port_index'], device_pair['b']['port_index'], direction), stderr_only = True)
      myprint(dump_json_readable(streams), stderr_only = True)
-     myprint("PARSABLE STREAMS FOR DIRECTION '%s': %s" % (direction, dump_json_parsable(streams)), stderr_only = True)
+     myprint("DEVICE PAIR %d:%d | PARSABLE STREAMS FOR DIRECTION '%s': %s" % (device_pair['a']['port_index'], device_pair['b']['port_index'], direction, dump_json_parsable(streams)), stderr_only = True)
 
      return STLProfile(profile_streams)
 
@@ -324,7 +325,7 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
 
     base = Ether(src = mac_src, dst = mac_dst)
 
-    if vlan_id > 1:
+    if vlan_id is not None:
         base = base/Dot1Q(vlan = vlan_id)
 
     base = base/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
@@ -363,6 +364,11 @@ def process_options ():
                         dest='frame_size',
                         help='L2 frame size in bytes or IMIX',
                         default=64
+                        )
+    parser.add_argument('--device-pairs',
+                        dest='device_pairs',
+                        help='List of device pairs in the for A:B[,C:D][,E:F][,...]',
+                        default="0:1",
                         )
     parser.add_argument('--num-flows', 
                         dest='num_flows',
@@ -561,89 +567,95 @@ def process_options ():
          t_global.args.frame_size = "imix"
     myprint(t_global.args)
 
-def segment_monitor(connection, port_a, port_b, bidirec, revunidirec, measure_latency, pg_ids, max_loss_pct, normal_exit_event, early_exit_event):
+def segment_monitor(connection, device_pairs, all_ports, unidirec_ports, revunidirec_ports, bidirec, revunidirec, measure_latency, max_loss_pct, normal_exit_event, early_exit_event):
     try:
          myprint("Segment Monitor: Running")
 
-         if not revunidirec:
-              pg_ids["a"]["default"]["stop_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"] - 2
-              pg_ids["a"]["default"]["current_index"] = pg_ids["a"]["default"]["start_index"] + 2
-              if measure_latency:
-                   pg_ids["a"]["latency"]["stop_index"] = pg_ids["a"]["latency"]["start_index"] + pg_ids["a"]["latency"]["available"] - 2
-                   pg_ids["a"]["latency"]["current_index"] = pg_ids["a"]["latency"]["start_index"] + 2
+         directions = [ 'a', 'b' ]
+         for device_pair in device_pairs:
+              for direction in directions:
+                   if device_pair[direction]['active']:
+                        device_pair[direction]['pg_ids']['default']['current_index'] = 2
 
-         if revunidirec or bidirec:
-              pg_ids["b"]["default"]["stop_index"] = pg_ids["b"]["default"]["start_index"] + pg_ids["b"]["default"]["available"] - 2
-              pg_ids["b"]["default"]["current_index"] = pg_ids["b"]["default"]["start_index"] + 2
-              if measure_latency:
-                   pg_ids["b"]["latency"]["stop_index"] = pg_ids["b"]["latency"]["start_index"] + pg_ids["b"]["latency"]["available"] - 2
-                   pg_ids["b"]["latency"]["current_index"] = pg_ids["b"]["latency"]["start_index"] + 2
+                        if measure_latency:
+                             device_pair[direction]['pg_ids']['latency']['current_index'] = 2
 
          analyzed_pg_ids = dict()
 
          while not normal_exit_event.is_set():
               time.sleep(1)
 
-              pg_id_list = []
-              pg_id_details = dict()
-              if not revunidirec:
-                   if pg_ids["a"]["default"]["current_index"] <= pg_ids["a"]["default"]["stop_index"]:
-                        pg_id_list.append(pg_ids["a"]["default"]["current_index"])
-                        pg_id_details[str(pg_ids["a"]["default"]["current_index"])] = dict()
-                        pg_id_details[str(pg_ids["a"]["default"]["current_index"])]["direction"] = "a"
-                        pg_id_details[str(pg_ids["a"]["default"]["current_index"])]["type"] = "default"
+              #myprint("")
+              for device_pair in device_pairs:
+                   #myprint("Analyzing device pair %d:%d" % (device_pair['a']['port_index'], device_pair['b']['port_index']))
+                   pg_id_list = []
+                   pg_id_details = dict()
+                   if not revunidirec:
+                        if device_pair['a']['pg_ids']['default']['current_index'] <= (len(device_pair['a']['pg_ids']['default']['list']) - 1):
+                             #myprint("Found default candidate %d for 'a'" % device_pair['a']['pg_ids']['default']['list'][device_pair['a']['pg_ids']['default']['current_index']])
+                             pg_id_list.append(device_pair['a']['pg_ids']['default']['list'][device_pair['a']['pg_ids']['default']['current_index']])
+                             pg_id_details[str(device_pair['a']['pg_ids']['default']['list'][device_pair['a']['pg_ids']['default']['current_index']])] = dict()
+                             pg_id_details[str(device_pair['a']['pg_ids']['default']['list'][device_pair['a']['pg_ids']['default']['current_index']])]['direction'] = 'a'
+                             pg_id_details[str(device_pair['a']['pg_ids']['default']['list'][device_pair['a']['pg_ids']['default']['current_index']])]['type'] = 'default'
 
-                   if measure_latency and pg_ids["a"]["latency"]["current_index"] <= pg_ids["a"]["latency"]["stop_index"]:
-                        pg_id_list.append(pg_ids["a"]["latency"]["current_index"])
-                        pg_id_details[str(pg_ids["a"]["latency"]["current_index"])] = dict()
-                        pg_id_details[str(pg_ids["a"]["latency"]["current_index"])]["direction"] = "a"
-                        pg_id_details[str(pg_ids["a"]["latency"]["current_index"])]["type"] = "latency"
+                        if measure_latency and device_pair['a']['pg_ids']['latency']['current_index'] <= (len(device_pair['a']['pg_ids']['latency']['list']) - 1):
+                             #myprint("Found latency candidate %d for 'a'" % device_pair['a']['pg_ids']['latency']['list'][device_pair['a']['pg_ids']['latency']['current_index']])
+                             pg_id_list.append(device_pair['a']['pg_ids']['latency']['list'][device_pair['a']['pg_ids']['latency']['current_index']])
+                             pg_id_details[str(device_pair['a']['pg_ids']['latency']['list'][device_pair['a']['pg_ids']['latency']['current_index']])] = dict()
+                             pg_id_details[str(device_pair['a']['pg_ids']['latency']['list'][device_pair['a']['pg_ids']['latency']['current_index']])]['direction'] = 'a'
+                             pg_id_details[str(device_pair['a']['pg_ids']['latency']['list'][device_pair['a']['pg_ids']['latency']['current_index']])]['type'] = 'latency'
 
-              if revunidirec or bidirec:
-                   if pg_ids["b"]["default"]["current_index"] <= pg_ids["b"]["default"]["stop_index"]:
-                        pg_id_list.append(pg_ids["b"]["default"]["current_index"])
-                        pg_id_details[str(pg_ids["b"]["default"]["current_index"])] = dict()
-                        pg_id_details[str(pg_ids["b"]["default"]["current_index"])]["direction"] = "b"
-                        pg_id_details[str(pg_ids["b"]["default"]["current_index"])]["type"] = "default"
+                   if revunidirec or bidirec:
+                        if device_pair['b']['pg_ids']['default']['current_index'] <= (len(device_pair['b']['pg_ids']['default']['list']) - 1):
+                             #myprint("Found default candidate %d for 'b'" % device_pair['b']['pg_ids']['default']['list'][device_pair['b']['pg_ids']['default']['current_index']])
+                             pg_id_list.append(device_pair['b']['pg_ids']['default']['list'][device_pair['b']['pg_ids']['default']['current_index']])
+                             pg_id_details[str(device_pair['b']['pg_ids']['default']['list'][device_pair['b']['pg_ids']['default']['current_index']])] = dict()
+                             pg_id_details[str(device_pair['b']['pg_ids']['default']['list'][device_pair['b']['pg_ids']['default']['current_index']])]['direction'] = 'b'
+                             pg_id_details[str(device_pair['b']['pg_ids']['default']['list'][device_pair['b']['pg_ids']['default']['current_index']])]['type'] = 'default'
 
-              if measure_latency and pg_ids["b"]["latency"]["current_index"] <= pg_ids["b"]["latency"]["stop_index"]:
-                   pg_id_list.append(pg_ids["b"]["latency"]["current_index"])
-                   pg_id_details[str(pg_ids["b"]["latency"]["current_index"])] = dict()
-                   pg_id_details[str(pg_ids["b"]["latency"]["current_index"])]["direction"] = "b"
-                   pg_id_details[str(pg_ids["b"]["latency"]["current_index"])]["type"] = "latency"
+                        if measure_latency and device_pair['b']['pg_ids']['latency']['current_index'] <= (len(device_pair['a']['pg_ids']['latency']['list']) - 1):
+                             #myprint("Found latency candidate %d for 'b'" % device_pair['b']['pg_ids']['latency']['list'][device_pair['b']['pg_ids']['latency']['current_index']])
+                             pg_id_list.append(device_pair['b']['pg_ids']['latency']['list'][device_pair['b']['pg_ids']['latency']['current_index']])
+                             pg_id_details[str(device_pair['b']['pg_ids']['latency']['list'][device_pair['b']['pg_ids']['latency']['current_index']])] = dict()
+                             pg_id_details[str(device_pair['b']['pg_ids']['latency']['list'][device_pair['b']['pg_ids']['latency']['current_index']])]['direction'] = 'b'
+                             pg_id_details[str(device_pair['b']['pg_ids']['latency']['list'][device_pair['b']['pg_ids']['latency']['current_index']])]['type'] = 'latency'
 
-              if len(pg_id_list):
-                   pg_id_to_analyze = dict()
-                   pg_id_to_analyze_list = []
+                   if len(pg_id_list):
+                        pg_id_to_analyze = dict()
+                        pg_id_to_analyze_list = []
 
-                   pg_id_stats = connection.get_pgid_stats(pgid_list = pg_id_list)
+                        pg_id_stats = connection.get_pgid_stats(pgid_list = pg_id_list)
 
-                   for pg_id in pg_id_list:
-                        if pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'] > 0 and not str(pg_id - 2) in analyzed_pg_ids:
-                             pg_ids[pg_id_details[str(pg_id)]["direction"]][pg_id_details[str(pg_id)]["type"]]["current_index"] += 1
-                             pg_id_to_analyze_list.append(pg_id - 2)
-                             pg_id_to_analyze[str(pg_id - 2)] = copy.deepcopy(pg_id_details[str(pg_id)])
+                        for pg_id in pg_id_list:
+                             if pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'] > 0 and not str(pg_id - 2) in analyzed_pg_ids:
+                                  #myprint("Advancing current_index for pg_id=%d (direction='%s' and type='%s')" % (pg_id, pg_id_details[str(pg_id)]["direction"], pg_id_details[str(pg_id)]['type']))
+                                  device_pair[pg_id_details[str(pg_id)]["direction"]]['pg_ids'][pg_id_details[str(pg_id)]['type']]['current_index'] += 1
+                                  pg_id_to_analyze_list.append(pg_id - 2)
+                                  pg_id_to_analyze[str(pg_id - 2)] = copy.deepcopy(pg_id_details[str(pg_id)])
 
-                   if len(pg_id_to_analyze_list):
-                        pg_id_stats = connection.get_pgid_stats(pgid_list = pg_id_to_analyze_list)
+                        if len(pg_id_to_analyze_list):
+                             pg_id_stats = connection.get_pgid_stats(pgid_list = pg_id_to_analyze_list)
 
-                        for pg_id in pg_id_to_analyze_list:
-                             analyzed_pg_ids[str(pg_id)] = True
-                             loss_ratio = 100.0 * (1.0 - float(pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']) / float(pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total']))
-                             if loss_ratio > max_loss_pct:
-                                  normal_exit_event.set()
-                                  early_exit_event.set()
-                                  myprint("Segment Monitor: pg_id=%d (direction=%s/type=%s) failed max loss percentage requirement: %f%% > %f%% (TX:%d/RX:%d)" %
-                                          (
-                                               pg_id,
-                                               pg_id_to_analyze[str(pg_id)]["direction"],
-                                               pg_id_to_analyze[str(pg_id)]["type"],
-                                               loss_ratio,
-                                               max_loss_pct,
-                                               pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'],
-                                               pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']
+                             for pg_id in pg_id_to_analyze_list:
+                                  analyzed_pg_ids[str(pg_id)] = True
+                                  loss_ratio = 100.0 * (1.0 - float(pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']) / float(pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total']))
+                                  #myprint("Analyzing pg_id=%d with rx_pkts=%d, tx_pkts=%d, and loss_ratio=%f" % (pg_id,float(pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']), float(pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total']), loss_ratio))
+                                  if loss_ratio > max_loss_pct:
+                                       normal_exit_event.set()
+                                       early_exit_event.set()
+                                       myprint("Segment Monitor: device pair %d:%d with pg_id=%d (direction=%s/type=%s) failed max loss percentage requirement: %f%% > %f%% (TX:%d/RX:%d)" %
+                                               (
+                                                    device_pair['a']['port_index'],
+                                                    device_pair['b']['port_index'],
+                                                    pg_id,
+                                                    pg_id_to_analyze[str(pg_id)]["direction"],
+                                                    pg_id_to_analyze[str(pg_id)]["type"],
+                                                    loss_ratio,
+                                                    max_loss_pct,
+                                                    pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'],
+                                                    pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']
+                                               )
                                           )
-                                     )
 
     except STLError as e:
          myprint("Segment Monitor: STLERROR: %s" % e)
@@ -656,12 +668,12 @@ def segment_monitor(connection, port_a, port_b, bidirec, revunidirec, measure_la
               myprint("Segment Monitor: Exiting early")
 
               if bidirec:
-                   connection.stop(ports = [port_a, port_b])
+                   connection.stop(ports = all_ports)
               else:
                    if revunidirec:
-                        connection.stop(ports = [port_b])
+                        connection.stop(ports = revunidirec_ports)
                    else:
-                        connection.stop(ports = [port_a])
+                        connection.stop(ports = unidirec_ports)
          else:
                myprint("Segment Monitor: Did not detect any segment failures")
 
@@ -669,8 +681,56 @@ def segment_monitor(connection, port_a, port_b, bidirec, revunidirec, measure_la
 
 def main():
     process_options()
-    port_a = 0
-    port_b = 1
+
+    directions = [ 'a', 'b' ]
+
+    packet_values = { 'ports': { 'src': 32768,
+                                 'dst': 53 },
+                      'macs':  { 'src': None,
+                                 'dst': None },
+                      'ips':   { 'src': None,
+                                 'dst': None },
+                      'vlan': None }
+
+    pg_id_values = { "default": { 'available':   None,
+                                  'start_index': None,
+                                  'list':        [] },
+                     "latency": { 'available':   None,
+                                  'start_index': None,
+                                  'list':        [] } }
+
+    all_ports = []
+    unidirec_ports = []
+    revunidirec_ports = []
+    device_pairs = []
+    for device_pair in t_global.args.device_pairs.split(','):
+         ports = device_pair.split(':')
+         port_a = int(ports[0])
+         port_b = int(ports[1])
+         string = ':'
+         if t_global.args.run_bidirec:
+              string = '<->'
+         elif t_global.args.run_revunidirec:
+              string = '<-'
+         else:
+              string = '->'
+
+         myprint("Configuring device pair: %d%s%d" % (port_a, string, port_b))
+         all_ports.extend([port_a, port_b])
+         unidirec_ports.append(port_a)
+         revunidirec_ports.append(port_b)
+         device_pairs.append({ 'a': { 'port_index': port_a,
+                                      'packet_values': copy.deepcopy(packet_values),
+                                      'pg_ids': copy.deepcopy(pg_id_values),
+                                      'traffic_profile': None,
+                                      'active': False },
+                               'b': { 'port_index': port_b,
+                                      'packet_values': copy.deepcopy(packet_values),
+                                      'pg_ids': copy.deepcopy(pg_id_values),
+                                      'traffic_profile': None,
+                                      'active': False },
+                               'max_default_pg_ids': 0,
+                               'max_latency_pg_ids': 0 })
 
     c = STLClient()
     passed = True
@@ -678,9 +738,23 @@ def main():
     stats = 0
     return_value = 1
 
-    active_ports = 1
+    active_ports = 0
     if t_global.args.run_bidirec:
-         active_ports += 1
+         active_ports = len(all_ports)
+
+         for device_pair in device_pairs:
+              device_pair['a']['active'] = True
+              device_pair['b']['active'] = True
+    else:
+         active_ports = len(unidirec_ports)
+
+         for device_pair in device_pairs:
+              if t_global.args.run_revunidirec:
+                   device_pair['b']['active'] = True
+              else:
+                   device_pair['a']['active'] = True
+
+    myprint("Active TX Ports: %d" % active_ports)
 
     try:
         # turn this on for some information
@@ -695,32 +769,27 @@ def main():
              raise ValueError("It does not make sense for both --run-bidirec=1 and --run-revunidirec=1")
 
         # prepare our ports
-        c.acquire(ports = [port_a, port_b], force=True)
-        c.reset(ports = [port_a, port_b])
-        c.set_port_attr(ports = [port_a, port_b], promiscuous = True)
+        c.acquire(ports = all_ports, force=True)
+        c.reset(ports = all_ports)
+        c.set_port_attr(ports = all_ports, promiscuous = True)
 
-        port_info = c.get_port_info(ports = [port_a, port_b])
+        port_info = c.get_port_info(ports = all_ports)
         myprint("READABLE PORT INFO:", stderr_only = True)
         myprint(dump_json_readable(port_info), stderr_only = True)
         myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), stderr_only = True)
 
-        port_a_src = 32768
-        port_a_dst = 53
-        port_b_src = 32768
-        port_b_dst = 53
+        for device_pair in device_pairs:
+             device_pair['a']['packet_values']['macs']['src'] = port_info[device_pair['a']['port_index']]['src_mac']
+             device_pair['a']['packet_values']['macs']['dst'] = port_info[device_pair['b']['port_index']]['src_mac']
 
-        mac_a_src = port_info[port_a]["src_mac"]
-        mac_a_dst = port_info[port_b]["src_mac"]
-        mac_b_src = port_info[port_b]["src_mac"]
-        mac_b_dst = port_info[port_a]["src_mac"]
+             device_pair['b']['packet_values']['macs']['src'] = port_info[device_pair['b']['port_index']]['src_mac']
+             device_pair['b']['packet_values']['macs']['dst'] = port_info[device_pair['a']['port_index']]['src_mac']
 
-        ip_a_src = "10.0.0.1"
-        ip_a_dst = "8.0.0.1"
-        ip_b_src = ip_a_dst
-        ip_b_dst = ip_a_src
+             device_pair['a']['packet_values']['ips']['src'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+             device_pair['a']['packet_values']['ips']['dst'] = port_info[device_pair['b']['port_index']]['src_ipv4']
 
-	vlan_a = 1
-	vlan_b = 1
+             device_pair['b']['packet_values']['ips']['src'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+             device_pair['b']['packet_values']['ips']['dst'] = port_info[device_pair['a']['port_index']]['src_ipv4']
 
         if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
              if t_global.args.num_flows >= 1000:
@@ -731,91 +800,116 @@ def main():
              src_ports = t_global.args.src_ports_list.split(",")
              if len(src_ports) < active_ports:
                   raise ValueError("--src-ports-list should be a comma separated list of at least %d source port(s)" % active_ports)
-             port_a_src = int(src_ports[0])
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  port_b_src = int(src_ports[1])
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['ports']['src'] = int(src_ports[index])
+                            index += 1
 
         if len(t_global.args.dst_ports_list):
              dst_ports = t_global.args.dst_ports_list.split(",")
              if len(dst_ports) < active_ports:
                   raise ValueError("--dst-ports-list should be a comma separated list of at least %d destination port(s)" % active_ports)
-             port_a_dst = int(dst_ports[0])
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  port_b_dst = int(dst_ports[1])
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['ports']['dst'] = int(dst_ports[index])
+                            index += 1
 
         if len(t_global.args.src_macs_list):
              src_macs = t_global.args.src_macs_list.split(",")
              if len(src_macs) < active_ports:
                   raise ValueError("--src-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
-             mac_a_src = src_macs[0]
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  mac_b_src = src_macs[1]
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['macs']['src'] = src_macs[index]
+                            index += 1
 
         if len(t_global.args.dst_macs_list):
              dst_macs = t_global.args.dst_macs_list.split(",")
              if len(dst_macs) < active_ports:
                   raise ValueError("--dst-macs-list should be a comma separated list of at least %d MAC address(es)" % active_ports)
-             mac_a_dst = dst_macs[0]
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  mac_b_dst = dst_macs[1]
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['macs']['dst'] = dst_macs[index]
+                            index += 1
 
         if len(t_global.args.src_ips_list):
              src_ips = t_global.args.src_ips_list.split(",")
              if len(src_ips) < active_ports:
                   raise ValueError("--src-ips-list should be a comma separated list of at least %d IP address(es)" % active_ports)
-             ip_a_src = src_ips[0]
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  ip_b_src = src_ips[1]
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['ips']['src'] = src_ips[index]
+                            index += 1
 
         if len(t_global.args.dst_ips_list):
              dst_ips = t_global.args.dst_ips_list.split(",")
              if len(dst_ips) < active_ports:
                   raise ValueError("--dst-ips-list should be a comma separated list of at least %d IP address(es)" % active_ports)
-             ip_a_dst = dst_ips[0]
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  ip_b_dst = dst_ips[1]
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['ips']['dst'] = dst_ips[index]
+                            index += 1
 
         if len(t_global.args.vlan_ids_list):
              vlan_ids = t_global.args.vlan_ids_list.split(",")
              if len(vlan_ids) < active_ports:
                   raise ValueError("--vlan-ids-list should be a comma separated list of at least %d VLAN ID(s)" % active_ports)
-             vlan_a = int(vlan_ids[0])
-             if t_global.args.run_revunidirec or t_global.args.run_bidirec:
-                  vlan_b = int(vlan_ids[1])
+             index = 0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if device_pair[direction]['active']:
+                            device_pair[direction]['packet_values']['vlan'] = int(vlan_ids[index])
+                            index += 1
 
-        max_default_pg_ids = 0
-        if t_global.args.run_bidirec:
-             if port_info[port_a]["rx"]["counters"] <= port_info[port_b]["rx"]["counters"]:
-                  max_default_pg_ids = port_info[port_a]["rx"]["counters"]
+        for device_pair in device_pairs:
+             if t_global.args.run_bidirec:
+                  if port_info[device_pair['a']['port_index']]["rx"]["counters"] <= port_info[device_pair['b']['port_index']]["rx"]["counters"]:
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['a']['port_index']]["rx"]["counters"] / len(device_pairs)
+                  else:
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['b']['port_index']]["rx"]["counters"] / len(device_pairs)
              else:
-                  max_default_pg_ids = port_info[port_b]["rx"]["counters"]
-        else:
-             if t_global.args.run_revunidirec:
-                  max_default_pg_ids = port_info[port_a]["rx"]["counters"]
+                  if t_global.args.run_revunidirec:
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['a']['port_index']]["rx"]["counters"] / len(device_pairs)
+                  else:
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['b']['port_index']]["rx"]["counters"] / len(device_pairs)
+
+             device_pair['max_latency_pg_ids'] = 128 / len(device_pairs) # 128 is the maximum number of software counters for latency in TRex
+
+        pg_id_base = 1
+        for device_pair in device_pairs:
+             if not t_global.args.run_bidirec:
+                  direction = 'a'
+                  if t_global.args.run_revunidirec:
+                       direction = 'b'
+
+                  device_pair[direction]['pg_ids']['default']['available']   = device_pair['max_default_pg_ids']
+                  device_pair[direction]['pg_ids']['default']['start_index'] = pg_id_base
+                  device_pair[direction]['pg_ids']['latency']['available']   = device_pair['max_latency_pg_ids']
+                  device_pair[direction]['pg_ids']['latency']['start_index'] = device_pair[direction]['pg_ids']['default']['start_index'] + device_pair[direction]['pg_ids']['default']['available']
              else:
-                  max_default_pg_ids = port_info[port_b]["rx"]["counters"]
+                  device_pair['a']['pg_ids']['default']['available']   = device_pair['max_default_pg_ids'] / 2
+                  device_pair['a']['pg_ids']['default']['start_index'] = pg_id_base
+                  device_pair['a']['pg_ids']['latency']['available']   = device_pair['max_latency_pg_ids'] / 2
+                  device_pair['a']['pg_ids']['latency']['start_index'] = device_pair['a']['pg_ids']['default']['start_index'] + device_pair['a']['pg_ids']['default']['available']
 
-        max_latency_pg_ids = 128 # this is a software filtering limit
-        pg_ids = { "a": { "default": { "available": -1, "start_index": -1 }, "latency": { "available": -1, "start_index": -1 } } }
-        if not t_global.args.run_bidirec:
-             pg_ids["a"]["default"]["available"] = max_default_pg_ids
-             pg_ids["a"]["default"]["start_index"] = 1
-             pg_ids["a"]["latency"]["available"] = max_latency_pg_ids
-             pg_ids["a"]["latency"]["start_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"]
+                  device_pair['b']['pg_ids']['default']['available']   = device_pair['a']['pg_ids']['default']['available']
+                  device_pair['b']['pg_ids']['default']['start_index'] = device_pair['a']['pg_ids']['default']['start_index'] + device_pair['a']['pg_ids']['default']['available'] + device_pair['a']['pg_ids']['latency']['available']
+                  device_pair['b']['pg_ids']['latency']['available']   = device_pair['a']['pg_ids']['latency']['available']
+                  device_pair['b']['pg_ids']['latency']['start_index'] = device_pair['b']['pg_ids']['default']['start_index'] + device_pair['b']['pg_ids']['default']['available']
 
-             pg_ids["b"] = copy.deepcopy(pg_ids["a"])
-        else:
-             pg_ids["b"] = copy.deepcopy(pg_ids["a"])
-
-             pg_ids["a"]["default"]["available"] = max_default_pg_ids / 2
-             pg_ids["a"]["default"]["start_index"] = 1
-             pg_ids["a"]["latency"]["available"] = max_latency_pg_ids / 2
-             pg_ids["a"]["latency"]["start_index"] = pg_ids["a"]["default"]["start_index"] + max_default_pg_ids
-
-             pg_ids["b"]["default"]["available"] = pg_ids["a"]["default"]["available"]
-             pg_ids["b"]["default"]["start_index"] = pg_ids["a"]["default"]["start_index"] + pg_ids["a"]["default"]["available"]
-             pg_ids["b"]["latency"]["available"] = pg_ids["a"]["latency"]["available"]
-             pg_ids["b"]["latency"]["start_index"] = pg_ids["a"]["latency"]["start_index"] + pg_ids["a"]["latency"]["available"]
+             pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
         # if latency is enabled the requested packet rate needs to be
         # adjusted to account for the latency streams
@@ -823,19 +917,21 @@ def main():
         if t_global.args.rate_unit == "mpps" and t_global.args.measure_latency:
              rate_multiplier -= (float(t_global.args.latency_rate) / 1000000)
 
-        if t_global.args.run_revunidirec:
-             traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["b"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b, t_global.args.skip_hw_flow_stats)
-             c.add_streams(streams = traffic_profile, ports = [port_b])
-        else:
-             traffic_profile = create_traffic_profile("a", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["a"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_a_src, mac_a_dst, ip_a_src, ip_a_dst, port_a_src, port_a_dst, t_global.args.packet_protocol, vlan_a, t_global.args.skip_hw_flow_stats)
-             c.add_streams(streams = traffic_profile, ports = [port_a])
+        for device_pair in device_pairs:
+             if t_global.args.run_revunidirec:
+                  device_pair['b']['traffic_profile'] = create_traffic_profile("b", device_pair, rate_multiplier, (port_info[device_pair['b']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                  c.add_streams(streams = device_pair['b']['traffic_profile'], ports = device_pair['b']['port_index'])
+             else:
+                  device_pair['a']['traffic_profile'] = create_traffic_profile("a", device_pair, rate_multiplier, (port_info[device_pair['a']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                  c.add_streams(streams = device_pair['a']['traffic_profile'], ports = device_pair['a']['port_index'])
 
-             if t_global.args.run_bidirec:
-                  traffic_profile = create_traffic_profile("b", rate_multiplier, (port_info[port_b]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, pg_ids["b"], t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, mac_b_src, mac_b_dst, ip_b_src, ip_b_dst, port_b_src, port_b_dst, t_global.args.packet_protocol, vlan_b, t_global.args.skip_hw_flow_stats)
-                  c.add_streams(streams = traffic_profile, ports = [port_b])
+                  if t_global.args.run_bidirec:
+                       device_pair['b']['traffic_profile'] = create_traffic_profile("b", device_pair, rate_multiplier, (port_info[device_pair['b']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                       c.add_streams(streams = device_pair['b']['traffic_profile'], ports = device_pair['b']['port_index'])
 
-        # clear the stats before injecting
-        c.clear_stats()
+        myprint("DEVICE PAIR INFORMATION:", stderr_only = True)
+        myprint(dump_json_readable(device_pairs), stderr_only = True)
+        myprint("DEVICE PAIR INFORMATION: %s" % dump_json_parsable(device_pairs), stderr_only = True)
 
         # clear the event log
         c.clear_events()
@@ -846,17 +942,11 @@ def main():
              rate_multiplier = str(1)
 
         # clear the stats
-        if t_global.args.run_revunidirec:
-             c.clear_stats(ports = [port_b])
-        else:
-             if t_global.args.run_bidirec:
-                  c.clear_stats(ports = [port_a, port_b])
-             else:
-                  c.clear_stats(ports = [port_a])
+        c.clear_stats(ports = all_ports)
 
         thread_normal_exit = threading.Event()
         thread_early_exit = threading.Event()
-        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, port_a, port_b, t_global.args.run_bidirec, t_global.args.run_revunidirec, t_global.args.measure_latency, pg_ids, t_global.args.max_loss_pct, thread_normal_exit, thread_early_exit))
+        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, device_pairs, all_ports, unidirec_ports, revunidirec_ports, t_global.args.run_bidirec, t_global.args.run_revunidirec, t_global.args.measure_latency, t_global.args.max_loss_pct, thread_normal_exit, thread_early_exit))
 
         # log start of test
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
@@ -870,15 +960,18 @@ def main():
 
         # here we multiply the traffic lineaer to whatever given in rate
         if t_global.args.run_revunidirec:
-             myprint("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
-             c.start(ports = [port_b], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
+             for device_pair in device_pairs:
+                  myprint("Transmitting at {:}{:} from port {:} to port {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, device_pair['b']['port_index'], device_pair['a']['port_index'], t_global.args.runtime))
+             c.start(ports = revunidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
         else:
-             myprint("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_a, port_b, t_global.args.runtime))
+             for device_pair in device_pairs:
+                  myprint("Transmitting at {:}{:} from port {:} to port {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, device_pair['a']['port_index'], device_pair['b']['port_index'], t_global.args.runtime))
              if t_global.args.run_bidirec:
-                  myprint("Transmitting at {:}{:} from port {:} -> {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, port_b, port_a, t_global.args.runtime))
-                  c.start(ports = [port_a, port_b], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
+                  for device_pair in device_pairs:
+                       myprint("Transmitting at {:}{:} from port {:} to port {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, device_pair['b']['port_index'], device_pair['a']['port_index'], t_global.args.runtime))
+                  c.start(ports = all_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
              else:
-                  c.start(ports = [port_a], force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
+                  c.start(ports = unidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
 
         if t_global.args.stream_mode == "segmented" and t_global.args.enable_segment_monitor:
              segment_monitor_thread.start()
@@ -889,32 +982,32 @@ def main():
         try:
              myprint("Waiting...")
              if t_global.args.run_bidirec:
-                  c.wait_on_traffic(ports = [port_a, port_b], timeout = timeout_seconds)
+                  c.wait_on_traffic(ports = all_ports, timeout = timeout_seconds)
              else:
                   if t_global.args.run_revunidirec:
-                       c.wait_on_traffic(ports = [port_b], timeout = timeout_seconds)
+                       c.wait_on_traffic(ports = revunidirec_ports, timeout = timeout_seconds)
                   else:
-                       c.wait_on_traffic(ports = [port_a], timeout = timeout_seconds)
+                       c.wait_on_traffic(ports = unidirec_ports, timeout = timeout_seconds)
              stop_time = datetime.datetime.now()
         except STLTimeoutError as e:
              if t_global.args.run_bidirec:
-                  c.stop(ports = [port_a, port_b])
+                  c.stop(ports = all_ports)
              else:
                   if t_global.args.run_revunidirec:
-                       c.stop(ports = [port_b])
+                       c.stop(ports = revunidirec_ports)
                   else:
-                       c.stop(ports = [port_a])
+                       c.stop(ports = unidirec_ports)
              stop_time = datetime.datetime.now()
              myprint("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
              timeout = True
         except STLError as e:
              if t_global.args.run_bidirec:
-                  c.stop(ports = [port_a, port_b])
+                  c.stop(ports = all_ports)
              else:
                   if t_global.args.run_revunidirec:
-                       c.stop(ports = [port_b])
+                       c.stop(ports = revunidirec_ports)
                   else:
-                       c.stop(ports = [port_a])
+                       c.stop(ports = unidirec_ports)
              stop_time = datetime.datetime.now()
              myprint("ERROR: wait_on_traffic: STLError: %s" % e)
              force_quit = True
@@ -936,41 +1029,50 @@ def main():
         if thread_early_exit.is_set():
              stats["global"]["early_exit"] = True
 
-        for flows_index, flows_id in enumerate(stats["flow_stats"]):
-             if flows_id == "global":
-                  continue
+        for device_pair in device_pairs:
+             for flows_index, flows_id in enumerate(stats["flow_stats"]):
+                  if flows_id == "global":
+                       continue
 
-             flow_tx = 0
-             flow_rx = 0
+                  if not int(flows_id) in device_pair['a']['pg_ids']['default']['list'] and not int(flows_id) in device_pair['b']['pg_ids']['default']['list'] and not int(flows_id) in device_pair['a']['pg_ids']['latency']['list'] and not int(flows_id) in device_pair['b']['pg_ids']['latency']['list']:
+                       continue
 
-             stats["flow_stats"][flows_id]["loss"] = dict()
-             stats["flow_stats"][flows_id]["loss"]["pct"] = dict()
-             stats["flow_stats"][flows_id]["loss"]["cnt"] = dict()
+                  flow_tx = 0
+                  flow_rx = 0
 
-             if 0 in stats["flow_stats"][flows_id]["tx_pkts"] and 1 in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][0]:
-                  stats["flow_stats"][flows_id]["loss"]["pct"]["0->1"] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][1]) / float(stats["flow_stats"][flows_id]["tx_pkts"][0]))) * 100
-                  stats["flow_stats"][flows_id]["loss"]["cnt"]["0->1"] = float(stats["flow_stats"][flows_id]["tx_pkts"][0]) - float(stats["flow_stats"][flows_id]["rx_pkts"][1])
-                  flow_tx += stats["flow_stats"][flows_id]["tx_pkts"][0]
-                  flow_rx += stats["flow_stats"][flows_id]["rx_pkts"][1]
-             else:
-                  stats["flow_stats"][flows_id]["loss"]["pct"]["0->1"] = "N/A"
-                  stats["flow_stats"][flows_id]["loss"]["cnt"]["0->1"] = "N/A"
+                  if not "loss" in stats["flow_stats"][flows_id]:
+                       stats["flow_stats"][flows_id]["loss"] = dict()
+                       stats["flow_stats"][flows_id]["loss"]["pct"] = dict()
+                       stats["flow_stats"][flows_id]["loss"]["cnt"] = dict()
 
-             if 1 in stats["flow_stats"][flows_id]["tx_pkts"] and 0 in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][1]:
-                  stats["flow_stats"][flows_id]["loss"]["pct"]["1->0"] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][0]) / float(stats["flow_stats"][flows_id]["tx_pkts"][1]))) * 100
-                  stats["flow_stats"][flows_id]["loss"]["cnt"]["1->0"] = float(stats["flow_stats"][flows_id]["tx_pkts"][1]) - float(stats["flow_stats"][flows_id]["rx_pkts"][0])
-                  flow_tx += stats["flow_stats"][flows_id]["tx_pkts"][1]
-                  flow_rx += stats["flow_stats"][flows_id]["rx_pkts"][0]
-             else:
-                  stats["flow_stats"][flows_id]["loss"]["pct"]["1->0"] = "N/A"
-                  stats["flow_stats"][flows_id]["loss"]["cnt"]["1->0"] = "N/A"
+                  direction_id = "%d->%d" % (device_pair['a']['port_index'], device_pair['b']['port_index'])
 
-             if flow_tx:
-                  stats["flow_stats"][flows_id]["loss"]["pct"]["total"] = (1 - (float(flow_rx) / float(flow_tx))) * 100
-                  stats["flow_stats"][flows_id]["loss"]["cnt"]["total"] = float(flow_tx) - float(flow_rx)
-             else:
-                  stats["flow_stats"][flows_id]["loss"]["pct"]["total"] = "N/A"
-                  stats["flow_stats"][flows_id]["loss"]["cnt"]["total"] = "N/A"
+                  if device_pair['a']['port_index'] in stats["flow_stats"][flows_id]["tx_pkts"] and device_pair['b']['port_index'] in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][device_pair['a']['port_index']]:
+                       stats["flow_stats"][flows_id]["loss"]["pct"][direction_id] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][device_pair['b']['port_index']]) / float(stats["flow_stats"][flows_id]["tx_pkts"][device_pair['a']['port_index']]))) * 100
+                       stats["flow_stats"][flows_id]["loss"]["cnt"][direction_id] = float(stats["flow_stats"][flows_id]["tx_pkts"][device_pair['a']['port_index']]) - float(stats["flow_stats"][flows_id]["rx_pkts"][device_pair['b']['port_index']])
+                       flow_tx += stats["flow_stats"][flows_id]["tx_pkts"][device_pair['a']['port_index']]
+                       flow_rx += stats["flow_stats"][flows_id]["rx_pkts"][device_pair['b']['port_index']]
+                  else:
+                       stats["flow_stats"][flows_id]["loss"]["pct"][direction_id] = "N/A"
+                       stats["flow_stats"][flows_id]["loss"]["cnt"][direction_id] = "N/A"
+
+                  direction_id = "%d->%d" % (device_pair['b']['port_index'], device_pair['a']['port_index'])
+
+                  if device_pair['b']['port_index'] in stats["flow_stats"][flows_id]["tx_pkts"] and device_pair['a']['port_index'] in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][device_pair['b']['port_index']]:
+                       stats["flow_stats"][flows_id]["loss"]["pct"][direction_id] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][device_pair['a']['port_index']]) / float(stats["flow_stats"][flows_id]["tx_pkts"][device_pair['b']['port_index']]))) * 100
+                       stats["flow_stats"][flows_id]["loss"]["cnt"][direction_id] = float(stats["flow_stats"][flows_id]["tx_pkts"][device_pair['b']['port_index']]) - float(stats["flow_stats"][flows_id]["rx_pkts"][device_pair['a']['port_index']])
+                       flow_tx += stats["flow_stats"][flows_id]["tx_pkts"][device_pair['b']['port_index']]
+                       flow_rx += stats["flow_stats"][flows_id]["rx_pkts"][device_pair['a']['port_index']]
+                  else:
+                       stats["flow_stats"][flows_id]["loss"]["pct"][direction_id] = "N/A"
+                       stats["flow_stats"][flows_id]["loss"]["cnt"][direction_id] = "N/A"
+
+                  if flow_tx:
+                       stats["flow_stats"][flows_id]["loss"]["pct"]["total"] = (1 - (float(flow_rx) / float(flow_tx))) * 100
+                       stats["flow_stats"][flows_id]["loss"]["cnt"]["total"] = float(flow_tx) - float(flow_rx)
+                  else:
+                       stats["flow_stats"][flows_id]["loss"]["pct"]["total"] = "N/A"
+                       stats["flow_stats"][flows_id]["loss"]["cnt"]["total"] = "N/A"
 
         warning_events = c.get_warnings()
         if len(warning_events):
