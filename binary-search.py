@@ -303,22 +303,29 @@ def process_options ():
                         )
     parser.add_argument('--device-pairs',
                         dest='device_pairs',
-                        help='List of device pairs in the for A:B[,C:D][,E:F][,...]',
+                        help='List of device pairs in the form A:B[,C:D][,E:F][,...]',
                         default="0:1",
+                        )
+    parser.add_argument('--active-device-pairs',
+                        dest='active_device_pairs',
+                        help='List of active device pairs in the form A:B[,C:D][,E:F][,...]',
+                        default='--',
                         )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
+    if t_global.args.active_device_pairs == '--':
+         t_global.args.active_device_pairs = t_global.args.device_pairs
     print(t_global.args)
 
-def get_trex_port_info(trial_params, test_dev_pairs):
+def get_trex_port_info(trial_params, dev_pairs):
      devices = dict()
      device_string = ""
 
      trial_params['max_port'] = 0
 
-     for dev_pair in test_dev_pairs:
+     for dev_pair in dev_pairs:
           for direction in [ 'tx', 'rx' ]:
                if not dev_pair[direction] in devices:
                     devices[dev_pair[direction]] = 1
@@ -548,6 +555,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
         cmd = 'python trex-txrx.py'
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
+        cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --measure-latency=' + str(trial_params['measure_latency'])
         cmd = cmd + ' --latency-rate=' + str(trial_params['latency_rate'])
@@ -930,6 +938,7 @@ def main():
     config_print("search-granularity", t_global.args.search_granularity)
     config_print("enable-segment-monitor", t_global.args.enable_segment_monitor)
     config_print("device-pairs", t_global.args.device_pairs)
+    config_print('active-device-pairs', t_global.args.active_device_pairs)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -976,6 +985,7 @@ def main():
     trial_params['use_device_stats'] = t_global.args.use_device_stats
     trial_params['enable_segment_monitor'] = t_global.args.enable_segment_monitor
     trial_params['device_pairs'] = t_global.args.device_pairs
+    trial_params['active_device_pairs'] = t_global.args.active_device_pairs
 
     if t_global.args.traffic_generator == "trex-txrx":
          trial_params['null_stats'] = { 'rx_bandwidth':  0.0,
@@ -986,8 +996,29 @@ def main():
                                         'tx_pps':        0.0,
                                         'tx_pps_target': 0.0 }
 
-    trial_params['test_dev_pairs'] = []
+    trial_params['claimed_dev_pairs'] = []
     for device_pair in trial_params['device_pairs'].split(','):
+         ports = device_pair.split(':')
+         claimed_dev_pair_obj = { 'tx': None,
+                                  'rx': None,
+                                  'dev_pair': device_pair }
+         if trial_params['run_revunidirec']:
+              claimed_dev_pair_obj['tx'] = int(ports[1])
+              claimed_dev_pair_obj['rx'] = int(ports[0])
+              trial_params['claimed_dev_pairs'].append(claimed_dev_pair_obj)
+         else:
+              claimed_dev_pair_obj['tx'] = int(ports[0])
+              claimed_dev_pair_obj['rx'] = int(ports[1])
+              trial_params['claimed_dev_pairs'].append(claimed_dev_pair_obj)
+
+              if trial_params['run_bidirec']:
+                   claimed_dev_pair_obj = copy.deepcopy(claimed_dev_pair_obj)
+                   claimed_dev_pair_obj['tx'] = int(ports[1])
+                   claimed_dev_pair_obj['rx'] = int(ports[0])
+                   trial_params['claimed_dev_pairs'].append(claimed_dev_pair_obj)
+
+    trial_params['test_dev_pairs'] = []
+    for device_pair in trial_params['active_device_pairs'].split(','):
          ports = device_pair.split(':')
          test_dev_pair_obj = { 'tx': None,
                                'rx': None,
@@ -1011,7 +1042,7 @@ def main():
 
     port_info = None
     if t_global.args.traffic_generator == "trex-txrx":
-         port_info = get_trex_port_info(trial_params, trial_params['test_dev_pairs'])
+         port_info = get_trex_port_info(trial_params, trial_params['claimed_dev_pairs'])
          trial_results['port_info'] = port_info
 
          for port in port_info:

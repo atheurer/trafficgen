@@ -370,6 +370,11 @@ def process_options ():
                         help='List of device pairs in the for A:B[,C:D][,E:F][,...]',
                         default="0:1",
                         )
+    parser.add_argument('--active-device-pairs',
+                        dest='active_device_pairs',
+                        help='List of active device pairs in the for A:B[,C:D][,E:F][,...]',
+                        default="--",
+                        )
     parser.add_argument('--num-flows', 
                         dest='num_flows',
                         help='number of unique network flows',
@@ -565,6 +570,8 @@ def process_options ():
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
+    if t_global.args.active_device_pairs == '--':
+         t_global.args.active_device_pairs = t_global.args.device_pairs
     myprint(t_global.args)
 
 def segment_monitor(connection, device_pairs, all_ports, unidirec_ports, revunidirec_ports, bidirec, revunidirec, measure_latency, max_loss_pct, normal_exit_event, early_exit_event):
@@ -699,11 +706,18 @@ def main():
                                   'start_index': None,
                                   'list':        [] } }
 
+    claimed_device_pairs = []
+    for device_pair in t_global.args.device_pairs.split(','):
+         ports = device_pair.split(':')
+         port_a = int(ports[0])
+         port_b = int(ports[1])
+         claimed_device_pairs.extend([port_a, port_b])
+
     all_ports = []
     unidirec_ports = []
     revunidirec_ports = []
     device_pairs = []
-    for device_pair in t_global.args.device_pairs.split(','):
+    for device_pair in t_global.args.active_device_pairs.split(','):
          ports = device_pair.split(':')
          port_a = int(ports[0])
          port_b = int(ports[1])
@@ -769,11 +783,11 @@ def main():
              raise ValueError("It does not make sense for both --run-bidirec=1 and --run-revunidirec=1")
 
         # prepare our ports
-        c.acquire(ports = all_ports, force=True)
-        c.reset(ports = all_ports)
+        c.acquire(ports = claimed_device_pairs, force=True)
+        c.reset(ports = claimed_device_pairs)
         c.set_port_attr(ports = all_ports, promiscuous = True)
 
-        port_info = c.get_port_info(ports = all_ports)
+        port_info = c.get_port_info(ports = claimed_device_pairs)
         myprint("READABLE PORT INFO:", stderr_only = True)
         myprint(dump_json_readable(port_info), stderr_only = True)
         myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), stderr_only = True)
