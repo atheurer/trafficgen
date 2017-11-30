@@ -766,19 +766,19 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                        stats['global']['force_quit'] = results['global']['force_quit']
 
                        if trial_params['use_device_stats']:
-                            if not trial_params['run_revunidirec']:
-                                 stats[0]['tx_packets'] += int(results['0']['opackets'])
-                                 stats[1]['rx_packets'] += int(results['1']['ipackets'])
+                            for device_pair in trial_params['test_dev_pairs']:
+                                 stats[device_pair['tx']]['tx_packets'] += int(results[str(device_pair['tx'])]['opackets'])
+                                 stats[device_pair['rx']]['rx_packets'] += int(results[str(device_pair['rx'])]['ipackets'])
 
-                                 stats[0]['tx_bandwidth'] += (int(results['0']['opackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['0']['obytes'])
-                                 stats[1]['rx_bandwidth'] += (int(results['1']['ipackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['1']['ibytes'])
+                                 stats[device_pair['tx']]['tx_pps'] = float(stats[device_pair['tx']]['tx_packets']) / float(results['global']['runtime'])
+                                 stats[device_pair['rx']]['rx_pps'] = float(stats[device_pair['rx']]['rx_packets']) / float(results['global']['runtime'])
 
-                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
-                                 stats[1]['tx_packets'] += int(results['1']['opackets'])
-                                 stats[0]['rx_packets'] += int(results['0']['ipackets'])
+                                 stats[device_pair['tx']]['tx_bandwidth'] += (int(results[str(device_pair['tx'])]['opackets']) * tmp_stats[device_pair['tx']]['packet_overhead_bytes']) + int(results[str(device_pair['tx'])]['obytes'])
+                                 stats[device_pair['rx']]['rx_bandwidth'] += (int(results[str(device_pair['rx'])]['ipackets']) * tmp_stats[device_pair['tx']]['packet_overhead_bytes']) + int(results[str(device_pair['rx'])]['ibytes'])
 
-                                 stats[1]['tx_bandwidth'] += (int(results['1']['opackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['1']['obytes'])
-                                 stats[0]['rx_bandwidth'] += (int(results['0']['ipackets']) * tmp_stats[0]['packet_overhead_bytes']) + int(results['0']['ibytes'])
+                                 direction_string = "%d->%d" % (device_pair['tx'], device_pair['rx'])
+                                 print("Device Pair: %s | TX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_bandwidth']))
+                                 print("Device Pair: %s | RX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_bandwidth']))
                        else:
                             stream_types = [ 'default' ]
                             if trial_params['measure_latency']:
