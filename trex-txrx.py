@@ -799,11 +799,21 @@ def main():
              device_pair['b']['packet_values']['macs']['src'] = port_info[device_pair['b']['port_index']]['src_mac']
              device_pair['b']['packet_values']['macs']['dst'] = port_info[device_pair['a']['port_index']]['src_mac']
 
-             device_pair['a']['packet_values']['ips']['src'] = port_info[device_pair['a']['port_index']]['src_ipv4']
-             device_pair['a']['packet_values']['ips']['dst'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+             if port_info[device_pair['a']['port_index']]['src_ipv4'] != "-":
+                  device_pair['a']['packet_values']['ips']['src'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+                  device_pair['b']['packet_values']['ips']['dst'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+             else:
+                  ip_address = "%d.%d.%d.%d" % (device_pair['a']['port_index']+1, device_pair['a']['port_index']+1, device_pair['a']['port_index']+1, device_pair['a']['port_index']+1)
+                  device_pair['a']['packet_values']['ips']['src'] = ip_address
+                  device_pair['b']['packet_values']['ips']['dst'] = ip_address
 
-             device_pair['b']['packet_values']['ips']['src'] = port_info[device_pair['b']['port_index']]['src_ipv4']
-             device_pair['b']['packet_values']['ips']['dst'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+             if port_info[device_pair['b']['port_index']]['src_ipv4'] != "-":
+                  device_pair['a']['packet_values']['ips']['dst'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+                  device_pair['b']['packet_values']['ips']['src'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+             else:
+                  ip_address = "%d.%d.%d.%d" % (device_pair['b']['port_index']+1, device_pair['b']['port_index']+1, device_pair['b']['port_index']+1, device_pair['b']['port_index']+1)
+                  device_pair['a']['packet_values']['ips']['dst'] = ip_address
+                  device_pair['b']['packet_values']['ips']['src'] = ip_address
 
         if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
              if t_global.args.num_flows >= 1000:
@@ -976,16 +986,16 @@ def main():
         if t_global.args.run_revunidirec:
              for device_pair in device_pairs:
                   myprint("Transmitting at {:}{:} from port {:} to port {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, device_pair['b']['port_index'], device_pair['a']['port_index'], t_global.args.runtime))
-             c.start(ports = revunidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
+             c.start(ports = revunidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
         else:
              for device_pair in device_pairs:
                   myprint("Transmitting at {:}{:} from port {:} to port {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, device_pair['a']['port_index'], device_pair['b']['port_index'], t_global.args.runtime))
              if t_global.args.run_bidirec:
                   for device_pair in device_pairs:
                        myprint("Transmitting at {:}{:} from port {:} to port {:} for {:} seconds...".format(t_global.args.rate, t_global.args.rate_unit, device_pair['b']['port_index'], device_pair['a']['port_index'], t_global.args.runtime))
-                  c.start(ports = all_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
+                  c.start(ports = all_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
              else:
-                  c.start(ports = unidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False)
+                  c.start(ports = unidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
 
         if t_global.args.stream_mode == "segmented" and t_global.args.enable_segment_monitor:
              segment_monitor_thread.start()
@@ -1099,6 +1109,9 @@ def main():
              myprint("TRex Events:")
              for event in events:
                   myprint("    EVENT: %s" % event)
+
+        myprint("TX Utilization: %f%%" % stats['global']['cpu_util'])
+        myprint("RX Utilization: %f%%" % stats['global']['rx_cpu_util'])
 
         myprint("READABLE RESULT:", stderr_only = True)
         myprint(dump_json_readable(stats), stderr_only = True)
