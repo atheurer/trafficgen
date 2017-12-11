@@ -799,11 +799,21 @@ def main():
              device_pair['b']['packet_values']['macs']['src'] = port_info[device_pair['b']['port_index']]['src_mac']
              device_pair['b']['packet_values']['macs']['dst'] = port_info[device_pair['a']['port_index']]['src_mac']
 
-             device_pair['a']['packet_values']['ips']['src'] = port_info[device_pair['a']['port_index']]['src_ipv4']
-             device_pair['a']['packet_values']['ips']['dst'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+             if port_info[device_pair['a']['port_index']]['src_ipv4'] != "-":
+                  device_pair['a']['packet_values']['ips']['src'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+                  device_pair['b']['packet_values']['ips']['dst'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+             else:
+                  ip_address = "%d.%d.%d.%d" % (device_pair['a']['port_index']+1, device_pair['a']['port_index']+1, device_pair['a']['port_index']+1, device_pair['a']['port_index']+1)
+                  device_pair['a']['packet_values']['ips']['src'] = ip_address
+                  device_pair['b']['packet_values']['ips']['dst'] = ip_address
 
-             device_pair['b']['packet_values']['ips']['src'] = port_info[device_pair['b']['port_index']]['src_ipv4']
-             device_pair['b']['packet_values']['ips']['dst'] = port_info[device_pair['a']['port_index']]['src_ipv4']
+             if port_info[device_pair['b']['port_index']]['src_ipv4'] != "-":
+                  device_pair['a']['packet_values']['ips']['dst'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+                  device_pair['b']['packet_values']['ips']['src'] = port_info[device_pair['b']['port_index']]['src_ipv4']
+             else:
+                  ip_address = "%d.%d.%d.%d" % (device_pair['b']['port_index']+1, device_pair['b']['port_index']+1, device_pair['b']['port_index']+1, device_pair['b']['port_index']+1)
+                  device_pair['a']['packet_values']['ips']['dst'] = ip_address
+                  device_pair['b']['packet_values']['ips']['src'] = ip_address
 
         if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
              if t_global.args.num_flows >= 1000:
