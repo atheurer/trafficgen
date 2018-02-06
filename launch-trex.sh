@@ -8,8 +8,9 @@ trex_dir="/opt/trex/current"
 use_ht="n"
 use_l2="n"
 devices=""
+yaml_file=""
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,devices:" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,devices:,yaml-file:" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -33,6 +34,10 @@ if [ $? -ne 0 ]; then
     printf -- "\n"
     printf -- "--devices=str\n"
     printf -- "  Comma separated list of PCI devices to use.  Should already be bound to vfio-pci.\n"
+    printf -- "  There is no default\n"
+    printf -- "\n"
+    printf -- "--yaml-file=str\n"
+    printf -- "  Optional parameter to specify a manually created TRex YAML file.\n"
     printf -- "  There is no default\n"
     exit 1
 fi
@@ -74,6 +79,17 @@ while true; do
 		shift
 	    fi
 	    ;;
+	--yaml-file)
+	    shift
+	    if [ -n "${1}" ]; then
+		yaml_file=${1}
+		shift
+		if [ ! -e "${yaml_file}" ]; then
+		    echo "ERROR: The YAML file you specified (${yaml_file}) does not exist/could not be located"
+		    exit 1
+		fi
+	    fi
+	    ;;
 	--)
 	    break
 	    ;;
@@ -86,8 +102,8 @@ while true; do
     esac
 done
 
-if [ -z "${devices}" ]; then
-    echo "ERROR: You must specify a list of devices"
+if [ -z "${devices}" -a -z "${yaml_file}" ]; then
+    echo "ERROR: You must specify a list of devices OR supply a YAML file"
     exit 1
 fi
 
@@ -115,49 +131,54 @@ function convert_number_range() {
 if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     pushd ${trex_dir} 2>/dev/null
 
-    /bin/rm -f ${tmp_dir}/trex_cfg.yaml
+    if [ -z "${yaml_file}" ]; then
+	/bin/rm -f ${tmp_dir}/trex_cfg.yaml
 
-    isolated_cpus=$(cat /sys/devices/system/cpu/nohz_full)
-    cpu_list=$(convert_number_range "${isolated_cpus}" | sed -e "s/,/ /g")
-    trex_config_args=""
-    if [ "${use_ht}" == "n" ]; then
-        trex_config_args+="--no-ht "
+	isolated_cpus=$(cat /sys/devices/system/cpu/nohz_full)
+	cpu_list=$(convert_number_range "${isolated_cpus}" | sed -e "s/,/ /g")
+	trex_config_args=""
+	if [ "${use_ht}" == "n" ]; then
+            trex_config_args+="--no-ht "
+	fi
+	if [ "${use_l2}" == "y" ]; then
+            trex_config_args+="--force-macs "
+
+            if [ -e /etc/trex_cfg.yaml -a ! -e /etc/trex_cfg.yaml.launch-trex-backup ]; then
+		mv -v /etc/trex_cfg.yaml /etc/trex_cfg.yaml.launch-trex-backup
+            fi
+
+            # generate a temporary yaml which is required for MAC discovery
+            echo "- version       : 2" >/etc/trex_cfg.yaml
+            yaml_devices=$(echo ${devices} | sed -e "s/^/\"/" -e "s/,/\",\"/g" -e "s/$/\"/")
+            echo "  interfaces    : [${yaml_devices}]" >>/etc/trex_cfg.yaml
+            echo "  port_limit    : 2" >>/etc/trex_cfg.yaml
+	else
+            # in case we didn't clean up after ourselves previously...
+            if [ -e /etc/trex_cfg.yaml.launch-trx-backup ]; then
+		mv -v /etc/trex_cfg.yaml.launch-trex-backup /etc/trex_cfg.yaml
+            fi
+	fi
+
+	yaml_file="${tmp_dir}/trex_cfg.yaml"
+
+	trex_config_cmd="./dpdk_setup_ports.py -c `echo ${devices} | sed -e s/,/" "/g` --cores-include ${cpu_list} -o ${yaml_file} ${trex_config_args}"
+	echo "configuring trex with: ${trex_config_cmd}"
+	${trex_config_cmd}
     fi
-    if [ "${use_l2}" == "y" ]; then
-        trex_config_args+="--force-macs "
 
-        if [ -e /etc/trex_cfg.yaml -a ! -e /etc/trex_cfg.yaml.launch-trex-backup ]; then
-            mv -v /etc/trex_cfg.yaml /etc/trex_cfg.yaml.launch-trex-backup
-        fi
-
-        # generate a temporary yaml which is required for MAC discovery                                                                                                                                                               
-        echo "- version       : 2" >/etc/trex_cfg.yaml
-        yaml_devices=$(echo ${devices} | sed -e "s/^/\"/" -e "s/,/\",\"/g" -e "s/$/\"/")
-        echo "  interfaces    : [${yaml_devices}]" >>/etc/trex_cfg.yaml
-        echo "  port_limit    : 2" >>/etc/trex_cfg.yaml
-    else
-        # in case we didn't clean up after ourselves previously...                                                                                                                                                                    
-        if [ -e /etc/trex_cfg.yaml.launch-trx-backup ]; then
-            mv -v /etc/trex_cfg.yaml.launch-trex-backup /etc/trex_cfg.yaml
-        fi
-    fi
-
-    trex_config_cmd="./dpdk_setup_ports.py -c `echo ${devices} | sed -e s/,/" "/g` --cores-include ${cpu_list} -o ${tmp_dir}/trex_cfg.yaml ${trex_config_args}"
-    echo "configuring trex with: ${trex_config_cmd}"
-    ${trex_config_cmd}
     trex_cpus=14
-    for cpu_block in $(cat ${tmp_dir}/trex_cfg.yaml | grep threads | sed -e "s/\s//g" -e "s/threads://"); do
+    for cpu_block in $(cat ${yaml_file} | grep threads | sed -e "s/\s//g" -e "s/threads://"); do
         yaml_cpus=$(echo "${cpu_block}" | sed -e 's/.*\[\(.*\)\]/\1/' -e 's/,/ /g' | wc -w)
         if [ ${yaml_cpus} -lt ${trex_cpus} ]; then
-            trex_cpus=${yaml_cpus}
+	    trex_cpus=${yaml_cpus}
         fi
     done
 
-    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${tmp_dir}/trex_cfg.yaml --iom 0 -v 4"
+    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${yaml_file} --iom 0 -v 4"
     echo "about to run: ${trex_server_cmd}"
     echo "trex yaml:"
     echo "-------------------------------------------------------------------"
-    cat ${tmp_dir}/trex_cfg.yaml
+    cat ${yaml_file}
     echo "-------------------------------------------------------------------"
     rm -fv /tmp/trex.server.out
     screen -dmS trex -t server ${trex_server_cmd}
