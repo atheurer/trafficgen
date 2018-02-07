@@ -1043,15 +1043,24 @@ def main():
                    test_dev_pair_obj['rx'] = int(ports[0])
                    trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
+    port_speed_verification_fail = False
+
     port_info = None
     if t_global.args.traffic_generator == "trex-txrx":
          port_info = get_trex_port_info(trial_params, trial_params['claimed_dev_pairs'])
          trial_results['port_info'] = port_info
 
          for port in port_info:
-              if port['driver'] == "net_ixgbe" and not trial_params['use_device_stats']:
-                   print("WARNING: Forcing use of device stats instead of stream stats due to issue with Intel 82599/Niantic flow programming")
-                   trial_params['use_device_stats'] = True
+              if port['speed'] == 0:
+                   port_speed_verification_fail = True
+                   print("ERROR: Port with HW MAC %s failed speed verification test" % port['hw_mac'])
+              else:
+                   if port['driver'] == "net_ixgbe" and not trial_params['use_device_stats']:
+                        print("WARNING: Forcing use of device stats instead of stream stats due to issue with Intel 82599/Niantic flow programming")
+                        trial_params['use_device_stats'] = True
+
+    if port_speed_verification_fail:
+         quit(1)
 
     perform_sniffs = False
     do_sniff = False
