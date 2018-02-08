@@ -311,6 +311,11 @@ def process_options ():
                         help='List of active device pairs in the form A:B[,C:D][,E:F][,...]',
                         default='--',
                         )
+    parser.add_argument('--disable-flow-cache',
+                        dest='enable_flow_cache',
+                        help='Force disablement of the TRex flow cache',
+                        action = 'store_false',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -595,6 +600,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --enable-segment-monitor'
         if trial_params['use_device_stats']:
              cmd = cmd + ' --skip-hw-flow-stats'
+        if not trial_params['enable_flow_cache']:
+             cmd = cmd + ' --disable-flow-cache'
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -942,6 +949,7 @@ def main():
     config_print("enable-segment-monitor", t_global.args.enable_segment_monitor)
     config_print("device-pairs", t_global.args.device_pairs)
     config_print('active-device-pairs', t_global.args.active_device_pairs)
+    config_print('enable-flow-cache', t_global.args.enable_flow_cache)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -989,6 +997,7 @@ def main():
     trial_params['enable_segment_monitor'] = t_global.args.enable_segment_monitor
     trial_params['device_pairs'] = t_global.args.device_pairs
     trial_params['active_device_pairs'] = t_global.args.active_device_pairs
+    trial_params['enable_flow_cache'] = t_global.args.enable_flow_cache
 
     if t_global.args.traffic_generator == "trex-txrx":
          trial_params['null_stats'] = { 'rx_bandwidth':  0.0,
