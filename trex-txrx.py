@@ -792,7 +792,16 @@ def main():
         myprint(dump_json_readable(port_info), stderr_only = True)
         myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), stderr_only = True)
 
+        port_speed_verification_fail = False
+
         for device_pair in device_pairs:
+             if port_info[device_pair['a']['port_index']]['speed'] == 0:
+                  port_speed_verification_fail = True
+                  myprint("ERROR: Device 'a' with port index = %d failed speed verification test" % device_pair['a']['port_index'])
+             if port_info[device_pair['b']['port_index']]['speed'] == 0:
+                  port_speed_verification_fail = True
+                  myprint("ERROR: Device 'b' with port index = %d failed speed verification test" % device_pair['b']['port_index'])
+
              device_pair['a']['packet_values']['macs']['src'] = port_info[device_pair['a']['port_index']]['src_mac']
              device_pair['a']['packet_values']['macs']['dst'] = port_info[device_pair['b']['port_index']]['src_mac']
 
@@ -814,6 +823,9 @@ def main():
                   ip_address = "%d.%d.%d.%d" % (device_pair['b']['port_index']+1, device_pair['b']['port_index']+1, device_pair['b']['port_index']+1, device_pair['b']['port_index']+1)
                   device_pair['a']['packet_values']['ips']['dst'] = ip_address
                   device_pair['b']['packet_values']['ips']['src'] = ip_address
+
+        if port_speed_verification_fail:
+             raise RuntimeError("Failed port speed verification")
 
         if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
              if t_global.args.num_flows >= 1000:
@@ -1122,7 +1134,7 @@ def main():
     except STLError as e:
         myprint("STLERROR: %s" % e)
 
-    except ValueError as e:
+    except (ValueError, RuntimeError) as e:
         myprint("ERROR: %s" % e)
 
     except:
