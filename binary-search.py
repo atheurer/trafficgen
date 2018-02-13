@@ -590,8 +590,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + ' --use-protocol-flows=' + str(trial_params['use_protocol_flows'])
         cmd = cmd + ' --packet-protocol=' + str(trial_params['packet_protocol'])
         cmd = cmd + ' --stream-mode=' + trial_params['stream_mode']
+        cmd = cmd + ' --max-loss-pct=' + str(trial_params['max_loss_pct'])
         if trial_params['stream_mode'] == "segmented" and trial_params['enable_segment_monitor']:
-             cmd = cmd + ' --max-loss-pct=' + str(trial_params['max_loss_pct'])
              cmd = cmd + ' --enable-segment-monitor'
         if trial_params['use_device_stats']:
              cmd = cmd + ' --skip-hw-flow-stats'
