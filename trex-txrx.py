@@ -47,7 +47,7 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, latency_rate, frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, packet_protocol, skip_hw_flow_stats):
+def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, latency_rate, frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, packet_protocol, skip_hw_flow_stats):
      streams = { 'default': { 'protocol': [],
                               'pps': [],
                               'pg_ids': [],
@@ -232,7 +232,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                elif stream_mode == "continuous":
                     stream_mode_obj = STLTXCont(pps = stream_pps)
 
-               profile_streams.append(STLStream(packet = create_pkt(stream_frame_size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, device_pair[direction]['packet_values']['macs']['src'], device_pair[direction]['packet_values']['macs']['dst'], device_pair[direction]['packet_values']['ips']['src'], device_pair[direction]['packet_values']['ips']['dst'], device_pair[direction]['packet_values']['ports']['src'], device_pair[direction]['packet_values']['ports']['dst'], stream_packet_protocol, device_pair[direction]['packet_values']['vlan']),
+               profile_streams.append(STLStream(packet = create_pkt(stream_frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, device_pair[direction]['packet_values']['macs']['src'], device_pair[direction]['packet_values']['macs']['dst'], device_pair[direction]['packet_values']['ips']['src'], device_pair[direction]['packet_values']['ips']['dst'], device_pair[direction]['packet_values']['ports']['src'], device_pair[direction]['packet_values']['ports']['dst'], stream_packet_protocol, device_pair[direction]['packet_values']['vlan']),
                                                 flow_stats = stream_flow_stats,
                                                 mode = stream_mode_obj,
                                                 name = stream_name,
@@ -246,7 +246,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
      return STLProfile(profile_streams)
 
 # simple packet creation
-def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
+def create_pkt (size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
     # adjust packet size
     size = int(size)
     size -= 4
@@ -344,6 +344,11 @@ def create_pkt (size, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst
               vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="UDP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_UDP)]
          elif packet_protocol == "TCP":
               vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="TCP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_TCP)]
+
+         if enable_flow_cache:
+              vm = STLScVmRaw(list_of_commands = vm,
+                              cache_size = num_flows)
+
          return STLPktBuilder(pkt = the_packet,
                               vm  = vm)
     else:
@@ -566,12 +571,23 @@ def process_options ():
                         default=0.002,
                         type = float
                         )
+    parser.add_argument('--disable-flow-cache',
+                        dest='enable_flow_cache',
+                        help='Force disablement of the flow cache',
+                        action = 'store_false',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
          t_global.args.frame_size = "imix"
     if t_global.args.active_device_pairs == '--':
          t_global.args.active_device_pairs = t_global.args.device_pairs
+    if t_global.args.num_flows > 10000 and t_global.args.enable_flow_cache:
+         t_global.args.enable_flow_cache = False
+         myprint("NOTE: Flow caching disabled due to high flow count which will cause higher resource requirements.")
+    else:
+         if t_global.args.num_flows and not t_global.args.enable_flow_cache:
+              myprint("NOTE: User disablement of flow caching will cause higher resource requirements.")
     myprint(t_global.args)
 
 def segment_monitor(connection, device_pairs, all_ports, unidirec_ports, revunidirec_ports, bidirec, revunidirec, measure_latency, max_loss_pct, normal_exit_event, early_exit_event):
@@ -955,14 +971,14 @@ def main():
 
         for device_pair in device_pairs:
              if t_global.args.run_revunidirec:
-                  device_pair['b']['traffic_profile'] = create_traffic_profile("b", device_pair, rate_multiplier, (port_info[device_pair['b']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                  device_pair['b']['traffic_profile'] = create_traffic_profile("b", device_pair, rate_multiplier, (port_info[device_pair['b']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
                   c.add_streams(streams = device_pair['b']['traffic_profile'], ports = device_pair['b']['port_index'])
              else:
-                  device_pair['a']['traffic_profile'] = create_traffic_profile("a", device_pair, rate_multiplier, (port_info[device_pair['a']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                  device_pair['a']['traffic_profile'] = create_traffic_profile("a", device_pair, rate_multiplier, (port_info[device_pair['a']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
                   c.add_streams(streams = device_pair['a']['traffic_profile'], ports = device_pair['a']['port_index'])
 
                   if t_global.args.run_bidirec:
-                       device_pair['b']['traffic_profile'] = create_traffic_profile("b", device_pair, rate_multiplier, (port_info[device_pair['b']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                       device_pair['b']['traffic_profile'] = create_traffic_profile("b", device_pair, rate_multiplier, (port_info[device_pair['b']['port_index']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
                        c.add_streams(streams = device_pair['b']['traffic_profile'], ports = device_pair['b']['port_index'])
 
         myprint("DEVICE PAIR INFORMATION:", stderr_only = True)

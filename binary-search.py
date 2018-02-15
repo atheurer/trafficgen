@@ -311,6 +311,11 @@ def process_options ():
                         help='List of active device pairs in the form A:B[,C:D][,E:F][,...]',
                         default='--',
                         )
+    parser.add_argument('--disable-flow-cache',
+                        dest='enable_flow_cache',
+                        help='Force disablement of the TRex flow cache',
+                        action = 'store_false',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -485,14 +490,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
          for dev_pair in trial_params['test_dev_pairs']:
               for port in [ 'port_a', 'port_b' ]:
                    if not dev_pair[port]['index'] in stats:
-                        stats[dev_pair[port]['index']] = { 'tx_packets': 0,
-                                                           'rx_packets': 0,
-                                                           'tx_bandwidth': 0,
-                                                           'rx_bandwidth': 0,
-                                                           'tx_pps_target': 0,
-                                                           'tx_bandwidth': 0,
-                                                           'rx_bandwidth': 0,
-                                                           'tx_pps_target': 0 }
+                        stats[dev_pair[port]['index']] = copy.deepcopy(trial_params['null_stats'])
                         tmp_stats[dev_pair[port]['index']]= { 'tx_available_bandwidth': 0.0 }
                         streams[dev_pair[port]['index']] = 0
 
@@ -595,6 +593,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --enable-segment-monitor'
         if trial_params['use_device_stats']:
              cmd = cmd + ' --skip-hw-flow-stats'
+        if not trial_params['enable_flow_cache']:
+             cmd = cmd + ' --disable-flow-cache'
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -765,13 +765,20 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                        stats['global']['early_exit'] = results['global']['early_exit']
                        stats['global']['force_quit'] = results['global']['force_quit']
 
-                       if trial_params['use_device_stats']:
-                            for device_pair in trial_params['test_dev_pairs']:
+                       for device_pair in trial_params['test_dev_pairs']:
+                            stream_types = []
+
+                            if trial_params['use_device_stats']:
                                  stats[device_pair['tx']]['tx_packets'] += int(results[str(device_pair['tx'])]['opackets'])
                                  stats[device_pair['rx']]['rx_packets'] += int(results[str(device_pair['rx'])]['ipackets'])
 
+                                 stats[device_pair['rx']]['rx_lost_packets'] = stats[device_pair['tx']]['tx_packets'] - stats[device_pair['rx']]['rx_packets']
+                                 stats[device_pair['rx']]['rx_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_lost_packets'] / stats[device_pair['tx']]['tx_packets']
+
                                  stats[device_pair['tx']]['tx_pps'] = float(stats[device_pair['tx']]['tx_packets']) / float(results['global']['runtime'])
                                  stats[device_pair['rx']]['rx_pps'] = float(stats[device_pair['rx']]['rx_packets']) / float(results['global']['runtime'])
+
+                                 stats[device_pair['rx']]['rx_lost_pps'] = float(stats[device_pair['rx']]['rx_lost_packets']) / float(results['global']['runtime'])
 
                                  stats[device_pair['tx']]['tx_bandwidth'] += (int(results[str(device_pair['tx'])]['opackets']) * tmp_stats[device_pair['tx']]['packet_overhead_bytes']) + int(results[str(device_pair['tx'])]['obytes'])
                                  stats[device_pair['rx']]['rx_bandwidth'] += (int(results[str(device_pair['rx'])]['ipackets']) * tmp_stats[device_pair['tx']]['packet_overhead_bytes']) + int(results[str(device_pair['rx'])]['ibytes'])
@@ -780,51 +787,98 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['rx']]['rx_bandwidth'] = float(stats[device_pair['rx']]['rx_bandwidth']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
                                  direction_string = "%d->%d" % (device_pair['tx'], device_pair['rx'])
-                                 print("Device Pair: %s | TX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_bandwidth']))
-                                 print("Device Pair: %s | RX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_bandwidth']))
-                       else:
-                            stream_types = [ 'default' ]
-                            if trial_params['measure_latency']:
-                                 stream_types.append('latency')
+                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_bandwidth']))
+                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_bandwidth']))
 
-                            for device_pair in trial_params['test_dev_pairs']:
-                                 for stream_type in stream_types:
-                                      for pg_id, frame_size in zip(streams[device_pair['tx']][stream_type]['pg_ids'], streams[device_pair['tx']][stream_type]['frame_sizes']):
-                                           if str(device_pair['tx']) in results['flow_stats'][str(pg_id)]['rx_pkts'] and int(results['flow_stats'][str(pg_id)]['rx_pkts'][str(device_pair['tx'])]):
-                                                stats_error_append_pg_id(stats[device_pair['tx']], 'rx_invalid', pg_id)
+                                 if trial_params['measure_latency']:
+                                      stream_types.append('latency')
+                            else:
+                                 stream_types.append('default')
+                                 if trial_params['measure_latency']:
+                                      stream_types.append('latency')
 
-                                           if str(device_pair['rx']) in results['flow_stats'][str(pg_id)]['tx_pkts'] and int(results['flow_stats'][str(pg_id)]['tx_pkts'][str(device_pair['rx'])]):
-                                                stats_error_append_pg_id(stats[device_pair['rx']], 'tx_invalid', pg_id)
+                            for stream_type in stream_types:
+                                 for pg_id, frame_size in zip(streams[device_pair['tx']][stream_type]['pg_ids'], streams[device_pair['tx']][stream_type]['frame_sizes']):
+                                      if str(device_pair['tx']) in results['flow_stats'][str(pg_id)]['rx_pkts'] and int(results['flow_stats'][str(pg_id)]['rx_pkts'][str(device_pair['tx'])]):
+                                           stats_error_append_pg_id(stats[device_pair['tx']], 'rx_invalid', pg_id)
 
-                                           if str(device_pair['tx']) in results['flow_stats'][str(pg_id)]['tx_pkts']:
+                                      if str(device_pair['rx']) in results['flow_stats'][str(pg_id)]['tx_pkts'] and int(results['flow_stats'][str(pg_id)]['tx_pkts'][str(device_pair['rx'])]):
+                                           stats_error_append_pg_id(stats[device_pair['rx']], 'tx_invalid', pg_id)
+
+                                      if str(device_pair['tx']) in results['flow_stats'][str(pg_id)]['tx_pkts']:
+                                           if not trial_params['use_device_stats']:
                                                 stats[device_pair['tx']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                           else:
-                                                stats_error_append_pg_id(stats[device_pair['tx']], 'tx_missing', pg_id)
 
-                                           if str(device_pair['rx']) in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                           if stream_type == "latency":
+                                                stats[device_pair['tx']]['tx_latency_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
+                                      else:
+                                           stats_error_append_pg_id(stats[device_pair['tx']], 'tx_missing', pg_id)
+
+                                      if str(device_pair['rx']) in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                           if not trial_params['use_device_stats']:
                                                 stats[device_pair['rx']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                           else:
-                                                stats_error_append_pg_id(stats[device_pair['rx']], 'rx_missing', pg_id)
 
-                                           if str(device_pair['tx']) in results["flow_stats"][str(pg_id)]["tx_pkts"] and str(device_pair['rx']) in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                           if stream_type == "latency":
+                                                stats[device_pair['rx']]['rx_latency_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
+
+                                                stats[device_pair['rx']]['rx_latency_average'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * float(results["latency"][str(pg_id)]["latency"]["average"])
+
+                                                if float(results["latency"][str(pg_id)]["latency"]["total_max"]) > stats[device_pair['rx']]['rx_latency_maximum']:
+                                                     stats[device_pair['rx']]['rx_latency_maximum'] = float(results["latency"][str(pg_id)]["latency"]["total_max"])
+                                      else:
+                                           stats_error_append_pg_id(stats[device_pair['rx']], 'rx_missing', pg_id)
+
+                                      if str(device_pair['tx']) in results["flow_stats"][str(pg_id)]["tx_pkts"] and str(device_pair['rx']) in results["flow_stats"][str(pg_id)]["rx_pkts"]:
+                                           if not trial_params['use_device_stats']:
                                                 stats[device_pair['tx']]['tx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])]) * (frame_size + tmp_stats[device_pair['tx']]['packet_overhead_bytes'])
                                                 stats[device_pair['rx']]['rx_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * (frame_size + tmp_stats[device_pair['tx']]['packet_overhead_bytes'])
 
-                                           direction_string = "%d->%d" % (device_pair['tx'], device_pair['rx'])
-                                           if results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string] != "N/A":
-                                                if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string]) < 0:
-                                                     stats_error_append_pg_id(stats[device_pair['rx']], 'rx_negative_loss', pg_id)
-                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string]) > trial_params["max_loss_pct"]:
-                                                     stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
+                                           if stream_type == "latency":
+                                                stats[device_pair['tx']]['tx_latency_bandwidth'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])]) * (frame_size + tmp_stats[device_pair['tx']]['packet_overhead_bytes'])
+                                                stats[device_pair['rx']]['rx_latency_bandwidth'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * (frame_size + tmp_stats[device_pair['tx']]['packet_overhead_bytes'])
+
+                                      direction_string = "%d->%d" % (device_pair['tx'], device_pair['rx'])
+                                      if results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string] != "N/A":
+                                           if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string]) < 0:
+                                                stats_error_append_pg_id(stats[device_pair['rx']], 'rx_negative_loss', pg_id)
+                                           elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string]) > trial_params["max_loss_pct"]:
+                                                stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
+
+                            if not trial_params['use_device_stats']:
+                                 stats[device_pair['rx']]['rx_lost_packets'] = stats[device_pair['tx']]['tx_packets'] - stats[device_pair['rx']]['rx_packets']
+                                 stats[device_pair['rx']]['rx_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_lost_packets'] / stats[device_pair['tx']]['tx_packets']
 
                                  stats[device_pair['tx']]['tx_pps'] = float(stats[device_pair['tx']]['tx_packets']) / float(results['global']['runtime'])
                                  stats[device_pair['rx']]['rx_pps'] = float(stats[device_pair['rx']]['rx_packets']) / float(results['global']['runtime'])
 
+                                 stats[device_pair['rx']]['rx_lost_pps'] = float(stats[device_pair['rx']]['rx_lost_packets']) / float(results['global']['runtime'])
+
                                  stats[device_pair['tx']]['tx_bandwidth'] = float(stats[device_pair['tx']]['tx_bandwidth']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
                                  stats[device_pair['rx']]['rx_bandwidth'] = float(stats[device_pair['rx']]['rx_bandwidth']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
-                                 print("Device Pair: %s | TX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_bandwidth']))
-                                 print("Device Pair: %s | RX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_bandwidth']))
+                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_bandwidth']))
+                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_bandwidth']))
+
+                            if trial_params['measure_latency']:
+                                 stats[device_pair['rx']]['rx_latency_lost_packets'] = stats[device_pair['tx']]['tx_latency_packets'] - stats[device_pair['rx']]['rx_latency_packets']
+                                 stats[device_pair['rx']]['rx_latency_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_latency_lost_packets'] / stats[device_pair['tx']]['tx_latency_packets']
+
+                                 stats[device_pair['tx']]['tx_latency_pps'] = float(stats[device_pair['tx']]['tx_latency_packets']) / float(results['global']['runtime'])
+                                 stats[device_pair['rx']]['rx_latency_pps'] = float(stats[device_pair['rx']]['rx_latency_packets']) / float(results['global']['runtime'])
+
+                                 stats[device_pair['rx']]['rx_latency_lost_pps'] = float(stats[device_pair['rx']]['rx_latency_lost_packets']) / float(results['global']['runtime'])
+
+                                 stats[device_pair['tx']]['tx_latency_bandwidth'] = float(stats[device_pair['tx']]['tx_latency_bandwidth']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
+                                 stats[device_pair['rx']]['rx_latency_bandwidth'] = float(stats[device_pair['rx']]['rx_latency_bandwidth']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
+
+                                 if float(stats[device_pair['rx']]['rx_latency_packets']):
+                                      stats[device_pair['rx']]['rx_latency_average'] = stats[device_pair['rx']]['rx_latency_average'] / float(stats[device_pair['rx']]['rx_latency_packets'])
+                                 else:
+                                      # ERROR?
+                                      stats[device_pair['rx']]['rx_latency_average'] = -1.0
+
+                                 print("Device Pair: %s | Latency TX | packets=%d rate=%f bandwidth=%f" % (direction_string, stats[device_pair['tx']]['tx_latency_packets'], stats[device_pair['tx']]['tx_latency_pps'], stats[device_pair['tx']]['tx_latency_bandwidth']))
+                                 print("Device Pair: %s | Latency RX | packets=%d rate=%f bandwidth=%f average=%f maximum=%f" % (direction_string, stats[device_pair['rx']]['rx_latency_packets'], stats[device_pair['rx']]['rx_latency_pps'], stats[device_pair['rx']]['rx_latency_bandwidth'], stats[device_pair['rx']]['rx_latency_average'], stats[device_pair['rx']]['rx_latency_maximum']))
 
     if close_file:
          output_file.close()
@@ -942,6 +996,7 @@ def main():
     config_print("enable-segment-monitor", t_global.args.enable_segment_monitor)
     config_print("device-pairs", t_global.args.device_pairs)
     config_print('active-device-pairs', t_global.args.active_device_pairs)
+    config_print('enable-flow-cache', t_global.args.enable_flow_cache)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -989,15 +1044,30 @@ def main():
     trial_params['enable_segment_monitor'] = t_global.args.enable_segment_monitor
     trial_params['device_pairs'] = t_global.args.device_pairs
     trial_params['active_device_pairs'] = t_global.args.active_device_pairs
+    trial_params['enable_flow_cache'] = t_global.args.enable_flow_cache
 
     if t_global.args.traffic_generator == "trex-txrx":
-         trial_params['null_stats'] = { 'rx_bandwidth':  0.0,
-                                        'rx_packets':    0,
-                                        'rx_pps':        0.0,
-                                        'tx_bandwidth':  0.0,
-                                        'tx_packets':    0,
-                                        'tx_pps':        0.0,
-                                        'tx_pps_target': 0.0 }
+         trial_params['null_stats'] = { 'rx_bandwidth':                0.0,
+                                        'rx_packets':                  0,
+                                        'rx_lost_packets':             0,
+                                        'rx_lost_packets_pct':         0.0,
+                                        'rx_pps':                      0.0,
+                                        'rx_lost_pps':                 0.0,
+                                        'rx_latency_average':          0.0,
+                                        'rx_latency_packets':          0,
+                                        'rx_latency_lost_packets':     0,
+                                        'rx_latency_lost_packets_pct': 0.0,
+                                        'rx_latency_maximum':          0.0,
+                                        'rx_latency_bandwidth':        0.0,
+                                        'rx_latency_pps':              0.0,
+                                        'rx_latency_lost_pps':         0.0,
+                                        'tx_bandwidth':                0.0,
+                                        'tx_packets':                  0,
+                                        'tx_pps':                      0.0,
+                                        'tx_pps_target':               0.0,
+                                        'tx_latency_packets':          0,
+                                        'tx_latency_bandwidth':        0.0,
+                                        'tx_latency_pps':              0.0 }
 
     trial_params['claimed_dev_pairs'] = []
     for device_pair in trial_params['device_pairs'].split(','):
@@ -1099,8 +1169,7 @@ def main():
               trial_params['trial'] += 1
               stream_info = { 'streams': None }
               detailed_stats = { 'stats': None }
-              stats = run_trial(trial_params, port_info, stream_info, detailed_stats)
-              trial_stats = copy.deepcopy(stats)
+              trial_stats = run_trial(trial_params, port_info, stream_info, detailed_stats)
 
               trial_result = 'pass'
               test_abort = False
@@ -1108,60 +1177,63 @@ def main():
               total_rx_packets = 0
               for dev_pair in trial_params['test_dev_pairs']:
                    pair_abort = False
-                   if stats[dev_pair['tx']]['tx_packets'] == 0:
+                   if trial_stats[dev_pair['tx']]['tx_packets'] == 0:
                         pair_abort = True
                         print("binary search failed because no packets were transmitted between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
 
-                   if stats[dev_pair['rx']]['rx_packets'] == 0:
+                   if trial_stats[dev_pair['rx']]['rx_packets'] == 0:
                         pair_abort = True
                         print("binary search failed because no packets were received between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
 
-                   if 'rx_invalid_error' in stats[dev_pair['tx']]:
+                   if 'rx_invalid_error' in trial_stats[dev_pair['tx']]:
                         pair_abort = True
-                        print("binary search failed because packets were received on an incorrect port between device pair: %d -> %d (pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['tx']]['rx_invalid_error']))
+                        print("binary search failed because packets were received on an incorrect port between device pair: %d -> %d (pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['tx']]['rx_invalid_error']))
 
-                   if 'tx_invalid_error' in stats[dev_pair['rx']]:
+                   if 'tx_invalid_error' in trial_stats[dev_pair['rx']]:
                         pair_abort = True
-                        print("binary search failed because packets were transmitted on an incorrect port between device pair: %d -> %d (pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['rx']]['tx_invalid_error']))
+                        print("binary search failed because packets were transmitted on an incorrect port between device pair: %d -> %d (pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['tx_invalid_error']))
 
                    if pair_abort:
                         test_abort = True
                         continue
 
-                   if 'tx_missing_error' in stats[dev_pair['tx']]:
+                   if 'tx_missing_error' in trial_stats[dev_pair['tx']]:
                         trial_result = 'fail'
-                        print("(trial failed requirement, missing TX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['tx']]['tx_missing_error']))
+                        print("(trial failed requirement, missing TX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['tx']]['tx_missing_error']))
 
-                   if 'rx_missing_error' in stats[dev_pair['rx']]:
+                   if 'rx_missing_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
-                        print("(trial failed requirement, missing RX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['rx']]['rx_missing_error']))
+                        print("(trial failed requirement, missing RX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_missing_error']))
 
-                   if 'rx_loss_error' in stats[dev_pair['rx']]:
+                   if 'rx_loss_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
-                        print("(trial failed requirement, individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['rx']]['rx_loss_error']))
+                        print("(trial failed requirement, individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_loss_error']))
 
-                   if 'rx_negative_loss_error' in stats[dev_pair['rx']]:
+                   if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
-                        print("(trial failed requirement, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], stats[dev_pair['rx']]['rx_negative_loss_error']))
+                        print("(trial failed requirement, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_negative_loss_error']))
 
-                   lost_packets = stats[dev_pair['tx']]['tx_packets'] - stats[dev_pair['rx']]['rx_packets']
-                   trial_stats[dev_pair['rx']]['rx_lost_packets'] = lost_packets
-                   pct_lost_packets = 100.0 * lost_packets / stats[dev_pair['tx']]['tx_packets']
-                   trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] = pct_lost_packets
                    requirement_msg = "passed"
-                   if pct_lost_packets > t_global.args.max_loss_pct:
+                   if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                         requirement_msg = "failed"
                         trial_result = 'fail'
-                   print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, pct_lost_packets, lost_packets))
+                   print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, trial_stats[dev_pair['rx']]['rx_lost_packets_pct'], trial_stats[dev_pair['rx']]['rx_lost_packets']))
+
+                   if t_global.args.measure_latency:
+                        requirement_msg = "passed"
+                        if trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct'] > t_global.args.max_loss_pct:
+                             requirement_msg = "failed"
+                             trial_result = 'fail'
+                        print("(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct'], trial_stats[dev_pair['rx']]['rx_latency_lost_packets']))
 
                    if t_global.args.traffic_generator != 'null-txrx':
                         requirement_msg = "passed"
-                        tx_rate = stats[dev_pair['tx']]['tx_pps'] / 1000000.0
+                        tx_rate = trial_stats[dev_pair['tx']]['tx_pps'] / 1000000.0
                         tolerance_min = 0.0
                         tolerance_max = 0.0
                         if t_global.args.traffic_generator == 'trex-txrx':
-                             tolerance_min = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
-                             tolerance_max = (stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
+                             tolerance_min = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
+                             tolerance_max = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
                              if tx_rate > tolerance_max or tx_rate < tolerance_min:
                                   requirement_msg = "retry"
                                   if trial_result == "pass":
@@ -1183,26 +1255,26 @@ def main():
                    print('Binary search aborting due to critical error')
                    quit(1)
 
-              if 'global' in stats:
+              if 'global' in trial_stats:
                    tolerance_min = float(trial_params['runtime']) * (1 - (float(trial_params['runtime_tolerance']) / 100))
                    tolerance_max = float(trial_params['runtime']) * (1 + (float(trial_params['runtime_tolerance']) / 100))
                    trial_stats['global']['runtime_tolerance_min'] = tolerance_min
                    trial_stats['global']['runtime_tolerance_max'] = tolerance_max
 
-                   if stats['global']['timeout']:
+                   if trial_stats['global']['timeout']:
                         print("(trial timeout, forcing a retry, timeouts can cause inconclusive trial results)")
                         trial_result = "retry-to-fail"
                    else:
-                        if stats['global']['runtime'] < tolerance_min or stats['global']['runtime'] > tolerance_max:
-                             print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %f - %f, achieved: %f)" % (tolerance_min, tolerance_max, stats['global']['runtime']))
+                        if trial_stats['global']['runtime'] < tolerance_min or trial_stats['global']['runtime'] > tolerance_max:
+                             print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %f - %f, achieved: %f)" % (tolerance_min, tolerance_max, trial_stats['global']['runtime']))
                              if trial_result == "pass":
                                   trial_result = "retry-to-fail"
 
-                   if stats['global']['early_exit']:
+                   if trial_stats['global']['early_exit']:
                         print("(trial failed due to early exit)")
                         trial_result = 'fail'
 
-                   if stats['global']['force_quit']:
+                   if trial_stats['global']['force_quit']:
                         print("Received Force Quit")
                         return(1)
 
@@ -1255,7 +1327,7 @@ def main():
                    rate = next_rate
                    retries = 0
               elif trial_result == "pass":
-                   passed_stats = stats
+                   passed_stats = trial_stats
                    if final_validation: # no longer necessary to continue searching
                         break
                    if do_sniff:
@@ -1307,7 +1379,7 @@ def main():
               print_stats(trial_params, passed_stats)
          else:
               if t_global.args.one_shot == 1:
-                   print_stats(trial_params, stats)
+                   print_stats(trial_params, trial_stats)
               else:
                    print("There is no trial which passed")
 
