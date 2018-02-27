@@ -488,11 +488,11 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
          stats[1]['rx_packets'] = 0
     elif trial_params['traffic_generator'] == 'trex-txrx':
          for dev_pair in trial_params['test_dev_pairs']:
-              for port in [ 'port_a', 'port_b' ]:
-                   if not dev_pair[port]['index'] in stats:
-                        stats[dev_pair[port]['index']] = copy.deepcopy(trial_params['null_stats'])
-                        tmp_stats[dev_pair[port]['index']]= { 'tx_available_bandwidth': 0.0 }
-                        streams[dev_pair[port]['index']] = 0
+              for port in [ 'tx', 'rx' ]:
+                   if not dev_pair[port] in stats:
+                        stats[dev_pair[port]] = copy.deepcopy(trial_params['null_stats'])
+                        tmp_stats[dev_pair[port]]= { 'tx_available_bandwidth': 0.0 }
+                        streams[dev_pair[port]] = 0
 
     cmd = ""
 
@@ -736,23 +736,16 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   print(line.rstrip('\n'))
              elif trial_params['traffic_generator'] == 'trex-txrx':
-                  #PARSABLE STREAMS FOR DIRECTION 'a': {"default": {"traffic_shares": [0.5833333333333334,0.3333333333333333,0.08333333333333333],"names": ["small_stream_a","medium_stream_a","large_stream_a"],"pg_ids": [128,129,130],"frame_sizes": [40,576,1500]},"latency": {"traffic_shares": [0.5833333333333334,0.3333333333333333,0.08333333333333333],"names": ["small_latency_stream_a","medium_latency_stream_a","large_latency_stream_a"],"pg_ids": [0,1,2],"frame_sizes": [40,576,1500]}}
-                  m = re.search(r"DEVICE PAIR ([0-9]+):([0-9]+) \| PARSABLE STREAMS FOR DIRECTION '([ab])':\s+(.*)$", line)
+                  m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE STREAMS FOR DIRECTION '([0-9]+->[0-9]+)':\s+(.*)$", line)
                   if m:
-                       port_a = int(m.group(1))
-                       port_b = int(m.group(2))
-                       direction = m.group(3)
-                       json_data = m.group(4)
-                       dev_pair = "%d:%d" % (port_a, port_b)
+                       dev_pair = m.group(1)
+                       direction = m.group(2)
+                       json_data = m.group(3)
                        for device_pair in trial_params['test_dev_pairs']:
                             if dev_pair == device_pair['dev_pair']:
-                                 if direction == 'a' and device_pair['port_a']['index'] == port_a:
-                                      streams[port_a] = json.loads(json_data)
-                                      stats[port_a]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[port_a], tmp_stats[port_a])
-                                 if direction == 'b' and device_pair['port_b']['index'] == port_b:
-                                      streams[port_b] = json.loads(json_data)
-                                      stats[port_b]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[port_b], tmp_stats[port_b])
-                  #PARSABLE RESULT: {"0":{"tx_util":37.68943472,"rx_bps":11472348160.0,"obytes":43064997504,"rx_pps":22406932.0,"ipackets":672312848,"oerrors":0,"rx_util":37.6436432,"opackets":672890586,"tx_pps":22434198.0,"tx_bps":11486302208.0,"ierrors":0,"rx_bps_L1":15057457280.0,"tx_bps_L1":15075773888.0,"ibytes":43028022272},"1":{"tx_util":37.6893712,"rx_bps":11486310400.0,"obytes":43063561984,"rx_pps":22434204.0,"ipackets":672890586,"oerrors":0,"rx_util":37.6894576,"opackets":672868156,"tx_pps":22434148.0,"tx_bps":11486284800.0,"ierrors":0,"rx_bps_L1":15075783040.0,"tx_bps_L1":15075748480.0,"ibytes":43064997504},"latency":{"global":{"bad_hdr":0,"old_flow":0}},"global":{"rx_bps":22958659584.0,"bw_per_core":7.34,"rx_cpu_util":0.0,"rx_pps":44841136.0,"queue_full":0,"cpu_util":62.6,"tx_pps":44868344.0,"tx_bps":22972585984.0,"rx_drop_bps":0.0},"total":{"tx_util":75.37880591999999,"rx_bps":22958658560.0,"obytes":86128559488,"ipackets":1345203434,"rx_pps":44841136.0,"rx_util":75.3331008,"oerrors":0,"opackets":1345758742,"tx_pps":44868346.0,"tx_bps":22972587008.0,"ierrors":0,"rx_bps_L1":30133240320.0,"tx_bps_L1":30151522368.0,"ibytes":86093019776},"flow_stats":{"1":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":"N/A","1":20884464.286073223,"total":20884464.286073223},"rx_pkts":{"0":0,"1":672890586,"total":672890586},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":43064997504,"1":0,"total":43064997504},"tx_pps":{"0":20898314.26218906,"1":"N/A","total":20898314.26218906},"tx_bps":{"0":10699936902.240799,"1":"N/A","total":10699936902.240799},"tx_pkts":{"0":672890586,"1":0,"total":672890586},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":14043667184.191048,"1":"N/A","total":14043667184.191048}},"2":{"rx_bps":{"0":"N/A","1":"N/A","total":"N/A"},"rx_pps":{"0":20884967.481241994,"1":"N/A","total":20884967.481241994},"rx_pkts":{"0":672312848,"1":0,"total":672312848},"rx_bytes":{"total":"N/A"},"tx_bytes":{"0":0,"1":43063561984,"total":43063561984},"tx_pps":{"0":"N/A","1":20898728.6582104,"total":20898728.6582104},"tx_bps":{"0":"N/A","1":10700149073.003725,"total":10700149073.003725},"tx_pkts":{"0":0,"1":672868156,"total":672868156},"rx_bps_L1":{"0":"N/A","1":"N/A","total":"N/A"},"tx_bps_L1":{"0":"N/A","1":14043945658.317389,"total":14043945658.317389}},"global":{"rx_err":{},"tx_err":{}}}}
+                                 if direction == device_pair['direction']:
+                                      streams[device_pair['tx']] = json.loads(json_data)
+                                      stats[device_pair['tx']]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[device_pair['tx']], tmp_stats[device_pair['tx']])
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
                        results = json.loads(m.group(1))
@@ -1095,22 +1088,24 @@ def main():
          ports = device_pair.split(':')
          test_dev_pair_obj = { 'tx': None,
                                'rx': None,
-                               'dev_pair': device_pair,
-                               'port_a': { 'index': int(ports[0]) },
-                               'port_b': { 'index': int(ports[1]) } }
+                               'direction': None,
+                               'dev_pair': device_pair }
          if trial_params['run_revunidirec']:
               test_dev_pair_obj['tx'] = int(ports[1])
               test_dev_pair_obj['rx'] = int(ports[0])
+              test_dev_pair_obj['direction'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
               trial_params['test_dev_pairs'].append(test_dev_pair_obj)
          else:
               test_dev_pair_obj['tx'] = int(ports[0])
               test_dev_pair_obj['rx'] = int(ports[1])
+              test_dev_pair_obj['direction'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
               trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
               if trial_params['run_bidirec']:
                    test_dev_pair_obj = copy.deepcopy(test_dev_pair_obj)
                    test_dev_pair_obj['tx'] = int(ports[1])
                    test_dev_pair_obj['rx'] = int(ports[0])
+                   test_dev_pair_obj['direction'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
                    trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
     port_speed_verification_fail = False
