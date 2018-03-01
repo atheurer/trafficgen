@@ -245,7 +245,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
 
 # simple packet creation
 def create_pkt (size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
-    # adjust packet size
+    # adjust packet size due to CRC
     size = int(size)
     size -= 4
 
