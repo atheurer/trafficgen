@@ -689,22 +689,30 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                                  stats[0]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[1]['rx_packets'] = pass_packets
                                  stats[1]['rx_pps'] = float(pass_packets) / float(trial_params['runtime'])
+                                 stats[1]['rx_lost_packets'] = total_packets - pass_packets
+                                 stats[1]['rx_lost_packets_pct'] = float(stats[1]['rx_lost_packets']) / float(total_packets)
                             if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
                                  stats[1]['tx_packets'] = total_packets
                                  stats[1]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[0]['rx_packets'] = pass_packets
                                  stats[0]['rx_pps'] = float(pass_packets) / float(trial_params['runtime'])
+                                 stats[0]['rx_lost_packets'] = total_packets - pass_packets
+                                 stats[0]['rx_lost_packets_pct'] = float(stats[0]['rx_lost_packets']) / float(total_packets)
                        elif m.group(1) == "fail":
                             if not trial_params['run_revunidirec']:
                                  stats[0]['tx_packets'] = total_packets
                                  stats[0]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[1]['rx_packets'] = fail_packets
                                  stats[1]['rx_pps'] = float(fail_packets) / float(trial_params['runtime'])
+                                 stats[1]['rx_lost_packets'] = total_packets - fail_packets
+                                 stats[1]['rx_lost_packets_pct'] = float(stats[1]['rx_lost_packets']) / float(total_packets)
                             if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
                                  stats[1]['tx_packets'] = total_packets
                                  stats[1]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[0]['rx_packets'] = fail_packets
                                  stats[0]['rx_pps'] = float(fail_packets) / float(trial_params['runtime'])
+                                 stats[0]['rx_lost_packets'] = total_packets - fail_packets
+                                 stats[0]['rx_lost_packets_pct'] = float(stats[0]['rx_lost_packets']) / float(total_packets)
              elif trial_params['traffic_generator'] == 'trex-txrx':
                   if line.rstrip('\n') == "Connection severed":
                        capture_output = False
@@ -938,6 +946,10 @@ def main():
 
     if t_global.args.traffic_generator == 'null-txrx' and t_global.args.rate_unit == "mpps":
          print("The null-txrx traffic generator does not support --rate-unit=mpps")
+         quit(1)
+
+    if t_global.args.traffic_generator == 'null-txrx' and t_global.args.measure_latency:
+         print("The null-txrx traffic generator does not support latency measurements")
          quit(1)
 
     if t_global.args.frame_size == "imix":
