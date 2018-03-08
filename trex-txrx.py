@@ -227,17 +227,69 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                     stream_flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
                device_pair[direction]['pg_ids'][streams_packet_type]['list'].append(stream_pg_id)
 
+               stream_loop = False
                if stream_mode == "burst":
-                    stream_mode_obj = STLTXSingleBurst(pps = stream_pps, total_pkts = int(stream_run_time * stream_pps))
+                    stream_total_pkts = int(stream_run_time * stream_pps)
+
+                    # check if the total number of packets to TX is greater than can be held in an uint32 (API limit)
+                    max_uint32 = int(4294967295)
+                    if stream_total_pkts > max_uint32:
+                         stream_loop = True
+                         stream_loops = stream_total_pkts / max_uint32
+                         stream_loop_remainder = stream_total_pkts % max_uint32
+
+                         if stream_loop_remainder == 0:
+                              stream_loops -= 1
+                              stream_loops_remainder = max_uinit32
+                    else:
+                         stream_mode_obj = STLTXSingleBurst(pps = stream_pps, total_pkts = stream_total_pkts)
                elif stream_mode == "continuous":
                     stream_mode_obj = STLTXCont(pps = stream_pps)
 
-               device_pair[direction]['traffic_profile'].append(STLStream(packet = create_pkt(stream_frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, device_pair[direction]['packet_values']['macs']['src'], device_pair[direction]['packet_values']['macs']['dst'], device_pair[direction]['packet_values']['ips']['src'], device_pair[direction]['packet_values']['ips']['dst'], device_pair[direction]['packet_values']['ports']['src'], device_pair[direction]['packet_values']['ports']['dst'], stream_packet_protocol, device_pair[direction]['packet_values']['vlan']),
-                                                                          flow_stats = stream_flow_stats,
-                                                                          mode = stream_mode_obj,
-                                                                          name = stream_name,
-                                                                          next = stream_next_stream_name,
-                                                                          self_start = stream_self_start))
+               stream_packet = create_pkt(stream_frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows,
+                                          device_pair[direction]['packet_values']['macs']['src'],
+                                          device_pair[direction]['packet_values']['macs']['dst'],
+                                          device_pair[direction]['packet_values']['ips']['src'],
+                                          device_pair[direction]['packet_values']['ips']['dst'],
+                                          device_pair[direction]['packet_values']['ports']['src'],
+                                          device_pair[direction]['packet_values']['ports']['dst'],
+                                          stream_packet_protocol,
+                                          device_pair[direction]['packet_values']['vlan'])
+
+               if stream_loop:
+                    myprint("Stream is being split into multiple substreams due to high total packet count")
+
+                    substream_self_start = stream_self_start
+                    for loop_idx in range(1, stream_loops+1):
+                         substream_name = "%s_sub_%d" % (stream_name, loop_idx)
+                         substream_next_name = "%s_sub_%d" % (stream_name, loop_idx+1)
+                         myprint("Creating substream %d with name %s" % (loop_idx, substream_name))
+
+                         stream_mode_obj = STLTXSingleBurst(pps = stream_pps, total_pkts = max_uint32)
+                         device_pair[direction]['traffic_profile'].append(STLStream(packet = stream_packet,
+                                                                                    flow_stats = stream_flow_stats,
+                                                                                    mode = stream_mode_obj,
+                                                                                    name = substream_name,
+                                                                                    next = substream_next_name,
+                                                                                    self_start = substream_self_start))
+                         substream_self_start = False
+
+                    substream_name = "%s_sub_%d" % (stream_name, stream_loops+1)
+                    myprint("Creating substream %d with name %s" % (stream_loops+1, substream_name))
+                    stream_mode_obj = STLTXSingleBurst(pps = stream_pps, total_pkts = stream_loop_remainder)
+                    device_pair[direction]['traffic_profile'].append(STLStream(packet = stream_packet,
+                                                                               flow_stats = stream_flow_stats,
+                                                                               mode = stream_mode_obj,
+                                                                               name = substream_name,
+                                                                               next = stream_next_stream_name,
+                                                                               self_start = substream_self_start))
+               else:
+                    device_pair[direction]['traffic_profile'].append(STLStream(packet = stream_packet,
+                                                                               flow_stats = stream_flow_stats,
+                                                                               mode = stream_mode_obj,
+                                                                               name = stream_name,
+                                                                               next = stream_next_stream_name,
+                                                                               self_start = stream_self_start))
 
      myprint("DEVICE PAIR %s | READABLE STREAMS FOR DIRECTION '%s':" % (device_pair['device_pair'], device_pair[direction]['id_string']), stderr_only = True)
      myprint(dump_json_readable(streams), stderr_only = True)
