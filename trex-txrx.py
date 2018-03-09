@@ -84,9 +84,14 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                large_packets = 1
                total_packets = small_packets + medium_packets + large_packets
 
+               small_traffic_share = float(small_packets) / float(total_packets)
+               medium_traffic_share = float(medium_packets) / float(total_packets)
+               large_traffic_share = float(large_packets) / float(total_packets)
+
                small_packet_bytes = 40 + ethernet_frame_overhead
                medium_packet_bytes = 576 + ethernet_frame_overhead
                large_packet_bytes = 1500 + ethernet_frame_overhead
+               avg_packet_bytes = float(small_packet_bytes*small_packets + medium_packet_bytes*medium_packets + large_packet_bytes*large_packets) / float(total_packets)
 
                small_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + protocols_index
                medium_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + 2 + protocols_index
@@ -97,15 +102,19 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                large_stream_name = "large_stream_" + device_pair[direction]['id_string'] + "_" + protocols_value
 
                streams['default']['protocol'].extend([protocols_value, protocols_value, protocols_value])
-               streams['default']['pps'].extend([small_packets, medium_packets, large_packets])
+               if rate_unit == "mpps":
+                    my_packet_rate = rate_multiplier / len(protocols) * 1000000
+               else:
+                    my_packet_rate = ((rate_multiplier / 100) / len(protocols)) * (port_speed / bits_per_byte) / (avg_packet_bytes + packet_overhead_bytes)
+               streams['default']['pps'].extend([small_traffic_share * my_packet_rate, medium_traffic_share * my_packet_rate, large_traffic_share * my_packet_rate])
                streams['default']['pg_ids'].extend([small_stream_pg_id, medium_stream_pg_id, large_stream_pg_id])
                streams['default']['names'].extend([small_stream_name, medium_stream_name, large_stream_name])
                streams['default']['next_stream_names'].extend([None, None, None])
                streams['default']['frame_sizes'].extend([small_packet_bytes, medium_packet_bytes, large_packet_bytes])
-               streams['default']['traffic_shares'].extend([(float(small_packets)/float(total_packets)/len(protocols)), (float(medium_packets)/float(total_packets)/len(protocols)), (float(large_packets)/float(total_packets)/len(protocols))])
+               streams['default']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                streams['default']['self_starts'].extend([True, True, True])
-               streams['default']['stream_modes'].extend(["continuous", "continuous", "continuous"])
-               streams['default']['run_time'].extend([-1, -1, -1])
+               streams['default']['stream_modes'].extend(["burst", "burst", "burst"])
+               streams['default']['run_time'].extend([float(run_time), float(run_time), float(run_time)])
 
                if measure_latency:
                     small_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
@@ -122,7 +131,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                     streams['latency']['names'].extend([small_latency_stream_name, medium_latency_stream_name, large_latency_stream_name])
                     streams['latency']['next_stream_names'].extend([None, None, None])
                     streams['latency']['frame_sizes'].extend([small_packet_bytes, medium_packet_bytes, large_packet_bytes])
-                    streams['latency']['traffic_shares'].extend([(float(small_packets)/float(total_packets)/len(protocols)), (float(medium_packets)/float(total_packets)/len(protocols)), (float(large_packets)/float(total_packets)/len(protocols))])
+                    streams['latency']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                     streams['latency']['self_starts'].extend([True, True, True])
                     streams['latency']['stream_modes'].extend(["continuous", "continuous", "continuous"])
                     streams['latency']['run_time'].extend([-1, -1, -1])
@@ -135,15 +144,18 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                default_stream_name = "default_stream_" + device_pair[direction]['id_string'] + "_" + protocols_value
 
                streams['default']['protocol'].extend([protocols_value])
-               streams['default']['pps'].extend([100])
+               if rate_unit == "mpps":
+                    streams['default']['pps'].extend([rate_multiplier/len(protocols)*1000000])
+               else:
+                    streams['default']['pps'].extend([((rate_multiplier/100)/len(protocols)) * (port_speed / bits_per_byte) / (int(frame_size) + packet_overhead_bytes)])
                streams['default']['pg_ids'].extend([default_stream_pg_id])
                streams['default']['names'].extend([default_stream_name])
                streams['default']['next_stream_names'].extend([None])
                streams['default']['frame_sizes'].extend([int(frame_size)])
                streams['default']['traffic_shares'].extend([1.0/len(protocols)])
                streams['default']['self_starts'].extend([True])
-               streams['default']['stream_modes'].extend(["continuous"])
-               streams['default']['run_time'].extend([-1])
+               streams['default']['stream_modes'].extend(["burst"])
+               streams['default']['run_time'].extend([float(run_time)])
 
                if measure_latency:
                     latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
@@ -201,7 +213,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                          streams[streams_type_value]['traffic_shares'].extend([1.0/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
                          streams[streams_type_value]['self_starts'].extend([self_start])
                          streams[streams_type_value]['stream_modes'].extend(["burst"])
-                         streams[streams_type_value]['run_time'].extend([float(run_time)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
+                         streams[streams_type_value]['run_time'].extend([float(run_time)/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
 
                          counter += 1
 
@@ -1029,11 +1041,6 @@ def main():
         # clear the event log
         c.clear_events()
 
-        if t_global.args.stream_mode == "continuous":
-             rate_multiplier = str(rate_multiplier) + t_global.args.rate_unit
-        elif t_global.args.stream_mode == "segmented":
-             rate_multiplier = str(1)
-
         # clear the stats
         c.clear_stats(ports = all_ports)
 
@@ -1058,12 +1065,12 @@ def main():
 
         # here we multiply the traffic lineaer to whatever given in rate
         if t_global.args.run_revunidirec:
-             c.start(ports = revunidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
+             c.start(ports = revunidirec_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
         else:
              if t_global.args.run_bidirec:
-                  c.start(ports = all_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
+                  c.start(ports = all_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
              else:
-                  c.start(ports = unidirec_ports, force = True, mult = rate_multiplier, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
+                  c.start(ports = unidirec_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
 
         if t_global.args.stream_mode == "segmented" and t_global.args.enable_segment_monitor:
              segment_monitor_thread.start()
