@@ -1175,6 +1175,7 @@ def main():
 
         myprint("TX Utilization: %f%%" % stats['global']['cpu_util'])
         myprint("RX Utilization: %f%%" % stats['global']['rx_cpu_util'])
+        myprint("TX Queue Full:  %d"   % stats['global']['queue_full'])
 
         myprint("READABLE RESULT:", stderr_only = True)
         myprint(dump_json_readable(stats), stderr_only = True)
