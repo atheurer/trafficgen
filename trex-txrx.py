@@ -47,6 +47,88 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
+def create_garp_traffic_profile (direction, other_direction, device_pair, run_time, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, measurement_interval, packet_rate):
+     myprint("Creating GARP streams for device pair '%s' direction '%s' with MAC=%s and IP=%s" % (device_pair['device_pair'],
+                                                                                                  direction,
+                                                                                                  device_pair[direction]['packet_values']['macs']['dst'],
+                                                                                                  device_pair[direction]['packet_values']['ips']['dst']))
+
+
+     garp_request_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
+                                           device_pair[direction]['packet_values']['macs']['dst'],
+                                           device_pair[direction]['packet_values']['ips']['dst'],
+                                           device_pair[other_direction]['packet_values']['vlan'],
+                                           0x1)
+
+     garp_reply_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
+                                         device_pair[direction]['packet_values']['macs']['dst'],
+                                         device_pair[direction]['packet_values']['ips']['dst'],
+                                         device_pair[other_direction]['packet_values']['vlan'],
+                                         0x2)
+
+     warmup_mode = STLTXSingleBurst(total_pkts = num_flows, pps = packet_rate)
+
+     # IBG is in usec, so we multiply by 1,000,000 to convert to seconds
+     measurement_mode = STLTXMultiBurst(pkts_per_burst = num_flows, ibg = (measurement_interval * 1000000), count = int(run_time / measurement_interval), pps = packet_rate)
+
+     device_pair[other_direction]['garp_warmup_traffic_profile'].append(STLStream(packet = garp_request_packet, mode = warmup_mode))
+     device_pair[other_direction]['garp_warmup_traffic_profile'].append(STLStream(packet = garp_reply_packet, mode = warmup_mode))
+
+     device_pair[other_direction]['garp_measurement_traffic_profile'].append(STLStream(packet = garp_request_packet, mode = measurement_mode))
+     device_pair[other_direction]['garp_measurement_traffic_profile'].append(STLStream(packet = garp_reply_packet, mode = measurement_mode))
+
+     return
+
+def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, mac_dst, ip_dst, vlan_id, arp_op):
+    arp_mac_target = 'ff:ff:ff:ff:ff:ff'
+
+    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
+
+    vm = []
+    if dst_ip_flows and num_flows:
+         vm = vm + [
+              STLVmFlowVar(name = "ip_psrc", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ip_psrc", pkt_offset = "ARP.psrc")
+         ]
+         vm = vm + [
+              STLVmFlowVar(name = "ip_pdst", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ip_pdst", pkt_offset = "ARP.pdst")
+         ]
+
+    if dst_mac_flows and num_flows:
+         vm = vm + [
+              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
+              #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
+         ]
+         vm = vm + [
+              STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
+         ]
+         vm = vm + [
+              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
+         ]
+
+    the_packet = Ether(src = mac_dst, dst = arp_mac_target)
+
+    if vlan_id is not None:
+         the_packet = the_packet/Dot1Q(vlan = vlan_id)
+
+    the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_dst, psrc = str(ip_dst['start']), hwdst = arp_mac_target, pdst = str(ip_dst['start']))
+
+    #the_packet.show2()
+
+    if num_flows and (dst_ip_flows or dst_mac_flows):
+         if enable_flow_cache:
+              vm = STLScVmRaw(list_of_commands = vm,
+                              cache_size = num_flows)
+
+         return STLPktBuilder(pkt = the_packet,
+                              vm  = vm)
+    else:
+         return STLPktBuilder(pkt = the_packet)
+
 def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, latency_rate, frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, packet_protocol, skip_hw_flow_stats):
      streams = { 'default': { 'protocol': [],
                               'pps': [],
@@ -59,8 +141,6 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                               'run_time': [],
                               'stream_modes': [] } }
      streams['latency'] = copy.deepcopy(streams['default'])
-
-     device_pair[direction]['traffic_profile'] = []
 
      # packet overhead is (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
      packet_overhead_bytes = 20
@@ -219,8 +299,10 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
 
      for streams_index, streams_packet_type in enumerate(streams):
           for stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share, stream_next_stream_name, stream_self_start, stream_mode, stream_run_time in zip(streams[streams_packet_type]['protocol'], streams[streams_packet_type]['pps'], streams[streams_packet_type]['pg_ids'], streams[streams_packet_type]['names'], streams[streams_packet_type]['frame_sizes'], streams[streams_packet_type]['traffic_shares'], streams[streams_packet_type]['next_stream_names'], streams[streams_packet_type]['self_starts'], streams[streams_packet_type]['stream_modes'], streams[streams_packet_type]['run_time']):
-               myprint("Creating stream with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], run_time=[%f], and traffic_share=[%f]." %
-                       (streams_packet_type,
+               myprint("Creating stream for device pair '%s' direction '%s' with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], run_time=[%f], and traffic_share=[%f]." %
+                       (device_pair['device_pair'],
+                        direction,
+                        streams_packet_type,
                         stream_packet_protocol,
                         stream_pps,
                         stream_pg_id,
@@ -638,6 +720,28 @@ def process_options ():
                         help='Force disablement of the flow cache',
                         action = 'store_false',
                         )
+    parser.add_argument('--send-garp-warmup',
+                        dest='send_garp_warmup',
+                        help='Send Gratuitous ARPs from the receiving port during a warmup phase',
+                        action = 'store_true',
+                        )
+    parser.add_argument('--send-garp-measurement',
+                        dest='send_garp_measurement',
+                        help='Send Gratuitous ARPs from the receiving port during the measurement phase',
+                        action = 'store_true',
+                        )
+    parser.add_argument('--garp-measurement-interval',
+                        dest='garp_measurement_interval',
+                        help='Interval to send Gratuitous ARPs on from the receiving port during the measurement phase in seconds',
+                        default = 10.0,
+                        type = float
+                        )
+    parser.add_argument('--garp-packet-rate',
+                        dest='garp_packet_rate',
+                        help='Packet rate to send Gratuitous ARPs at from the receiving port in packets per second (pps)',
+                        default = 1000,
+                        type = int
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -652,7 +756,7 @@ def process_options ():
               myprint("NOTE: User disablement of flow caching will cause higher resource requirements.")
     myprint(t_global.args)
 
-def segment_monitor(connection, device_pairs, all_ports, unidirec_ports, revunidirec_ports, bidirec, revunidirec, measure_latency, max_loss_pct, normal_exit_event, early_exit_event):
+def segment_monitor(connection, device_pairs, run_ports, bidirec, revunidirec, measure_latency, max_loss_pct, normal_exit_event, early_exit_event):
     try:
          myprint("Segment Monitor: Running")
 
@@ -738,13 +842,7 @@ def segment_monitor(connection, device_pairs, all_ports, unidirec_ports, revunid
          if early_exit_event.is_set():
               myprint("Segment Monitor: Exiting early")
 
-              if bidirec:
-                   connection.stop(ports = all_ports)
-              else:
-                   if revunidirec:
-                        connection.stop(ports = revunidirec_ports)
-                   else:
-                        connection.stop(ports = unidirec_ports)
+              connection.stop(ports = run_ports)
          else:
                myprint("Segment Monitor: Did not detect any segment failures")
 
@@ -780,6 +878,8 @@ def main():
     all_ports = []
     unidirec_ports = []
     revunidirec_ports = []
+    unidirec_garp_ports = []
+    revunidirec_garp_ports = []
     device_pairs = []
     for device_pair in t_global.args.active_device_pairs.split(','):
          ports = device_pair.split(':')
@@ -797,19 +897,26 @@ def main():
          all_ports.extend([port_a, port_b])
          unidirec_ports.append(port_a)
          revunidirec_ports.append(port_b)
+         if t_global.args.send_garp_warmup or t_global.args.send_garp_measurement:
+              unidirec_garp_ports.append(port_b)
+              revunidirec_garp_ports.append(port_a)
          device_pairs.append({ '->': { 'ports': { 'tx': port_a,
                                                   'rx': port_b },
                                        'id_string': "%s->%s" % (port_a, port_b),
                                        'packet_values': copy.deepcopy(packet_values),
                                        'pg_ids': copy.deepcopy(pg_id_values),
-                                       'traffic_profile': None,
+                                       'traffic_profile': [],
+                                       'garp_warmup_traffic_profile': [],
+                                       'garp_measurement_traffic_profile': [],
                                        'active': False },
                                '<-': { 'ports': { 'tx': port_b,
                                                   'rx': port_a },
                                        'id_string': "%s->%s" % (port_b, port_a),
                                        'packet_values': copy.deepcopy(packet_values),
                                        'pg_ids': copy.deepcopy(pg_id_values),
-                                       'traffic_profile': None,
+                                       'traffic_profile': [],
+                                       'garp_warmup_traffic_profile': [],
+                                       'garp_measurement_traffic_profile': [],
                                        'active': False },
                                'max_default_pg_ids': 0,
                                'max_latency_pg_ids': 0,
@@ -830,6 +937,8 @@ def main():
               device_pair['<-']['active'] = True
     else:
          active_ports = len(unidirec_ports)
+         if t_global.args.send_garp_warmup or t_global.args.send_garp_measurement:
+              active_ports /= 2
 
          for device_pair in device_pairs:
               if t_global.args.run_revunidirec:
@@ -1025,14 +1134,76 @@ def main():
         for device_pair in device_pairs:
              if t_global.args.run_revunidirec:
                   create_traffic_profile("<-", device_pair, rate_multiplier, (port_info[device_pair['<-']['ports']['tx']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
-                  c.add_streams(streams = device_pair['<-']['traffic_profile'], ports = device_pair['<-']['ports']['tx'])
+
+                  if t_global.args.send_garp_warmup or t_global.args.send_garp_measurement:
+                       create_garp_traffic_profile("<-", "->", device_pair, t_global.args.runtime, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.garp_measurement_interval, t_global.args.garp_packet_rate)
              else:
                   create_traffic_profile("->", device_pair, rate_multiplier, (port_info[device_pair['->']['ports']['tx']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
-                  c.add_streams(streams = device_pair['->']['traffic_profile'], ports = device_pair['->']['ports']['tx'])
+
+                  if t_global.args.send_garp_warmup or t_global.args.send_garp_measurement:
+                       create_garp_traffic_profile("->", "<-", device_pair, t_global.args.runtime, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.garp_measurement_interval, t_global.args.garp_packet_rate)
 
                   if t_global.args.run_bidirec:
                        create_traffic_profile("<-", device_pair, rate_multiplier, (port_info[device_pair['<-']['ports']['tx']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
-                       c.add_streams(streams = device_pair['<-']['traffic_profile'], ports = device_pair['<-']['ports']['tx'])
+
+                       if t_global.args.send_garp_warmup or t_global.args.send_garp_measurement:
+                            create_garp_traffic_profile("<-", "->", device_pair, t_global.args.runtime, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.garp_measurement_interval, t_global.args.garp_packet_rate)
+
+        if t_global.args.send_garp_warmup:
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       if len(device_pair[direction]['garp_warmup_traffic_profile']):
+                            myprint("Adding GARP warmup stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
+                            c.add_streams(streams = device_pair[direction]['garp_warmup_traffic_profile'], ports = device_pair[direction]['ports']['tx'])
+
+             myprint("Transmitting GARP warmup packets...")
+             start_time = datetime.datetime.now()
+
+             if t_global.args.run_revunidirec:
+                  c.start(ports = revunidirec_garp_ports, force = True)
+                  c.wait_on_traffic(ports = revunidirec_garp_ports, timeout = 30)
+             else:
+                  if t_global.args.run_bidirec:
+                       c.start(ports = all_ports, force = True)
+                       c.wait_on_traffic(ports = all_ports, timeout = 30)
+                  else:
+                       c.start(ports = unidirec_garp_ports, force = True)
+                       c.wait_on_traffic(ports = unidirec_garp_ports, timeout = 30)
+
+             stop_time = datetime.datetime.now()
+             total_time = stop_time - start_time
+             myprint("...GARP warmup transmission complete -- %d total second(s) elapsed" % total_time.total_seconds())
+
+             if t_global.args.run_revunidirec:
+                  c.reset(ports = revunidirec_garp_ports)
+                  c.set_port_attr(ports = revunidirec_garp_ports, promiscuous = True)
+             else:
+                  if t_global.args.run_bidirec:
+                       c.reset(ports = all_ports)
+                       c.set_port_attr(ports = all_ports, promiscuous = True)
+                  else:
+                       c.reset(ports = unidirec_garp_ports)
+                       c.set_port_attr(ports = unidirec_garp_ports, promiscuous = True)
+
+        run_ports = []
+
+        for device_pair in device_pairs:
+             for direction in directions:
+                  port_streams = 0
+
+                  if len(device_pair[direction]['traffic_profile']):
+                       myprint("Adding stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
+                       port_streams += len(device_pair[direction]['traffic_profile'])
+                       c.add_streams(streams = device_pair[direction]['traffic_profile'], ports = device_pair[direction]['ports']['tx'])
+
+                  if t_global.args.send_garp_measurement and len(device_pair[direction]['garp_measurement_traffic_profile']):
+                       myprint("Adding GARP stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
+                       port_streams += len(device_pair[direction]['garp_measurement_traffic_profile'])
+                       c.add_streams(streams = device_pair[direction]['garp_measurement_traffic_profile'], ports = device_pair[direction]['ports']['tx'])
+
+                  if port_streams:
+                       run_ports.append(device_pair[direction]['ports']['tx'])
+
 
         myprint("DEVICE PAIR INFORMATION:", stderr_only = True)
         myprint(dump_json_readable(device_pairs), stderr_only = True)
@@ -1046,7 +1217,7 @@ def main():
 
         thread_normal_exit = threading.Event()
         thread_early_exit = threading.Event()
-        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, device_pairs, all_ports, unidirec_ports, revunidirec_ports, t_global.args.run_bidirec, t_global.args.run_revunidirec, t_global.args.measure_latency, t_global.args.max_loss_pct, thread_normal_exit, thread_early_exit))
+        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, device_pairs, run_ports, t_global.args.run_bidirec, t_global.args.run_revunidirec, t_global.args.measure_latency, t_global.args.max_loss_pct, thread_normal_exit, thread_early_exit))
 
         # log start of test
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
@@ -1063,14 +1234,8 @@ def main():
                   if device_pair[direction]['active']:
                        myprint("Transmitting at %s%s from port %d to port %d for %d seconds..." % (t_global.args.rate, t_global.args.rate_unit, device_pair[direction]['ports']['tx'], device_pair[direction]['ports']['rx'], t_global.args.runtime))
 
-        # here we multiply the traffic lineaer to whatever given in rate
-        if t_global.args.run_revunidirec:
-             c.start(ports = revunidirec_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
-        else:
-             if t_global.args.run_bidirec:
-                  c.start(ports = all_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
-             else:
-                  c.start(ports = unidirec_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
+        # start the traffic
+        c.start(ports = run_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
 
         if t_global.args.stream_mode == "segmented" and t_global.args.enable_segment_monitor:
              segment_monitor_thread.start()
@@ -1080,33 +1245,15 @@ def main():
 
         try:
              myprint("Waiting...")
-             if t_global.args.run_bidirec:
-                  c.wait_on_traffic(ports = all_ports, timeout = timeout_seconds)
-             else:
-                  if t_global.args.run_revunidirec:
-                       c.wait_on_traffic(ports = revunidirec_ports, timeout = timeout_seconds)
-                  else:
-                       c.wait_on_traffic(ports = unidirec_ports, timeout = timeout_seconds)
+             c.wait_on_traffic(ports = run_ports, timeout = timeout_seconds)
              stop_time = datetime.datetime.now()
         except STLTimeoutError as e:
-             if t_global.args.run_bidirec:
-                  c.stop(ports = all_ports)
-             else:
-                  if t_global.args.run_revunidirec:
-                       c.stop(ports = revunidirec_ports)
-                  else:
-                       c.stop(ports = unidirec_ports)
+             c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
              myprint("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
              timeout = True
         except STLError as e:
-             if t_global.args.run_bidirec:
-                  c.stop(ports = all_ports)
-             else:
-                  if t_global.args.run_revunidirec:
-                       c.stop(ports = revunidirec_ports)
-                  else:
-                       c.stop(ports = unidirec_ports)
+             c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
              myprint("ERROR: wait_on_traffic: STLError: %s" % e)
              force_quit = True
