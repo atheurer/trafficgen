@@ -316,6 +316,16 @@ def process_options ():
                         help='Force disablement of the TRex flow cache',
                         action = 'store_false',
                         )
+    parser.add_argument('--send-garp-warmup',
+                        dest='send_garp_warmup',
+                        help='Send Gratuitous ARPs from the receiving port during a warmup phase',
+                        action = 'store_true',
+                        )
+    parser.add_argument('--send-garp-measurement',
+                        dest='send_garp_measurement',
+                        help='Send Gratuitous ARPs from the receiving port during the measurement phase',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -597,6 +607,10 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --skip-hw-flow-stats'
         if not trial_params['enable_flow_cache']:
              cmd = cmd + ' --disable-flow-cache'
+        if trial_params['send_garp_warmup']:
+             cmd = cmd + ' --send-garp-warmup'
+        if trial_params['seng_garp_measurement']:
+             cmd = cmd + ' --send-garp-measurement'
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -861,7 +875,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                             if not trial_params['use_device_stats']:
                                  stats[device_pair['rx']]['rx_lost_packets'] = stats[device_pair['tx']]['tx_packets'] - stats[device_pair['rx']]['rx_packets']
-                                 stats[device_pair['rx']]['rx_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_lost_packets'] / stats[device_pair['tx']]['tx_packets']
+                                 if stats[device_pair['tx']]['tx_packets']:
+                                      stats[device_pair['rx']]['rx_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_lost_packets'] / stats[device_pair['tx']]['tx_packets']
 
                                  stats[device_pair['tx']]['tx_pps'] = float(stats[device_pair['tx']]['tx_packets']) / float(results['global']['runtime'])
                                  stats[device_pair['rx']]['rx_pps'] = float(stats[device_pair['rx']]['rx_packets']) / float(results['global']['runtime'])
@@ -1022,6 +1037,8 @@ def main():
     config_print("device-pairs", t_global.args.device_pairs)
     config_print('active-device-pairs', t_global.args.active_device_pairs)
     config_print('enable-flow-cache', t_global.args.enable_flow_cache)
+    config_print('send-garp-warmup', t_global.args.send_garp_warmup)
+    config_print('send-garp-measurement', t_global.args.send_garp_measurement)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -1070,6 +1087,8 @@ def main():
     trial_params['device_pairs'] = t_global.args.device_pairs
     trial_params['active_device_pairs'] = t_global.args.active_device_pairs
     trial_params['enable_flow_cache'] = t_global.args.enable_flow_cache
+    trial_params['send_garp_warmup'] = t_global.args.send_garp_warmup
+    trial_params['seng_garp_measurement'] = t_global.args.send_garp_measurement
 
     if t_global.args.traffic_generator == "trex-txrx":
          trial_params['null_stats'] = { 'rx_l1_bps':                   0.0,
