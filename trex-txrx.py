@@ -50,27 +50,34 @@ def calculate_latency_pps (dividend, divisor, total_rate, protocols):
 def create_garp_traffic_profile (direction, other_direction, device_pair, run_time, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows):
      myprint("Creating GARP streams for device pair '%s' direction '%s'" % (device_pair['device_pair'], direction))
 
-     garp_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
-                                   device_pair[direction]['packet_values']['macs']['dst'],
-                                   device_pair[direction]['packet_values']['ips']['dst'],
-                                   device_pair[other_direction]['packet_values']['vlan'])
 
-     device_pair[other_direction]['garp_warmup_traffic_profile'].append(STLStream(packet = garp_packet,
-                                                                                   mode = STLTXSingleBurst(total_pkts = num_flows, pps = 1000)))
+     garp_request_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
+                                           device_pair[direction]['packet_values']['macs']['dst'],
+                                           device_pair[direction]['packet_values']['ips']['dst'],
+                                           device_pair[other_direction]['packet_values']['vlan'],
+                                           0x1)
 
-     device_pair[other_direction]['garp_measurement_traffic_profile'].append(STLStream(packet = garp_packet,
-                                                                           mode = STLTXMultiBurst(pkts_per_burst = num_flows, ibg = 10 * 1000000, count = int(run_time / 10), pps = 20000)))
+     garp_reply_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
+                                         device_pair[direction]['packet_values']['macs']['dst'],
+                                         device_pair[direction]['packet_values']['ips']['dst'],
+                                         device_pair[other_direction]['packet_values']['vlan'],
+                                         0x2)
+
+     warmup_mode = STLTXSingleBurst(total_pkts = num_flows, pps = 1000)
+
+     measurement_mode = STLTXMultiBurst(pkts_per_burst = num_flows, ibg = 10 * 1000000, count = int(run_time / 10), pps = 1000)
+
+     device_pair[other_direction]['garp_warmup_traffic_profile'].append(STLStream(packet = garp_request_packet, mode = warmup_mode))
+     device_pair[other_direction]['garp_warmup_traffic_profile'].append(STLStream(packet = garp_reply_packet, mode = warmup_mode))
+
+     device_pair[other_direction]['garp_measurement_traffic_profile'].append(STLStream(packet = garp_request_packet, mode = measurement_mode))
+     device_pair[other_direction]['garp_measurement_traffic_profile'].append(STLStream(packet = garp_reply_packet, mode = measurement_mode))
 
      return
 
-def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, mac_dst, ip_dst, vlan_id):
-    #arp_mac_target = 'ff:ff:ff:ff:ff:ff'
-    arp_mac_target = '00:00:00:00:00:00'
-
-    request_op = 0x1
-    reply_op = 0x2
-    #arp_op = request_op
-    arp_op = reply_op
+def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, mac_dst, ip_dst, vlan_id, arp_op):
+    arp_mac_target = 'ff:ff:ff:ff:ff:ff'
+    #arp_mac_target = '00:00:00:00:00:00'
 
     ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
 
@@ -94,6 +101,10 @@ def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, 
          vm = vm + [
               STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
+         ]
+         vm = vm + [
+              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
          ]
 
     the_packet = Ether(src = mac_dst, dst = arp_mac_target)
