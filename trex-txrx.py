@@ -48,7 +48,10 @@ def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
 def create_garp_traffic_profile (direction, other_direction, device_pair, run_time, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows):
-     myprint("Creating GARP streams for device pair '%s' direction '%s'" % (device_pair['device_pair'], direction))
+     myprint("Creating GARP streams for device pair '%s' direction '%s' with MAC=%s and IP=%s" % (device_pair['device_pair'],
+                                                                                                  direction,
+                                                                                                  device_pair[direction]['packet_values']['macs']['dst'],
+                                                                                                  device_pair[direction]['packet_values']['ips']['dst']))
 
 
      garp_request_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
@@ -76,8 +79,8 @@ def create_garp_traffic_profile (direction, other_direction, device_pair, run_ti
      return
 
 def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, mac_dst, ip_dst, vlan_id, arp_op):
-    arp_mac_target = 'ff:ff:ff:ff:ff:ff'
-    #arp_mac_target = '00:00:00:00:00:00'
+    arp_mac_target_0 = 'ff:ff:ff:ff:ff:ff'
+    arp_mac_target_1 = '00:00:00:00:00:00'
 
     ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
 
@@ -102,17 +105,17 @@ def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, 
               STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
          ]
-         vm = vm + [
-              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
-         ]
+         #vm = vm + [
+         #     STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+         #     STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
+         #]
 
-    the_packet = Ether(src = mac_dst, dst = arp_mac_target)
+    the_packet = Ether(src = mac_dst, dst = arp_mac_target_1)
 
     if vlan_id is not None:
          the_packet = the_packet/Dot1Q(vlan = vlan_id)
 
-    the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_dst, psrc = str(ip_dst['start']), hwdst = arp_mac_target, pdst = str(ip_dst['start']))
+    the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_dst, psrc = str(ip_dst['start']), hwdst = arp_mac_target_1, pdst = str(ip_dst['start']))
 
     #the_packet.show2()
 
