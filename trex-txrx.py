@@ -471,6 +471,8 @@ def create_pkt (size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows
 
     if vlan_id is not None:
         base = base/Dot1Q(vlan = vlan_id)
+        # with vlan tag, minimum 64 L2 frame size is required, otherwise trex will fail
+        size = max(64, size) 
 
     base = base/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
 

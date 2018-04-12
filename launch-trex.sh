@@ -7,10 +7,11 @@ tmp_dir="/tmp"
 trex_dir="/opt/trex/current"
 use_ht="n"
 use_l2="n"
+use_vlan="n"
 devices=""
 yaml_file=""
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,devices:,yaml-file:" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,yaml-file:" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -31,6 +32,10 @@ if [ $? -ne 0 ]; then
     printf -- "--use-l2=<y|n>\n"
     printf -- "  Should TRex use L2 instead of L3 configuration.\n"
     printf -- "  Default is ${use_l2}\n"
+    printf -- "\n"
+    printf -- "--use-vlan=<y|n>\n"
+    printf -- "  Should TRex use vlan tag or not.\n"
+    printf -- "  Default is ${use_vlan}\n"
     printf -- "\n"
     printf -- "--devices=str\n"
     printf -- "  Comma separated list of PCI devices to use.  Should already be bound to vfio-pci.\n"
@@ -72,6 +77,13 @@ while true; do
 		shift
 	    fi
 	    ;;
+        --use-vlan)
+            shift
+            if [ -n "${1}" ]; then
+                use_vlan=${1}
+                shift
+            fi
+            ;;
 	--devices)
 	    shift
 	    if [ -n "${1}" ]; then
@@ -174,7 +186,12 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
         fi
     done
 
-    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${yaml_file} --iom 0 -v 4"
+    if [ ${use_vlan} == "y" ]; then
+        vlan_opt="--vlan"
+    else
+        vlan_opt=""
+    fi
+    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 ${vlan_opt}"
     echo "about to run: ${trex_server_cmd}"
     echo "trex yaml:"
     echo "-------------------------------------------------------------------"
