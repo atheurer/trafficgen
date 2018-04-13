@@ -293,7 +293,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                          streams[streams_type_value]['traffic_shares'].extend([1.0/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
                          streams[streams_type_value]['self_starts'].extend([self_start])
                          streams[streams_type_value]['stream_modes'].extend(["burst"])
-                         streams[streams_type_value]['run_time'].extend([float(run_time)/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
+                         streams[streams_type_value]['run_time'].extend([float(run_time)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
 
                          counter += 1
 
