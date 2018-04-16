@@ -1,4 +1,4 @@
-# lua-trafficgen
+# trafficgen
 This is a collection of traffic generator scripts for both MoonGen and TRex.  Please see the respective README files depending on your needs.
 
 script | description | README
