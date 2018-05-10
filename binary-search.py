@@ -316,25 +316,31 @@ def process_options ():
                         help='Force disablement of the TRex flow cache',
                         action = 'store_false',
                         )
-    parser.add_argument('--send-garp-warmup',
-                        dest='send_garp_warmup',
-                        help='Send Gratuitous ARPs from the receiving port during a warmup phase',
+    parser.add_argument('--send-teaching-warmup',
+                        dest='send_teaching_warmup',
+                        help='Send teaching packets from the receiving port during a warmup phase',
                         action = 'store_true',
                         )
-    parser.add_argument('--send-garp-measurement',
-                        dest='send_garp_measurement',
-                        help='Send Gratuitous ARPs from the receiving port during the measurement phase',
+    parser.add_argument('--send-teaching-measurement',
+                        dest='send_teaching_measurement',
+                        help='Send teaching packets from the receiving port during the measurement phase',
                         action = 'store_true',
                         )
-    parser.add_argument('--garp-measurement-interval',
-                        dest='garp_measurement_interval',
-                        help='Interval to send Gratuitous ARPs on from the receiving port during the measurement phase in seconds',
+    parser.add_argument('--teaching-measurement-interval',
+                        dest='teaching_measurement_interval',
+                        help='Interval to send teaching packets on from the receiving port during the measurement phase in seconds',
                         default = 10.0,
                         type = float
                         )
-    parser.add_argument('--garp-packet-rate',
-                        dest='garp_packet_rate',
-                        help='Packet rate to send Gratuitous ARPs at from the receiving port in packets per second (pps)',
+    parser.add_argument('--teaching-warmup-packet-rate',
+                        dest='teaching_warmup_packet_rate',
+                        help='Rate to send teaching packets at from the receiving port in packets per second (pps) during the warmup',
+                        default = 1000,
+                        type = int
+                        )
+    parser.add_argument('--teaching-measurement-packet-rate',
+                        dest='teaching_measurement_packet_rate',
+                        help='Rate to send teaching packets at from the receiving port in packets per second (pps) during the measurement phase',
                         default = 1000,
                         type = int
                         )
@@ -619,14 +625,16 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --skip-hw-flow-stats'
         if not trial_params['enable_flow_cache']:
              cmd = cmd + ' --disable-flow-cache'
-        if trial_params['send_garp_warmup']:
-             cmd = cmd + ' --send-garp-warmup'
-        if trial_params['seng_garp_measurement']:
-             cmd = cmd + ' --send-garp-measurement'
-        if trial_params['garp_measurement_interval']:
-             cmd = cmd + ' --garp-measurement-interval=' + str(trial_params['garp_measurement_interval'])
-        if trial_params['garp_packet_rate']:
-             cmd = cmd + ' --garp-packet-rate=' + str(trial_params['garp_packet_rate'])
+        if trial_params['send_teaching_warmup']:
+             cmd = cmd + ' --send-teaching-warmup'
+        if trial_params['seng_teaching_measurement']:
+             cmd = cmd + ' --send-teaching-measurement'
+        if trial_params['teaching_measurement_interval']:
+             cmd = cmd + ' --teaching-measurement-interval=' + str(trial_params['teaching_measurement_interval'])
+        if trial_params['teaching_warmup_packet_rate']:
+             cmd = cmd + ' --teaching-warmup-packet-rate=' + str(trial_params['teaching_warmup_packet_rate'])
+        if trial_params['teaching_measurement_packet_rate']:
+             cmd = cmd + ' --teaching-measurement-packet-rate=' + str(trial_params['teaching_measurement_packet_rate'])
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -1053,10 +1061,11 @@ def main():
     config_print("device-pairs", t_global.args.device_pairs)
     config_print('active-device-pairs', t_global.args.active_device_pairs)
     config_print('enable-flow-cache', t_global.args.enable_flow_cache)
-    config_print('send-garp-warmup', t_global.args.send_garp_warmup)
-    config_print('send-garp-measurement', t_global.args.send_garp_measurement)
-    config_print('garp-measurement-interval', t_global.args.garp_measurement_interval)
-    config_print('garp-packet-rate', t_global.args.garp_packet_rate)
+    config_print('send-teaching-warmup', t_global.args.send_teaching_warmup)
+    config_print('send-teaching-measurement', t_global.args.send_teaching_measurement)
+    config_print('teaching-measurement-interval', t_global.args.teaching_measurement_interval)
+    config_print('teaching-warmup-packet-rate', t_global.args.teaching_warmup_packet_rate)
+    config_print('teaching-measurement-packet-rate', t_global.args.teaching_measurement_packet_rate)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -1105,10 +1114,11 @@ def main():
     trial_params['device_pairs'] = t_global.args.device_pairs
     trial_params['active_device_pairs'] = t_global.args.active_device_pairs
     trial_params['enable_flow_cache'] = t_global.args.enable_flow_cache
-    trial_params['send_garp_warmup'] = t_global.args.send_garp_warmup
-    trial_params['seng_garp_measurement'] = t_global.args.send_garp_measurement
-    trial_params['garp_measurement_interval'] = t_global.args.garp_measurement_interval
-    trial_params['garp_packet_rate'] = t_global.args.garp_packet_rate
+    trial_params['send_teaching_warmup'] = t_global.args.send_teaching_warmup
+    trial_params['seng_teaching_measurement'] = t_global.args.send_teaching_measurement
+    trial_params['teaching_measurement_interval'] = t_global.args.teaching_measurement_interval
+    trial_params['teaching_warmup_packet_rate'] = t_global.args.teaching_warmup_packet_rate
+    trial_params['teaching_measurement_packet_rate'] = t_global.args.teaching_measurement_packet_rate
 
     if t_global.args.traffic_generator == "trex-txrx":
          trial_params['null_stats'] = { 'rx_l1_bps':                   0.0,
