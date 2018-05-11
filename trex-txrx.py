@@ -47,61 +47,59 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_teaching_garp_packets (direction, other_direction, device_pair, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows):
-     garp_request_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
-                                           device_pair[direction]['packet_values']['macs']['dst'],
+def create_teaching_garp_packets (direction, other_direction, device_pair):
+     garp_request_packet = create_garp_pkt(device_pair[direction]['packet_values']['macs']['dst'],
                                            device_pair[direction]['packet_values']['ips']['dst'],
                                            device_pair[other_direction]['packet_values']['vlan'],
                                            0x1)
 
-     garp_reply_packet = create_garp_pkt(enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows,
-                                         device_pair[direction]['packet_values']['macs']['dst'],
+     garp_reply_packet = create_garp_pkt(device_pair[direction]['packet_values']['macs']['dst'],
                                          device_pair[direction]['packet_values']['ips']['dst'],
                                          device_pair[other_direction]['packet_values']['vlan'],
                                          0x2)
 
      return [garp_request_packet, garp_reply_packet]
 
-def create_teaching_warmup_traffic_profile (direction, other_direction, device_pair, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, packet_rate):
+def create_teaching_warmup_traffic_profile (direction, other_direction, device_pair):
      myprint("Creating teaching warmup streams for device pair '%s' direction '%s' with MAC=%s and IP=%s" % (device_pair['device_pair'],
                                                                                                              direction,
                                                                                                              device_pair[direction]['packet_values']['macs']['dst'],
                                                                                                              device_pair[direction]['packet_values']['ips']['dst']))
 
-     teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows)
+     teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
 
-     warmup_mode = STLTXSingleBurst(total_pkts = num_flows, pps = packet_rate)
+     warmup_mode = STLTXSingleBurst(total_pkts = t_global.args.num_flows, pps = t_global.args.teaching_warmup_packet_rate)
 
      for packet in teaching_packets:
           device_pair[other_direction]['teaching_warmup_traffic_profile'].append(STLStream(packet = packet, mode = warmup_mode))
 
      return
 
-def create_teaching_measurement_traffic_profile (direction, other_direction, device_pair, run_time, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, measurement_interval, packet_rate):
+def create_teaching_measurement_traffic_profile (direction, other_direction, device_pair):
      myprint("Creating teaching measurement streams for device pair '%s' direction '%s' with MAC=%s and IP=%s" % (device_pair['device_pair'],
                                                                                                                   direction,
                                                                                                                   device_pair[direction]['packet_values']['macs']['dst'],
                                                                                                                   device_pair[direction]['packet_values']['ips']['dst']))
 
-     teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair, enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows)
+     teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
 
-     burst_length = num_flows / packet_rate
+     burst_length = t_global.args.num_flows / t_global.args.teaching_measurement_packet_rate
 
      # IBG is in usec, so we multiply by 1,000,000 to convert to seconds
-     measurement_mode = STLTXMultiBurst(pkts_per_burst = num_flows, ibg = (measurement_interval * 1000000), count = int(run_time / (measurement_interval + burst_length)), pps = packet_rate)
+     measurement_mode = STLTXMultiBurst(pkts_per_burst = t_global.args.num_flows, ibg = (t_global.args.teaching_measurement_interval * 1000000), count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)), pps = t_global.args.teaching_measurement_packet_rate)
 
      for packet in teaching_packets:
           device_pair[other_direction]['teaching_measurement_traffic_profile'].append(STLStream(packet = packet, mode = measurement_mode))
 
      return
 
-def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, mac_dst, ip_dst, vlan_id, arp_op):
+def create_garp_pkt (mac_dst, ip_dst, vlan_id, arp_op):
     arp_mac_target = 'ff:ff:ff:ff:ff:ff'
 
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
+    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + t_global.args.num_flows }
 
     vm = []
-    if dst_ip_flows and num_flows:
+    if t_global.args.use_dst_ip_flows and t_global.args.num_flows:
          vm = vm + [
               STLVmFlowVar(name = "ip_psrc", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_psrc", pkt_offset = "ARP.psrc")
@@ -111,18 +109,18 @@ def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, 
               STLVmWrFlowVar(fv_name = "ip_pdst", pkt_offset = "ARP.pdst")
          ]
 
-    if dst_mac_flows and num_flows:
+    if t_global.args.use_dst_mac_flows and t_global.args.num_flows:
          vm = vm + [
-              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
               #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
          ]
          vm = vm + [
-              STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
          ]
          vm = vm + [
-              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
          ]
 
@@ -135,17 +133,17 @@ def create_garp_pkt (enable_flow_cache, num_flows, dst_mac_flows, dst_ip_flows, 
 
     #the_packet.show2()
 
-    if num_flows and (dst_ip_flows or dst_mac_flows):
-         if enable_flow_cache:
+    if t_global.args.num_flows and (t_global.args.use_dst_ip_flows or t_global.args.use_dst_mac_flows):
+         if t_global.args.enable_flow_cache:
               vm = STLScVmRaw(list_of_commands = vm,
-                              cache_size = num_flows)
+                              cache_size = t_global.args.num_flows)
 
          return STLPktBuilder(pkt = the_packet,
                               vm  = vm)
     else:
          return STLPktBuilder(pkt = the_packet)
 
-def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed, rate_unit, run_time, stream_mode, measure_latency, latency_rate, frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, protocol_flows, packet_protocol, skip_hw_flow_stats):
+def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed):
      streams = { 'default': { 'protocol': [],
                               'pps': [],
                               'pg_ids': [],
@@ -163,15 +161,15 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
      ethernet_frame_overhead = 18
      bits_per_byte = 8
 
-     protocols = [ packet_protocol ]
-     if protocol_flows:
-          if packet_protocol == "UDP":
+     protocols = [ t_global.args.packet_protocol ]
+     if t_global.args.use_protocol_flows:
+          if t_global.args.packet_protocol == "UDP":
                protocols.append("TCP")
-          elif packet_protocol == "TCP":
+          elif t_global.args.packet_protocol == "TCP":
                protocols.append("UDP")
 
      for protocols_index, protocols_value in enumerate(protocols):
-          if frame_size == "imix" and stream_mode == "continuous":
+          if t_global.args.frame_size == "imix" and t_global.args.stream_mode == "continuous":
                # imix is defined as the following packets (including IP header): 7 of size 40 bytes, 4 of size 576 bytes, and 1 of size 1500 bytes
                # from https://en.wikipedia.org/wiki/Internet_Mix
 
@@ -198,7 +196,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                large_stream_name = "large_stream_" + device_pair[direction]['id_string'] + "_" + protocols_value
 
                streams['default']['protocol'].extend([protocols_value, protocols_value, protocols_value])
-               if rate_unit == "mpps":
+               if t_global.args.rate_unit == "mpps":
                     my_packet_rate = rate_multiplier / len(protocols) * 1000000
                else:
                     my_packet_rate = ((rate_multiplier / 100) / len(protocols)) * (port_speed / bits_per_byte) / (avg_packet_bytes + packet_overhead_bytes)
@@ -210,9 +208,9 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                streams['default']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                streams['default']['self_starts'].extend([True, True, True])
                streams['default']['stream_modes'].extend(["burst", "burst", "burst"])
-               streams['default']['run_time'].extend([float(run_time), float(run_time), float(run_time)])
+               streams['default']['run_time'].extend([float(t_global.args.runtime), float(t_global.args.runtime), float(t_global.args.runtime)])
 
-               if measure_latency:
+               if t_global.args.measure_latency:
                     small_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
                     medium_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + 2 + protocols_index
                     large_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + 4 + protocols_index
@@ -222,7 +220,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                     large_latency_stream_name = "large_latency_stream_" + device_pair[direction]['id_string'] + "_" + protocols_value
 
                     streams['latency']['protocol'].extend([protocols_value, protocols_value, protocols_value])
-                    streams['latency']['pps'].extend([calculate_latency_pps(small_packets, total_packets, latency_rate, len(protocols)), calculate_latency_pps(medium_packets, total_packets, latency_rate, len(protocols)), calculate_latency_pps(large_packets, total_packets, latency_rate, len(protocols))])
+                    streams['latency']['pps'].extend([calculate_latency_pps(small_packets, total_packets, t_global.args.latency_rate, len(protocols)), calculate_latency_pps(medium_packets, total_packets, t_global.args.latency_rate, len(protocols)), calculate_latency_pps(large_packets, total_packets, t_global.args.latency_rate, len(protocols))])
                     streams['latency']['pg_ids'].extend([small_latency_stream_pg_id, medium_latency_stream_pg_id, large_latency_stream_pg_id])
                     streams['latency']['names'].extend([small_latency_stream_name, medium_latency_stream_name, large_latency_stream_name])
                     streams['latency']['next_stream_names'].extend([None, None, None])
@@ -232,45 +230,45 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                     streams['latency']['stream_modes'].extend(["continuous", "continuous", "continuous"])
                     streams['latency']['run_time'].extend([-1, -1, -1])
 
-          elif frame_size == "imix" and stream_mode == "segmented":
+          elif t_global.args.frame_size == "imix" and t_global.args.stream_mode == "segmented":
                print("Support for segmented IMIX needs to be coded...")
-          elif stream_mode == "continuous":
+          elif t_global.args.stream_mode == "continuous":
                default_stream_pg_id = device_pair[direction]['pg_ids']['default']['start_index'] + protocols_index
 
                default_stream_name = "default_stream_" + device_pair[direction]['id_string'] + "_" + protocols_value
 
                streams['default']['protocol'].extend([protocols_value])
-               if rate_unit == "mpps":
+               if t_global.args.rate_unit == "mpps":
                     streams['default']['pps'].extend([rate_multiplier/len(protocols)*1000000])
                else:
-                    streams['default']['pps'].extend([((rate_multiplier/100)/len(protocols)) * (port_speed / bits_per_byte) / (int(frame_size) + packet_overhead_bytes)])
+                    streams['default']['pps'].extend([((rate_multiplier/100)/len(protocols)) * (port_speed / bits_per_byte) / (int(t_global.args.frame_size) + packet_overhead_bytes)])
                streams['default']['pg_ids'].extend([default_stream_pg_id])
                streams['default']['names'].extend([default_stream_name])
                streams['default']['next_stream_names'].extend([None])
-               streams['default']['frame_sizes'].extend([int(frame_size)])
+               streams['default']['frame_sizes'].extend([int(t_global.args.frame_size)])
                streams['default']['traffic_shares'].extend([1.0/len(protocols)])
                streams['default']['self_starts'].extend([True])
                streams['default']['stream_modes'].extend(["burst"])
-               streams['default']['run_time'].extend([float(run_time)])
+               streams['default']['run_time'].extend([float(t_global.args.runtime)])
 
-               if measure_latency:
+               if t_global.args.measure_latency:
                     latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
 
                     latency_stream_name = "latency_stream_" + device_pair[direction]['id_string'] + "_" + protocols_value
 
                     streams['latency']['protocol'].extend([protocols_value])
-                    streams['latency']['pps'].extend([latency_rate/len(protocols)])
+                    streams['latency']['pps'].extend([t_global.args.latency_rate/len(protocols)])
                     streams['latency']['pg_ids'].extend([latency_stream_pg_id])
                     streams['latency']['names'].extend([latency_stream_name])
                     streams['latency']['next_stream_names'].extend([None])
-                    streams['latency']['frame_sizes'].extend([int(frame_size)])
+                    streams['latency']['frame_sizes'].extend([int(t_global.args.frame_size)])
                     streams['latency']['traffic_shares'].extend([1.0/len(protocols)])
                     streams['latency']['self_starts'].extend([True])
                     streams['latency']['stream_modes'].extend(["continuous"])
                     streams['latency']['run_time'].extend([-1])
-          elif stream_mode == "segmented":
+          elif t_global.args.stream_mode == "segmented":
                stream_types = [ "default" ]
-               if measure_latency:
+               if t_global.args.measure_latency:
                     stream_types.append("latency")
 
                for streams_type_index, streams_type_value in enumerate(stream_types):
@@ -296,20 +294,20 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
 
                          streams[streams_type_value]['protocol'].extend([protocols_value])
                          if streams_type_value == "latency":
-                              streams[streams_type_value]['pps'].extend([latency_rate/len(protocols)])
+                              streams[streams_type_value]['pps'].extend([t_global.args.latency_rate/len(protocols)])
                          else:
-                              if rate_unit == "mpps":
+                              if t_global.args.rate_unit == "mpps":
                                    streams[streams_type_value]['pps'].extend([rate_multiplier/len(protocols)*1000000])
                               else:
-                                   streams[streams_type_value]['pps'].extend([((rate_multiplier/100)/len(protocols)) * (port_speed / bits_per_byte) / (int(frame_size) + packet_overhead_bytes)])
+                                   streams[streams_type_value]['pps'].extend([((rate_multiplier/100)/len(protocols)) * (port_speed / bits_per_byte) / (int(t_global.args.frame_size) + packet_overhead_bytes)])
                          streams[streams_type_value]['pg_ids'].extend([current_pg_id])
                          streams[streams_type_value]['names'].extend([stream_name])
                          streams[streams_type_value]['next_stream_names'].extend([next_stream_name])
-                         streams[streams_type_value]['frame_sizes'].extend([int(frame_size)])
+                         streams[streams_type_value]['frame_sizes'].extend([int(t_global.args.frame_size)])
                          streams[streams_type_value]['traffic_shares'].extend([1.0/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
                          streams[streams_type_value]['self_starts'].extend([self_start])
                          streams[streams_type_value]['stream_modes'].extend(["burst"])
-                         streams[streams_type_value]['run_time'].extend([float(run_time)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
+                         streams[streams_type_value]['run_time'].extend([float(t_global.args.runtime)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
 
                          counter += 1
 
@@ -331,7 +329,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                         stream_traffic_share))
 
                stream_flow_stats = None
-               if streams_packet_type == "default" and not skip_hw_flow_stats:
+               if streams_packet_type == "default" and not t_global.args.skip_hw_flow_stats:
                     stream_flow_stats = STLFlowStats(pg_id = stream_pg_id)
                elif streams_packet_type == "latency":
                     stream_flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
@@ -356,7 +354,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
                elif stream_mode == "continuous":
                     stream_mode_obj = STLTXCont(pps = stream_pps)
 
-               stream_packet = create_pkt(stream_frame_size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows,
+               stream_packet = create_pkt(stream_frame_size,
                                           device_pair[direction]['packet_values']['macs']['src'],
                                           device_pair[direction]['packet_values']['macs']['dst'],
                                           device_pair[direction]['packet_values']['ips']['src'],
@@ -406,18 +404,18 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed,
      myprint("DEVICE PAIR %s | PARSABLE STREAMS FOR DIRECTION '%s': %s" % (device_pair['device_pair'], device_pair[direction]['id_string'], dump_json_parsable(streams)), stderr_only = True)
 
 # simple packet creation
-def create_pkt (size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows, src_ip_flows, dst_ip_flows, src_port_flows, dst_port_flows, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
+def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
     # adjust packet size due to CRC
     size = int(size)
     size -= 4
 
     port_range = { "start": 0, "end": 65535 }
-    if num_flows > 1 and (src_port_flows or dst_port_flows):
-         if num_flows < 1000:
-              num_flows_divisor = num_flows
-         elif (num_flows % 1000) == 0:
+    if t_global.args.num_flows > 1 and (t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows):
+         if t_global.args.num_flows < 1000:
+              num_flows_divisor = t_global.args.num_flows
+         elif (t_global.args.num_flows % 1000) == 0:
               num_flows_divisor = 1000
-         elif (num_flows % 1024 == 0):
+         elif (t_global.args.num_flows % 1024 == 0):
               num_flows_divisor = 1024
 
          if (port_src + num_flows_divisor) > port_range["end"]:
@@ -441,43 +439,43 @@ def create_pkt (size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows
          port_src = { "init": port_src }
          port_dst = { "init": port_dst }
 
-    num_flows -= 1
+    tmp_num_flows = t_global.args.num_flows - 1
 
-    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
+    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + tmp_num_flows }
+    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + tmp_num_flows }
 
     vm = []
-    if src_ip_flows and num_flows:
+    if t_global.args.use_src_ip_flows and tmp_num_flows:
         vm = vm + [
             STLVmFlowVar(name="ip_src",min_value=ip_src['start'],max_value=ip_src['end'],size=4,op="inc"),
             STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src")
         ]
 
-    if dst_ip_flows and num_flows:
+    if t_global.args.use_dst_ip_flows and tmp_num_flows:
         vm = vm + [
             STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
             STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst")
         ]
 
-    if src_mac_flows and num_flows:
+    if t_global.args.use_src_mac_flows and tmp_num_flows:
         vm = vm + [
-            STLVmFlowVar(name="mac_src",min_value=0,max_value=num_flows,size=4,op="inc"),
+            STLVmFlowVar(name="mac_src",min_value=0,max_value=tmp_num_flows,size=4,op="inc"),
             STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7)
         ]
 
-    if dst_mac_flows and num_flows:
+    if t_global.args.use_dst_mac_flows and tmp_num_flows:
         vm = vm + [
-            STLVmFlowVar(name="mac_dst",min_value=0,max_value=num_flows,size=4,op="inc"),
+            STLVmFlowVar(name="mac_dst",min_value=0,max_value=tmp_num_flows,size=4,op="inc"),
             STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1)
         ]
 
-    if src_port_flows and num_flows:
+    if t_global.args.use_src_port_flows and tmp_num_flows:
         vm = vm + [
             STLVmFlowVar(name = "port_src", init_value = port_src['init'], min_value = port_src['start'], max_value = port_src['end'], size = 2, op = "inc"),
             STLVmWrFlowVar(fv_name = "port_src", pkt_offset = packet_protocol + ".sport"),
         ]
 
-    if dst_port_flows and num_flows:
+    if t_global.args.use_dst_port_flows and tmp_num_flows:
         vm = vm + [
             STLVmFlowVar(name = "port_dst", init_value = port_dst['init'], min_value = port_dst['start'], max_value = port_dst['end'], size = 2, op = "inc"),
             STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = packet_protocol + ".dport"),
@@ -501,15 +499,15 @@ def create_pkt (size, enable_flow_cache, num_flows, src_mac_flows, dst_mac_flows
     the_packet = base/pad
     #the_packet.show2()
 
-    if num_flows and (src_ip_flows or dst_ip_flows or src_mac_flows or dst_mac_flows or src_port_flows or dst_port_flows):
+    if tmp_num_flows and (t_global.args.use_src_ip_flows or t_global.args.use_dst_ip_flows or t_global.args.src_mac_flows or t_global.args.use_dst_mac_flows or t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows):
          if packet_protocol == "UDP":
               vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="UDP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_UDP)]
          elif packet_protocol == "TCP":
               vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="TCP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_TCP)]
 
-         if enable_flow_cache:
+         if t_global.args.enable_flow_cache:
               vm = STLScVmRaw(list_of_commands = vm,
-                              cache_size = num_flows)
+                              cache_size = tmp_num_flows)
 
          return STLPktBuilder(pkt = the_packet,
                               vm  = vm)
@@ -780,7 +778,7 @@ def process_options ():
               myprint("NOTE: User disablement of flow caching will cause higher resource requirements.")
     myprint(t_global.args)
 
-def segment_monitor(connection, device_pairs, run_ports, bidirec, revunidirec, measure_latency, max_loss_pct, normal_exit_event, early_exit_event):
+def segment_monitor(connection, device_pairs, run_ports, max_loss_pct, normal_exit_event, early_exit_event):
     try:
          myprint("Segment Monitor: Running")
 
@@ -790,7 +788,7 @@ def segment_monitor(connection, device_pairs, run_ports, bidirec, revunidirec, m
                    if device_pair[direction]['active']:
                         device_pair[direction]['pg_ids']['default']['current_index'] = 2
 
-                        if measure_latency:
+                        if t_global.args.measure_latency:
                              device_pair[direction]['pg_ids']['latency']['current_index'] = 2
 
          analyzed_pg_ids = dict()
@@ -813,7 +811,7 @@ def segment_monitor(connection, device_pairs, run_ports, bidirec, revunidirec, m
                                   pg_id_details[str(device_pair[direction]['pg_ids']['default']['list'][device_pair[direction]['pg_ids']['default']['current_index']])]['direction'] = direction
                                   pg_id_details[str(device_pair[direction]['pg_ids']['default']['list'][device_pair[direction]['pg_ids']['default']['current_index']])]['type'] = 'default'
 
-                             if measure_latency and device_pair[direction]['pg_ids']['latency']['current_index'] <= (len(device_pair[direction]['pg_ids']['latency']['list']) - 1):
+                             if t_global.args.measure_latency and device_pair[direction]['pg_ids']['latency']['current_index'] <= (len(device_pair[direction]['pg_ids']['latency']['list']) - 1):
                                   #myprint("Found latency candidate %d for '%s'" % (device_pair['a']['pg_ids']['latency']['list'][device_pair['a']['pg_ids']['latency']['current_index']], direction))
                                   pg_id_list.append(device_pair[direction]['pg_ids']['latency']['list'][device_pair[direction]['pg_ids']['latency']['current_index']])
                                   pg_id_details[str(device_pair[direction]['pg_ids']['latency']['list'][device_pair[direction]['pg_ids']['latency']['current_index']])] = dict()
@@ -840,7 +838,7 @@ def segment_monitor(connection, device_pairs, run_ports, bidirec, revunidirec, m
                                   analyzed_pg_ids[str(pg_id)] = True
                                   loss_ratio = 100.0 * (1.0 - float(pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']) / float(pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total']))
                                   #myprint("Analyzing pg_id=%d with rx_pkts=%d, tx_pkts=%d, and loss_ratio=%f" % (pg_id,float(pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']), float(pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total']), loss_ratio))
-                                  if loss_ratio > max_loss_pct:
+                                  if loss_ratio > t_global.args.max_loss_pct:
                                        normal_exit_event.set()
                                        early_exit_event.set()
                                        myprint("Segment Monitor: device pair %s with pg_id=%d (direction=%s/type=%s) failed max loss percentage requirement: %f%% > %f%% (TX:%d/RX:%d)" %
@@ -850,7 +848,7 @@ def segment_monitor(connection, device_pairs, run_ports, bidirec, revunidirec, m
                                                     pg_id_to_analyze[str(pg_id)]["direction"],
                                                     pg_id_to_analyze[str(pg_id)]["type"],
                                                     loss_ratio,
-                                                    max_loss_pct,
+                                                    t_global.args.max_loss_pct,
                                                     pg_id_stats['flow_stats'][pg_id]['tx_pkts']['total'],
                                                     pg_id_stats['flow_stats'][pg_id]['rx_pkts']['total']
                                                )
@@ -1157,30 +1155,30 @@ def main():
 
         for device_pair in device_pairs:
              if t_global.args.run_revunidirec:
-                  create_traffic_profile("<-", device_pair, rate_multiplier, (port_info[device_pair['<-']['ports']['tx']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                  create_traffic_profile("<-", device_pair, rate_multiplier, (port_info[device_pair['<-']['ports']['tx']]['speed'] * 1000 * 1000 * 1000))
 
                   if t_global.args.send_teaching_warmup:
-                       create_teaching_warmup_traffic_profile("<-", "->", device_pair, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.teaching_warmup_packet_rate)
+                       create_teaching_warmup_traffic_profile("<-", "->", device_pair)
 
                   if t_global.args.send_teaching_measurement:
-                       create_teaching_measurement_traffic_profile("<-", "->", device_pair, t_global.args.runtime, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.teaching_measurement_interval, t_global.args.teaching_measurement_packet_rate)
+                       create_teaching_measurement_traffic_profile("<-", "->", device_pair)
              else:
-                  create_traffic_profile("->", device_pair, rate_multiplier, (port_info[device_pair['->']['ports']['tx']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                  create_traffic_profile("->", device_pair, rate_multiplier, (port_info[device_pair['->']['ports']['tx']]['speed'] * 1000 * 1000 * 1000))
 
                   if t_global.args.send_teaching_warmup:
-                       create_teaching_warmup_traffic_profile("->", "<-", device_pair, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.teaching_warmup_packet_rate)
+                       create_teaching_warmup_traffic_profile("->", "<-", device_pair)
 
                   if t_global.args.send_teaching_measurement:
-                       create_teaching_measurement_traffic_profile("->", "<-", device_pair, t_global.args.runtime, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.teaching_measurement_interval, t_global.args.teaching_measurement_packet_rate)
+                       create_teaching_measurement_traffic_profile("->", "<-", device_pair)
 
                   if t_global.args.run_bidirec:
-                       create_traffic_profile("<-", device_pair, rate_multiplier, (port_info[device_pair['<-']['ports']['tx']]['speed'] * 1000 * 1000 * 1000), t_global.args.rate_unit, t_global.args.runtime, t_global.args.stream_mode, t_global.args.measure_latency, t_global.args.latency_rate, t_global.args.frame_size, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_src_mac_flows, t_global.args.use_dst_mac_flows, t_global.args.use_src_ip_flows, t_global.args.use_dst_ip_flows, t_global.args.use_src_port_flows, t_global.args.use_dst_port_flows, t_global.args.use_protocol_flows, t_global.args.packet_protocol, t_global.args.skip_hw_flow_stats)
+                       create_traffic_profile("<-", device_pair, rate_multiplier, (port_info[device_pair['<-']['ports']['tx']]['speed'] * 1000 * 1000 * 1000))
 
                        if t_global.args.send_teaching_warmup:
-                            create_teaching_warmup_traffic_profile("<-", "->", device_pair, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.teaching_warmup_packet_rate)
+                            create_teaching_warmup_traffic_profile("<-", "->", device_pair)
 
                        if t_global.args.send_teaching_measurement:
-                            create_teaching_measurement_traffic_profile("<-", "->", device_pair, t_global.args.runtime, t_global.args.enable_flow_cache, t_global.args.num_flows, t_global.args.use_dst_mac_flows, t_global.args.use_dst_ip_flows, t_global.args.teaching_measurement_interval, t_global.args.teaching_measurement_packet_rate)
+                            create_teaching_measurement_traffic_profile("<-", "->", device_pair)
 
         if t_global.args.send_teaching_warmup:
              for device_pair in device_pairs:
@@ -1256,7 +1254,7 @@ def main():
 
         thread_normal_exit = threading.Event()
         thread_early_exit = threading.Event()
-        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, device_pairs, run_ports, t_global.args.run_bidirec, t_global.args.run_revunidirec, t_global.args.measure_latency, t_global.args.max_loss_pct, thread_normal_exit, thread_early_exit))
+        segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, device_pairs, run_ports, thread_normal_exit, thread_early_exit))
 
         # log start of test
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
