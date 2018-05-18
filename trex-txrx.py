@@ -60,13 +60,36 @@ def create_teaching_garp_packets (direction, other_direction, device_pair):
 
      return [garp_request_packet, garp_reply_packet]
 
-def create_teaching_warmup_traffic_profile (direction, other_direction, device_pair):
-     myprint("Creating teaching warmup streams for device pair '%s' direction '%s' with MAC=%s and IP=%s" % (device_pair['device_pair'],
-                                                                                                             direction,
-                                                                                                             device_pair[direction]['packet_values']['macs']['dst'],
-                                                                                                             device_pair[direction]['packet_values']['ips']['dst']))
+def create_teaching_icmp_packets (direction, other_direction, device_pair):
+     return [ create_icmp_bcast_pkt(device_pair[direction]['packet_values']['macs']['dst'],
+                                    device_pair[direction]['packet_values']['ips']['dst'],
+                                    device_pair[other_direction]['packet_values']['vlan']) ]
 
-     teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
+def create_teaching_bulk_packets (direction, other_direction, device_pair):
+     return [ create_pkt(64,
+                         device_pair[direction]['packet_values']['macs']['dst'],
+                         device_pair[direction]['packet_values']['macs']['src'],
+                         device_pair[direction]['packet_values']['ips']['dst'],
+                         device_pair[direction]['packet_values']['ips']['src'],
+                         device_pair[direction]['packet_values']['ports']['dst'],
+                         device_pair[direction]['packet_values']['ports']['src'],
+                         "UDP",
+                         device_pair[other_direction]['packet_values']['vlan']) ]
+
+def create_teaching_warmup_traffic_profile (direction, other_direction, device_pair):
+     myprint("Creating teaching warmup streams for device pair '%s' direction '%s' with TYPE=%s and MAC=%s and IP=%s" % (device_pair['device_pair'],
+                                                                                                                     direction,
+                                                                                                                     t_global.args.teaching_warmup_packet_type,
+                                                                                                                     device_pair[direction]['packet_values']['macs']['dst'],
+                                                                                                                     device_pair[direction]['packet_values']['ips']['dst']))
+
+     teaching_packets = []
+     if t_global.args.teaching_warmup_packet_type == "garp":
+          teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
+     elif t_global.args.teaching_warmup_packet_type == "bulk":
+          teaching_packets = create_teaching_bulk_packets(direction, other_direction, device_pair)
+     if t_global.args.teaching_warmup_packet_type == "icmp":
+          teaching_packets = create_teaching_icmp_packets(direction, other_direction, device_pair)
 
      warmup_mode = STLTXSingleBurst(total_pkts = t_global.args.num_flows, pps = t_global.args.teaching_warmup_packet_rate)
 
@@ -76,12 +99,19 @@ def create_teaching_warmup_traffic_profile (direction, other_direction, device_p
      return
 
 def create_teaching_measurement_traffic_profile (direction, other_direction, device_pair):
-     myprint("Creating teaching measurement streams for device pair '%s' direction '%s' with MAC=%s and IP=%s" % (device_pair['device_pair'],
-                                                                                                                  direction,
-                                                                                                                  device_pair[direction]['packet_values']['macs']['dst'],
-                                                                                                                  device_pair[direction]['packet_values']['ips']['dst']))
+     myprint("Creating teaching measurement streams for device pair '%s' direction '%s' with TYPE=%s and MAC=%s and IP=%s" % (device_pair['device_pair'],
+                                                                                                                              direction,
+                                                                                                                              t_global.args.teaching_measurement_packet_type,
+                                                                                                                              device_pair[direction]['packet_values']['macs']['dst'],
+                                                                                                                              device_pair[direction]['packet_values']['ips']['dst']))
 
-     teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
+     teaching_packets = []
+     if t_global.args.teaching_warmup_packet_type == "garp":
+          teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
+     elif t_global.args.teaching_warmup_packet_type == "bulk":
+          teaching_packets = []
+     if t_global.args.teaching_warmup_packet_type == "icmp":
+          teaching_packets = [ create_icmp_bcast_pkt() ]
 
      burst_length = t_global.args.num_flows / t_global.args.teaching_measurement_packet_rate
 
@@ -92,6 +122,49 @@ def create_teaching_measurement_traffic_profile (direction, other_direction, dev
           device_pair[other_direction]['teaching_measurement_traffic_profile'].append(STLStream(packet = packet, mode = measurement_mode))
 
      return
+
+def create_icmp_bcast_pkt (mac_dst, ip_dst, vlan_id):
+    mac_target = 'ff:ff:ff:ff:ff:ff'
+
+    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + t_global.args.num_flows }
+
+    vm = []
+    if t_global.args.use_dst_ip_flows and t_global.args.num_flows:
+         vm = vm + [
+              STLVmFlowVar(name = "ip_src", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ip_src", pkt_offset = "IP.src")
+         ]
+
+    if t_global.args.use_dst_mac_flows and t_global.args.num_flows:
+         vm = vm + [
+              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
+              #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
+         ]
+
+    the_packet = Ether(src = mac_dst, dst = mac_target)
+
+    if vlan_id is not None:
+         the_packet = the_packet/Dot1Q(vlan = vlan_id)
+
+    the_packet = the_packet/IP(src = str(ip_dst['start']), dst = str(ip_to_int('255.255.255.255')))/ICMP(type = 8, code = 0, id = 0, seq = 0)
+
+    pad = max(0, 64 - len(the_packet)) * 'x'
+    the_packet = the_packet/pad
+
+    #the_packet.show2()
+
+    if t_global.args.num_flows and (t_global.args.use_dst_ip_flows or t_global.args.use_dst_mac_flows):
+         vm = vm + [STLVmFixIpv4(offset = "IP")]
+
+         if t_global.args.enable_flow_cache:
+              vm = STLScVmRaw(list_of_commands = vm,
+                              cache_size = t_global.args.num_flows)
+
+         return STLPktBuilder(pkt = the_packet,
+                              vm  = vm)
+    else:
+         return STLPktBuilder(pkt = the_packet)
 
 def create_garp_pkt (mac_dst, ip_dst, vlan_id, arp_op):
     arp_mac_target = 'ff:ff:ff:ff:ff:ff'
@@ -763,6 +836,18 @@ def process_options ():
                         help='Rate to send teaching packets at from the receiving port in packets per second (pps) during the measurement phase',
                         default = 1000,
                         type = int
+                        )
+    parser.add_argument('--teaching-warmup-packet-type',
+                        dest='teaching_warmup_packet_type',
+                        help='Type of packet to send for the teaching warmup from the receiving port',
+                        default = 'garp',
+                        choices = ['garp', 'icmp', 'bulk']
+                        )
+    parser.add_argument('--teaching-measurement-packet-type',
+                        dest='teaching_measurement_packet_type',
+                        help='Type of packet to send for the teaching measurement from the receiving port',
+                        default = 'garp',
+                        choices = ['garp', 'icmp', 'bulk']
                         )
 
     t_global.args = parser.parse_args();
