@@ -344,6 +344,18 @@ def process_options ():
                         default = 1000,
                         type = int
                         )
+    parser.add_argument('--teaching-warmup-packet-type',
+                        dest='teaching_warmup_packet_type',
+                        help='Type of packet to send for the teaching warmup from the receiving port',
+                        default = '',
+                        choices = ['garp', 'icmp', 'bulk']
+                        )
+    parser.add_argument('--teaching-measurement-packet-type',
+                        dest='teaching_measurement_packet_type',
+                        help='Type of packet to send for the teaching measurement from the receiving port',
+                        default = '',
+                        choices = ['garp', 'icmp', 'bulk']
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -635,6 +647,10 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --teaching-warmup-packet-rate=' + str(trial_params['teaching_warmup_packet_rate'])
         if trial_params['teaching_measurement_packet_rate']:
              cmd = cmd + ' --teaching-measurement-packet-rate=' + str(trial_params['teaching_measurement_packet_rate'])
+        if trial_params['teaching_warmup_packet_type']:
+             cmd = cmd + ' --teaching-warmup-packet-type=' + str(trial_params['teaching_warmup_packet_type'])
+        if trial_params['teaching_measurement_packet_type']:
+             cmd = cmd + ' --teaching-measurement-packet-type=' + str(trial_params['teaching_measurement_packet_type'])
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -1066,6 +1082,8 @@ def main():
     config_print('teaching-measurement-interval', t_global.args.teaching_measurement_interval)
     config_print('teaching-warmup-packet-rate', t_global.args.teaching_warmup_packet_rate)
     config_print('teaching-measurement-packet-rate', t_global.args.teaching_measurement_packet_rate)
+    config_print('teaching-warmup-packet-type', t_global.args.teaching_warmup_packet_type)
+    config_print('teaching-measurement-packet-type', t_global.args.teaching_measurement_packet_type)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -1119,6 +1137,8 @@ def main():
     trial_params['teaching_measurement_interval'] = t_global.args.teaching_measurement_interval
     trial_params['teaching_warmup_packet_rate'] = t_global.args.teaching_warmup_packet_rate
     trial_params['teaching_measurement_packet_rate'] = t_global.args.teaching_measurement_packet_rate
+    trial_params['teaching_warmup_packet_type'] = t_global.args.teaching_warmup_packet_type
+    trial_params['teaching_measurement_packet_type'] = t_global.args.teaching_measurement_packet_type
 
     if t_global.args.traffic_generator == "trex-txrx":
          trial_params['null_stats'] = { 'rx_l1_bps':                   0.0,
