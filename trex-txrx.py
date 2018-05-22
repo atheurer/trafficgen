@@ -106,12 +106,12 @@ def create_teaching_measurement_traffic_profile (direction, other_direction, dev
                                                                                                                               device_pair[direction]['packet_values']['ips']['dst']))
 
      teaching_packets = []
-     if t_global.args.teaching_warmup_packet_type == "garp":
+     if t_global.args.teaching_measurement_packet_type == "garp":
           teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
-     elif t_global.args.teaching_warmup_packet_type == "bulk":
-          teaching_packets = []
-     if t_global.args.teaching_warmup_packet_type == "icmp":
-          teaching_packets = [ create_icmp_bcast_pkt() ]
+     elif t_global.args.teaching_measurement_packet_type == "bulk":
+          teaching_packets = create_teaching_bulk_packets(direction, other_direction, device_pair)
+     if t_global.args.teaching_measurement_packet_type == "icmp":
+          teaching_packets = create_teaching_icmp_packets(direction, other_direction, device_pair)
 
      burst_length = t_global.args.num_flows / t_global.args.teaching_measurement_packet_rate
 
