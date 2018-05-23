@@ -135,7 +135,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
      bits_per_byte = 8
 
      protocols = [ t_global.args.packet_protocol ]
-     if t_global.args.use_protocol_flows:
+     if t_global.args.flow_mods['protocol']:
           if t_global.args.packet_protocol == "UDP":
                protocols.append("TCP")
           elif t_global.args.packet_protocol == "TCP":
@@ -657,7 +657,8 @@ def process_options ():
                                                      use_src_ip_flows   = t_global.args.use_src_ip_flows,
                                                      use_dst_ip_flows   = t_global.args.use_dst_ip_flows,
                                                      use_src_port_flows = t_global.args.use_src_port_flows,
-                                                     use_dst_port_flows = t_global.args.use_dst_port_flows)
+                                                     use_dst_port_flows = t_global.args.use_dst_port_flows,
+                                                     use_protocol_flows = t_global.args.use_protocol_flows)
     myprint(t_global.args)
 
 def segment_monitor(connection, device_pairs, run_ports, max_loss_pct, normal_exit_event, early_exit_event):
@@ -909,7 +910,7 @@ def main():
         if port_speed_verification_fail:
              raise RuntimeError("Failed port speed verification")
 
-        if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
+        if t_global.args.flow_mods['port']['src'] or t_global.args.flow_mods['port']['dst']:
              if t_global.args.num_flows >= 1000:
                   if ((t_global.args.num_flows % 1000) != 0) and ((t_global.args.num_flows % 1024) != 0):
                        raise ValueError("when source of destination port flows are enabled the number of flows must be divisible by 1000 or 1024")

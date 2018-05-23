@@ -232,11 +232,13 @@ def create_flow_mod_object (use_src_mac_flows = False,
                             use_src_ip_flows = False,
                             use_dst_ip_flows = False,
                             use_src_port_flows = False,
-                            use_dst_port_flows = False):
-    obj = { 'mac'  : { 'src' : use_src_mac_flows,
-                       'dst' : use_dst_mac_flows },
-            'ip'   : { 'src' : use_src_ip_flows,
-                       'dst' : use_dst_ip_flows },
-            'port' : { 'src' : use_src_port_flows,
-                       'dst' : use_dst_port_flows } }
+                            use_dst_port_flows = False,
+                            use_protocol_flows = False):
+    obj = { 'mac'      : { 'src' : use_src_mac_flows,
+                           'dst' : use_dst_mac_flows },
+            'ip'       : { 'src' : use_src_ip_flows,
+                           'dst' : use_dst_ip_flows },
+            'port'     : { 'src' : use_src_port_flows,
+                           'dst' : use_dst_port_flows },
+            'protocol' : use_protocol_flows }
     return obj
