@@ -384,6 +384,11 @@ def process_options ():
     generate network traffic and report packet loss
     """);
 
+    parser.add_argument('--debug',
+                        dest='debug',
+                        help='Should debugging be enabled',
+                        action = 'store_true'
+                        )
     parser.add_argument('--mirrored-log',
                         dest='mirrored_log',
                         help='Should the logging sent to STDOUT be mirrored on STDERR',
@@ -854,8 +859,9 @@ def main():
     myprint("Active TX Ports: %d" % active_ports)
 
     try:
-        # turn this on for some information
-        #c.set_verbose("high")
+        if t_global.args.debug:
+             # turn this on for some information
+             c.set_verbose("high")
 
         # connect to server
         myprint("Establishing connection to TRex server...")
