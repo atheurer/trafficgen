@@ -122,6 +122,8 @@ def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, pack
     size = int(size)
     size -= 4
 
+    print("flow_mods = %s" % (flow_mods))
+
     port_range = { "start": 0, "end": 65535 }
     if num_flows > 1 and (flow_mods['port']['src'] or flow_mods['port']['dst']):
          if num_flows < 1000:
@@ -151,6 +153,9 @@ def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, pack
     else:
          port_src = { "init": port_src }
          port_dst = { "init": port_dst }
+
+    print("src: %s" % port_src)
+    print("dst: %s" % port_dst)
 
     tmp_num_flows = num_flows - 1
 
@@ -183,15 +188,19 @@ def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, pack
         ]
 
     if flow_mods['port']['src'] and tmp_num_flows:
+        offset = "%s.sport" % (packet_protocol)
+        print("offset=%s" % (offset))
         vm = vm + [
             STLVmFlowVar(name = "port_src", init_value = port_src['init'], min_value = port_src['start'], max_value = port_src['end'], size = 2, op = "inc"),
-            STLVmWrFlowVar(fv_name = "port_src", pkt_offset = packet_protocol + ".sport"),
+            STLVmWrFlowVar(fv_name = "port_src", pkt_offset = offset)
         ]
 
     if flow_mods['port']['dst'] and tmp_num_flows:
+        offset = "%s.dport" % (packet_protocol)
+        print("offset=%s" % (offset))
         vm = vm + [
             STLVmFlowVar(name = "port_dst", init_value = port_dst['init'], min_value = port_dst['start'], max_value = port_dst['end'], size = 2, op = "inc"),
-            STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = packet_protocol + ".dport"),
+            STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = offset)
         ]
 
     base = Ether(src = mac_src, dst = mac_dst)
@@ -210,7 +219,8 @@ def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, pack
     pad = max(0, size-len(base)) * 'x'
 
     the_packet = base/pad
-    #the_packet.show2()
+    the_packet.show2()
+    print("")
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
          if packet_protocol == "UDP":
