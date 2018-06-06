@@ -2,16 +2,28 @@
     "streams": [
 	{
 	    "flows": 100,
-	    "frame_size": 64,
+	    "frame_size": 58,
 	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
-	    "rate": 1000000,
-	    "frame_type": "bulk"
+	    "rate": 3500000,
+	    "frame_type": "bulk",
+	    "stream_types": [
+		"measurement",
+		"teaching_warmup",
+		"teaching_measurement"
+	    ]
 	},
 	{
 	    "flows": 100,
-	    "frame_size": 128,
+	    "frame_size": 594,
 	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
-	    "rate": 1000000
+	    "rate": 2000000
+	},
+	{
+	    "flows": 100,
+	    "frame_size": 1518,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
+	    "rate": 500000,
+	    "protocol": "TCP"
 	}
     ],
     "streams_documentation": [
@@ -21,8 +33,8 @@
 	"flow_mods: <required, flow mod object ie. \"function:create_flow_mod_object(<flows to use>)\">,",
 	"rate: <required, frame rate in Mpps>,",
 	"frame_type: <optional, type of frames to send, defaults to 'bulk', options are: ['bulk', 'icmp', 'garp']>,",
-	"stream_type: <optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement']>",
-	"latency: <optional, should latency frames be sent for this stream, defaults to True, options are: [True, False]>,",
+	"stream_types: <optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement']>",
+	"latency: <optional, should latency frames be sent for this stream (latency frames only apply to measurement streams), defaults to True, options are: [True, False]>,",
 	"latency_only: <optional, should this stream only be latency frames, defaults to False, options are: [True, False]>,",
 	"protocol: <optional, what protocol is used for this stream, defaults to UDP, options are: ['UDP', 'TCP']>",
 	"}"

@@ -193,71 +193,112 @@ def create_stream (stream, device_pair, direction, other_direction):
     elif latency:
         stream_modes.append('latency')
 
-    for stream_mode in stream_modes:
-        stream_packet = None
-        flow_stats = None
-        stream_pg_id = None
-        stream_control = None
+    stream_packet = None
+    flow_stats = None
+    stream_pg_id = None
 
-        if frame_type == 'bulk':
-            stream_packet = create_pkt(stream['frame_size'],
-                                       device_pair[direction]['packet_values']['macs']['src'],
-                                       device_pair[direction]['packet_values']['macs']['dst'],
-                                       device_pair[direction]['packet_values']['ips']['src'],
-                                       device_pair[direction]['packet_values']['ips']['dst'],
-                                       device_pair[direction]['packet_values']['ports']['src'],
-                                       device_pair[direction]['packet_values']['ports']['dst'],
-                                       protocol,
-                                       device_pair[direction]['packet_values']['vlan'],
-                                       stream['flow_mods'],
-                                       stream['flows'],
-                                       t_global.args.enable_flow_cache)
-        else:
-            raise ValueError("Invalid frame_type: %s" % (frame_type))
+    if frame_type == 'bulk':
+         stream_packet = create_pkt(stream['frame_size'],
+                                    device_pair[direction]['packet_values']['macs']['src'],
+                                    device_pair[direction]['packet_values']['macs']['dst'],
+                                    device_pair[direction]['packet_values']['ips']['src'],
+                                    device_pair[direction]['packet_values']['ips']['dst'],
+                                    device_pair[direction]['packet_values']['ports']['src'],
+                                    device_pair[direction]['packet_values']['ports']['dst'],
+                                    protocol,
+                                    device_pair[direction]['packet_values']['vlan'],
+                                    stream['flow_mods'],
+                                    stream['flows'],
+                                    t_global.args.enable_flow_cache)
+    else:
+         raise ValueError("Invalid frame_type: %s" % (frame_type))
 
-        stream_pg_id = device_pair[direction]['pg_ids'][stream_mode]['start_index'] + (device_pair[direction]['pg_ids'][stream_mode]['total'] - device_pair[direction]['pg_ids'][stream_mode]['available'])
-        device_pair[direction]['pg_ids'][stream_mode]['available'] -= 1
-        if stream_mode == 'default':
-            flow_stats = STLFlowStats(pg_id = stream_pg_id)
-        elif stream_mode == 'latency':
-            flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
+    stream_rate = stream['rate']
 
-        stream_rate = stream['rate']
-        if 'latency' in stream_modes and stream_mode == 'default':
-            stream_rate -= t_global.args.latency_rate
-        elif stream_mode == 'latency':
-            stream_rate = t_global.args.latency_rate
+    for stream_type in stream_types:
+         if stream_type == 'measurement':
+              for stream_mode in stream_modes:
+                   if 'latency' in stream_modes and stream_mode == 'default':
+                        stream_rate -= t_global.args.latency_rate
+                   elif stream_mode == 'latency':
+                        stream_rate = t_global.args.latency_rate
 
-        stream_total_pkts = int(stream_rate * t_global.args.runtime)
-        stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = stream_total_pkts)
+                   stream_pg_id = device_pair[direction]['pg_ids'][stream_mode]['start_index'] + (device_pair[direction]['pg_ids'][stream_mode]['total'] - device_pair[direction]['pg_ids'][stream_mode]['available'])
+                   device_pair[direction]['pg_ids'][stream_mode]['available'] -= 1
+                   stream_name = "%s-stream-%d" % (stream_type, stream_pg_id)
+                   if stream_mode == 'default':
+                        flow_stats = STLFlowStats(pg_id = stream_pg_id)
+                   elif stream_mode == 'latency':
+                        flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
 
-        for stream_type in stream_types:
-            stream_name = "%s-stream-%d" % (stream_type, stream_pg_id)
+                   stream_total_pkts = int(stream_rate * t_global.args.runtime)
+                   stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = stream_total_pkts)
 
-            if stream_type == 'measurement':
-                device_pair[direction]['traffic_profile'][stream_mode]['protocol'].append(protocol)
-                device_pair[direction]['traffic_profile'][stream_mode]['pps'].append(stream_rate)
-                device_pair[direction]['traffic_profile'][stream_mode]['pg_ids'].append(stream_pg_id)
-                device_pair[direction]['traffic_profile'][stream_mode]['names'].append(stream_name)
-                device_pair[direction]['traffic_profile'][stream_mode]['next_stream_names'].append(None)
-                device_pair[direction]['traffic_profile'][stream_mode]['frame_sizes'].append(stream['frame_size'])
-                device_pair[direction]['traffic_profile'][stream_mode]['traffic_shares'].append(1.0)
-                device_pair[direction]['traffic_profile'][stream_mode]['self_starts'].append(True)
-                device_pair[direction]['traffic_profile'][stream_mode]['run_time'].append(t_global.args.runtime)
-                device_pair[direction]['traffic_profile'][stream_mode]['stream_modes'].append('burst')
+                   device_pair[direction]['traffic_profile'][stream_mode]['protocol'].append(protocol)
+                   device_pair[direction]['traffic_profile'][stream_mode]['pps'].append(stream_rate)
+                   device_pair[direction]['traffic_profile'][stream_mode]['pg_ids'].append(stream_pg_id)
+                   device_pair[direction]['traffic_profile'][stream_mode]['names'].append(stream_name)
+                   device_pair[direction]['traffic_profile'][stream_mode]['next_stream_names'].append(None)
+                   device_pair[direction]['traffic_profile'][stream_mode]['frame_sizes'].append(stream['frame_size'])
+                   device_pair[direction]['traffic_profile'][stream_mode]['traffic_shares'].append(1.0)
+                   device_pair[direction]['traffic_profile'][stream_mode]['self_starts'].append(True)
+                   device_pair[direction]['traffic_profile'][stream_mode]['run_time'].append(t_global.args.runtime)
+                   device_pair[direction]['traffic_profile'][stream_mode]['stream_modes'].append('burst')
 
-                device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet,
-                                                                           flow_stats = flow_stats,
-                                                                           mode = stream_control,
-                                                                           name = stream_name,
-                                                                           next = None,
-                                                                           self_start = True))
-            elif stream_type == 'teaching_warmup':
-                foo = 2
-            elif stream_type == 'teaching_measurement':
-                foo = 3
-            else:
-                raise ValueError("Invalid stream_type: %s" % (stream_type))
+                   myprint("\tMeasurement stream for %s with frame size=%d, rate=%f, pg_id=%d, mode=%s, and name=%s" % (device_pair[direction]['id_string'],
+                                                                                                                        stream['frame_size'],
+                                                                                                                        stream_rate,
+                                                                                                                        stream_pg_id,
+                                                                                                                        stream_mode,
+                                                                                                                        stream_name))
+                   device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet,
+                                                                              flow_stats = flow_stats,
+                                                                              mode = stream_control,
+                                                                              name = stream_name,
+                                                                              next = None,
+                                                                              self_start = True))
+         elif stream_type == 'teaching_warmup' and t_global.args.send_teaching_warmup:
+              # if teaching_warmup is the only type for this stream, use the stream's configured rate
+              # otherwise use the global default for teaching warmup rate
+              if len(stream_types) != 1:
+                   stream_rate = t_global.args.teaching_warmup_packet_rate
+
+              stream_control = STLTXSingleBurst(total_pkts = stream['flows'], pps = stream_rate)
+
+              device_pair[direction]['teaching_warmup_max_run_time'] = max(device_pair[direction]['teaching_warmup_max_run_time'],
+                                                                           (stream['flows'] / stream_rate))
+
+              myprint("\tTeaching warmup stream for %s with frame size=%d and rate=%f" % (device_pair[direction]['id_string'],
+                                                                                          stream['frame_size'],
+                                                                                          stream_rate))
+              device_pair[direction]['teaching_warmup_traffic_streams'].append(STLStream(packet = stream_packet,
+                                                                                         mode = stream_control,
+                                                                                         next = None,
+                                                                                         self_start = True))
+         elif stream_type == 'teaching_measurement' and t_global.args.send_teaching_measurement:
+              # if teaching_measurement is the only type for this stream, use the stream's configured rate
+              # otherwise use the global default for teaching measurement rate
+              if len(stream_types) != 1:
+                   stream_rate = t_global.args.teaching_warmup_packet_rate
+
+              burst_length = stream['flows'] / stream_rate
+
+              # IBG is in usec, so we multiply by 1,000,000 to convert to seconds
+              measurement_mode = STLTXMultiBurst(pkts_per_burst = stream['flows'],
+                                                 ibg = (t_global.args.teaching_measurement_interval * 1000000),
+                                                 count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
+                                                 pps = stream_rate)
+
+              myprint("\tTeaching measurement stream for %s with frame size=%d, rate=%f, and interval=%f" % (device_pair[direction]['id_string'],
+                                                                                                             stream['frame_size'],
+                                                                                                             stream_rate,
+                                                                                                             t_global.args.teaching_measurement_interval))
+              device_pair[direction]['teaching_measurement_traffic_streams'].append(STLStream(packet = stream_packet,
+                                                                                              mode = stream_control,
+                                                                                              next = None,
+                                                                                              self_start = True))
+         else:
+              raise ValueError("Invalid stream_type: %s" % (stream_type))
 
     return
 
@@ -282,12 +323,10 @@ def main():
 
     pg_id_values = { "default": { 'available':   None,
                                   'total':       None,
-                                  'start_index': None,
-                                  'list':        [] },
+                                  'start_index': None },
                      "latency": { 'available':   None,
                                   'total':       None,
-                                  'start_index': None,
-                                  'list':        [] } }
+                                  'start_index': None } }
 
     stream_profile_object = { 'protocol': [],
                               'pps': [],
@@ -352,6 +391,7 @@ def main():
                                                                          'latency': copy.deepcopy(stream_profile_object) },
                                                     'traffic_streams': [],
                                                     'teaching_warmup_traffic_streams': [],
+                                                    'teaching_warmup_max_run_time': 0,
                                                     'teaching_measurement_traffic_streams': [],
                                                     'active': False },
                                reverse_direction: { 'ports': { 'tx': port_b,
@@ -363,6 +403,7 @@ def main():
                                                                          'latency': copy.deepcopy(stream_profile_object) },
                                                     'traffic_streams': [],
                                                     'teaching_warmup_traffic_streams': [],
+                                                    'teaching_warmup_max_run_time': 0,
                                                     'teaching_measurement_traffic_streams': [],
                                                     'active': False },
                                'max_default_pg_ids': 0,
@@ -376,8 +417,10 @@ def main():
         traffic_profile_fp = open(t_global.args.traffic_profile, 'r')
         traffic_profile = load_traffic_profile(json.load(traffic_profile_fp))
         traffic_profile_fp.close()
-        myprint("TRAFFIC PROFILE:")
-        myprint(dump_json_readable(traffic_profile))
+
+        myprint("READABLE TRAFFIC PROFILE:", stderr_only = True)
+        myprint(dump_json_readable(traffic_profile), stderr_only = True)
+        myprint("PARSABLE TRAFFIC PROFILE: %s" % dump_json_parsable(traffic_profile), stderr_only = True)
 
         if len(traffic_profile['streams']) == 0:
             raise ValueError("There are no streams in the loaded traffic profile")
@@ -468,7 +511,7 @@ def main():
 
              device_pair['max_latency_pg_ids'] = 128 / len(device_pairs) # 128 is the maximum number of software counters for latency in TRex
 
-        pg_id_base = 1
+        pg_id_base = 1000
         for device_pair in device_pairs:
              if not t_global.args.traffic_direction == 'bidirec':
                   direction = forward_direction
@@ -498,7 +541,7 @@ def main():
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
-        myprint("Creating Streams from loaded traffic profile")
+        myprint("Creating Streams from loaded traffic profile [%s]" % (t_global.args.traffic_profile))
         for device_pair in device_pairs:
             for stream in traffic_profile['streams']:
                 if t_global.args.traffic_direction == 'bidirec' or t_global.args.traffic_direction == 'unidirec':
@@ -516,16 +559,23 @@ def main():
                     myprint("DEVICE PAIR %s | PARSABLE STREAMS FOR DIRECTION '%s': %s" % (device_pair['device_pair'], device_pair[direction]['id_string'], dump_json_parsable(device_pair[direction]['traffic_profile'])), stderr_only = True)
 
         if t_global.args.send_teaching_warmup:
+             myprint("Teaching Warmup")
              for device_pair in device_pairs:
                   for direction in directions:
                        if len(device_pair[direction]['teaching_warmup_traffic_streams']):
-                            myprint("Adding teaching warmup stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
+                            myprint("\tAdding stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
                             c.add_streams(streams = device_pair[direction]['teaching_warmup_traffic_streams'], ports = device_pair[direction]['ports']['tx'])
 
-             myprint("Transmitting teaching warmup packets...")
              start_time = datetime.datetime.now()
+             myprint("\tStarting transmission at %s" % (start_time.strftime("%H:%M:%S on %Y-%m-%d")))
 
-             warmup_timeout = int(max(30.0, (float(t_global.args.num_flows) / t_global.args.teaching_warmup_packet_rate) * 1.05))
+             warmup_timeout = 30.0
+             for device_pair in device_pairs:
+                  for direction in directions:
+                       warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_run_time'] * 1.05))
+
+             timeout_time = start_time + datetime.timedelta(seconds = warmup_timeout)
+             myprint("\tThe transmission will timeout with an error at %s" % (timeout_time.strftime("%H:%M:%S on %Y-%m-%d")))
 
              warmup_ports = teaching_ports
 
@@ -535,16 +585,17 @@ def main():
 
                   stop_time = datetime.datetime.now()
                   total_time = stop_time - start_time
-                  myprint("...teaching warmup transmission complete -- %d total second(s) elapsed" % total_time.total_seconds())
+                  myprint("\tFinished transmission at %s" % (stop_time.strftime("%H:%M:%S on %Y-%m-%d")))
+                  myprint("\tWarmup ran for %d second(s) (%s)" % (total_time.total_seconds(), total_time))
              except STLTimeoutError as e:
                   c.stop(ports = warmup_ports)
                   stop_time = datetime.datetime.now()
                   total_time = stop_time - start_time
-                  myprint("...TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%d seconds) -- %d total second(s) elapsed" % (warmup_timeout, total_time.total_seconds()))
+                  myprint("TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%d seconds) -- %d total second(s) elapsed" % (warmup_timeout, total_time.total_seconds()))
                   return return_value
              except STLError as e:
                   c.stop(ports = warmup_ports)
-                  myprint("...ERROR: wait_on_traffic: STLError: %s" % e)
+                  myprint("ERROR: wait_on_traffic: STLError: %s" % e)
                   return return_value
 
              c.reset(ports = warmup_ports)
@@ -552,17 +603,18 @@ def main():
 
         run_ports = []
 
+        myprint("Measurement")
         for device_pair in device_pairs:
              for direction in directions:
                   port_streams = 0
 
                   if len(device_pair[direction]['traffic_streams']):
-                       myprint("Adding stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
+                       myprint("\tAdding measurement stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
                        port_streams += len(device_pair[direction]['traffic_streams'])
                        c.add_streams(streams = device_pair[direction]['traffic_streams'], ports = device_pair[direction]['ports']['tx'])
 
                   if t_global.args.send_teaching_measurement and len(device_pair[direction]['teaching_measurement_traffic_streams']):
-                       myprint("Adding teaching stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
+                       myprint("\tAdding teaching stream(s) for device pair '%s' to port %d" % (device_pair['device_pair'], device_pair[direction]['ports']['tx']))
                        port_streams += len(device_pair[direction]['teaching_measurement_traffic_streams'])
                        c.add_streams(streams = device_pair[direction]['teaching_measurement_traffic_streams'], ports = device_pair[direction]['ports']['tx'])
 
@@ -583,16 +635,11 @@ def main():
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
         stop_time = datetime.datetime.now()
         start_time = datetime.datetime.now()
-        myprint("Starting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("\tStarting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
         expected_end_time = start_time + datetime.timedelta(seconds = t_global.args.runtime)
         expected_timeout_time = start_time + datetime.timedelta(seconds = timeout_seconds)
-        myprint("The test should end at %s" % expected_end_time.strftime("%H:%M:%S on %Y-%m-%d"))
-        myprint("The test will timeout with an error at %s" % expected_timeout_time.strftime("%H:%M:%S on %Y-%m-%d"))
-
-        for device_pair in device_pairs:
-             for direction in directions:
-                  if device_pair[direction]['active']:
-                       myprint("Transmitting from port %d to port %d for %d seconds..." % (device_pair[direction]['ports']['tx'], device_pair[direction]['ports']['rx'], t_global.args.runtime))
+        myprint("\tThe test should end at %s" % expected_end_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("\tThe test will timeout with an error at %s" % expected_timeout_time.strftime("%H:%M:%S on %Y-%m-%d"))
 
         # start the traffic
         c.start(ports = run_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
@@ -601,7 +648,6 @@ def main():
         force_quit = False
 
         try:
-             myprint("Waiting...")
              c.wait_on_traffic(ports = run_ports, timeout = timeout_seconds)
              stop_time = datetime.datetime.now()
         except STLTimeoutError as e:
@@ -616,9 +662,9 @@ def main():
              force_quit = True
 
         # log end of test
-        myprint("Finished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("\tFinished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
         total_time = stop_time - start_time
-        myprint("Test ran for %d seconds (%s)" % (total_time.total_seconds(), total_time))
+        myprint("\tTrial ran for %d second(s) (%s)" % (total_time.total_seconds(), total_time))
 
         stats = c.get_stats(sync_now = True)
         stats["global"]["runtime"] = total_time.total_seconds()
@@ -661,19 +707,20 @@ def main():
 
         warning_events = c.get_warnings()
         if len(warning_events):
-             myprint("TRex Warning Events:")
+             myprint("\tTRex Warning Events:")
              for warning in warning_events:
-                  myprint("    WARNING: %s" % warning)
+                  myprint("\t\t%s" % warning)
 
         events = c.get_events()
         if len(events):
-             myprint("TRex Events:")
+             myprint("\tTRex Events:")
              for event in events:
-                  myprint("    EVENT: %s" % event)
+                  myprint("\t\t%s" % event)
 
-        myprint("TX Utilization: %f%%" % stats['global']['cpu_util'])
-        myprint("RX Utilization: %f%%" % stats['global']['rx_cpu_util'])
-        myprint("TX Queue Full:  %d"   % stats['global']['queue_full'])
+        myprint("\tStatistics")
+        myprint("\t\tTX Utilization: %f%%" % stats['global']['cpu_util'])
+        myprint("\t\tRX Utilization: %f%%" % stats['global']['rx_cpu_util'])
+        myprint("\t\tTX Queue Full:  %d"   % stats['global']['queue_full'])
 
         myprint("READABLE RESULT:", stderr_only = True)
         myprint(dump_json_readable(stats), stderr_only = True)
