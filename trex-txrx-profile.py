@@ -154,6 +154,9 @@ def load_traffic_profile (profile):
     for stream in profile['streams']:
         for key in stream:
             if isinstance(stream[key], basestring):
+                # convert from unicode to string
+                stream[key] = str(stream[key])
+
                 fields = stream[key].split(':')
                 if len(fields) == 2:
                     if fields[0] == 'function':
