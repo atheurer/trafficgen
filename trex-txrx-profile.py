@@ -235,7 +235,56 @@ def create_stream (stream, device_pair, direction, other_direction):
                         flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
 
                    stream_total_pkts = int(stream_rate * t_global.args.runtime)
-                   stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = stream_total_pkts)
+
+                   myprint("\tMeasurement stream for %s with frame size=%d, rate=%f, pg_id=%d, mode=%s, and name=%s" % (device_pair[direction]['id_string'],
+                                                                                                                        stream['frame_size'],
+                                                                                                                        stream_rate,
+                                                                                                                        stream_pg_id,
+                                                                                                                        stream_mode,
+                                                                                                                        stream_name))
+
+                   # check if the total number of packets to TX is greater than can be held in an uint32 (API limit)
+                   max_uint32 = int(4294967295)
+                   if stream_total_pkts > max_uint32:
+                        stream_loops = stream_total_pkts / max_uint32
+                        stream_loop_remainder = stream_total_pkts % max_uint32
+
+                        if stream_loop_remainder == 0:
+                             stream_loops -= 1
+                             stream_loops_remainder = max_uint32
+
+                        substream_self_start = True
+                        for loop_idx in range(1, stream_loops+1):
+                             substream_name = "%s_sub_%d" % (stream_name, loop_idx)
+                             substream_next_name = "%s_sub_%d" % (stream_name, loop_idx+1)
+                             myprint("\t\tCreating substream %d with name %s" % (loop_idx, substream_name))
+                             stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = max_uint32)
+                             device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet,
+                                                                                        flow_stats = flow_stats,
+                                                                                        mode = stream_control,
+                                                                                        name = substream_name,
+                                                                                        next = substream_next_name,
+                                                                                        self_start = substream_self_start))
+                             substream_self_start = False
+
+                        substream_name = "%s_sub_%d" % (stream_name, stream_loops+1)
+                        myprint("\t\tCreating substream %d with name %s" % (stream_loops+1, substream_name))
+                        stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = stream_loop_remainder)
+                        device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet,
+                                                                                   flow_stats = flow_stats,
+                                                                                   mode = stream_control,
+                                                                                   name = substream_name,
+                                                                                   next = None,
+                                                                                   self_start = substream_self_start))
+                   else:
+                        stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = stream_total_pkts)
+
+                        device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet,
+                                                                                   flow_stats = flow_stats,
+                                                                                   mode = stream_control,
+                                                                                   name = stream_name,
+                                                                                   next = None,
+                                                                                   self_start = True))
 
                    device_pair[direction]['traffic_profile'][stream_mode]['protocol'].append(protocol)
                    device_pair[direction]['traffic_profile'][stream_mode]['pps'].append(stream_rate)
@@ -247,19 +296,6 @@ def create_stream (stream, device_pair, direction, other_direction):
                    device_pair[direction]['traffic_profile'][stream_mode]['self_starts'].append(True)
                    device_pair[direction]['traffic_profile'][stream_mode]['run_time'].append(t_global.args.runtime)
                    device_pair[direction]['traffic_profile'][stream_mode]['stream_modes'].append('burst')
-
-                   myprint("\tMeasurement stream for %s with frame size=%d, rate=%f, pg_id=%d, mode=%s, and name=%s" % (device_pair[direction]['id_string'],
-                                                                                                                        stream['frame_size'],
-                                                                                                                        stream_rate,
-                                                                                                                        stream_pg_id,
-                                                                                                                        stream_mode,
-                                                                                                                        stream_name))
-                   device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet,
-                                                                              flow_stats = flow_stats,
-                                                                              mode = stream_control,
-                                                                              name = stream_name,
-                                                                              next = None,
-                                                                              self_start = True))
          elif stream_type == 'teaching_warmup' and t_global.args.send_teaching_warmup:
               # if teaching_warmup is the only type for this stream, use the stream's configured rate
               # otherwise use the global default for teaching warmup rate
