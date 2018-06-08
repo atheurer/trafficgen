@@ -202,25 +202,85 @@ def create_stream (stream, device_pair, direction, other_direction):
     elif latency:
         stream_modes.append('latency')
 
-    stream_packets = []
+    stream_packets = { 'measurement': [],
+                       'teaching': [] }
     flow_stats = None
     stream_pg_id = None
 
     if frame_type == 'bulk':
+         # teaching packets don't need to cover all the protocols; they just need to cover all the MAC addresses
+         stream_packets['teaching'].append({ 'protocol': protocols[0],
+                                             'packet':   create_pkt(stream['frame_size'],
+                                                                    device_pair[direction]['packet_values']['macs']['dst'],
+                                                                    device_pair[direction]['packet_values']['macs']['src'],
+                                                                    device_pair[direction]['packet_values']['ips']['dst'],
+                                                                    device_pair[direction]['packet_values']['ips']['src'],
+                                                                    device_pair[direction]['packet_values']['ports']['dst'],
+                                                                    device_pair[direction]['packet_values']['ports']['src'],
+                                                                    protocols[0],
+                                                                    device_pair[other_direction]['packet_values']['vlan'],
+                                                                    stream['flow_mods'],
+                                                                    stream['flows'],
+                                                                    t_global.args.enable_flow_cache) })
+
          for protocol in protocols:
-              stream_packets.append({ 'protocol': protocol,
-                                      'packet':   create_pkt(stream['frame_size'],
-                                                             device_pair[direction]['packet_values']['macs']['src'],
-                                                             device_pair[direction]['packet_values']['macs']['dst'],
-                                                             device_pair[direction]['packet_values']['ips']['src'],
-                                                             device_pair[direction]['packet_values']['ips']['dst'],
-                                                             device_pair[direction]['packet_values']['ports']['src'],
-                                                             device_pair[direction]['packet_values']['ports']['dst'],
-                                                             protocol,
-                                                             device_pair[direction]['packet_values']['vlan'],
-                                                             stream['flow_mods'],
-                                                             stream['flows'],
-                                                             t_global.args.enable_flow_cache) })
+              stream_packets['measurement'].append({ 'protocol': protocol,
+                                                     'packet':   create_pkt(stream['frame_size'],
+                                                                            device_pair[direction]['packet_values']['macs']['src'],
+                                                                            device_pair[direction]['packet_values']['macs']['dst'],
+                                                                            device_pair[direction]['packet_values']['ips']['src'],
+                                                                            device_pair[direction]['packet_values']['ips']['dst'],
+                                                                            device_pair[direction]['packet_values']['ports']['src'],
+                                                                            device_pair[direction]['packet_values']['ports']['dst'],
+                                                                            protocol,
+                                                                            device_pair[direction]['packet_values']['vlan'],
+                                                                            stream['flow_mods'],
+                                                                            stream['flows'],
+                                                                            t_global.args.enable_flow_cache) })
+    elif frame_type == 'garp':
+         # GARP packet types: 0x1=request, 0x2=reply
+         garp_packets = [ { 'name': 'request',
+                            'opcode': 0x1 },
+                          { 'name': 'response',
+                            'opcode': 0x2 } ]
+         for garp_packet in garp_packets:
+              stream_packets['measurement'].append({ 'protocol': "%s-%s" % (frame_type, garp_packet['name']),
+                                                     'packet':   create_garp_pkt(device_pair[direction]['packet_values']['macs']['src'],
+                                                                                 device_pair[direction]['packet_values']['ips']['src'],
+                                                                                 device_pair[direction]['packet_values']['vlan'],
+                                                                                 garp_packet['opcode'],
+                                                                                 stream['flow_mods'],
+                                                                                 stream['flows'],
+                                                                                 t_global.args.enable_flow_cache) })
+              stream_packets['teaching'].append({ 'protocol': "%s-%s" % (frame_type, garp_packet['name']),
+                                                  'packet':   create_garp_pkt(device_pair[direction]['packet_values']['macs']['dst'],
+                                                                              device_pair[direction]['packet_values']['ips']['dst'],
+                                                                              device_pair[other_direction]['packet_values']['vlan'],
+                                                                              garp_packet['opcode'],
+                                                                              stream['flow_mods'],
+                                                                              stream['flows'],
+                                                                              t_global.args.enable_flow_cache) })
+    elif frame_type == 'icmp':
+         stream_packets['measurement'].append({ 'protocol': frame_type,
+                                                'packet':   create_icmp_pkt(stream['frame_size'],
+                                                                            device_pair[direction]['packet_values']['macs']['src'],
+                                                                            device_pair[direction]['packet_values']['macs']['dst'],
+                                                                            device_pair[direction]['packet_values']['ips']['src'],
+                                                                            device_pair[direction]['packet_values']['ips']['dst'],
+                                                                            device_pair[direction]['packet_values']['vlan'],
+                                                                            stream['flow_mods'],
+                                                                            stream['flows'],
+                                                                            t_global.args.enable_flow_cache) })
+         stream_packets['teaching'].append({ 'protocol': frame_type,
+                                             'packet':   create_icmp_pkt(stream['frame_size'],
+                                                                         device_pair[direction]['packet_values']['macs']['dst'],
+                                                                         device_pair[direction]['packet_values']['macs']['src'],
+                                                                         device_pair[direction]['packet_values']['ips']['dst'],
+                                                                         device_pair[direction]['packet_values']['ips']['src'],
+                                                                         device_pair[other_direction]['packet_values']['vlan'],
+                                                                         stream['flow_mods'],
+                                                                         stream['flows'],
+                                                                         t_global.args.enable_flow_cache) })
     else:
          raise ValueError("Invalid frame_type: %s" % (frame_type))
 
@@ -230,15 +290,17 @@ def create_stream (stream, device_pair, direction, other_direction):
          if stream_type == 'measurement':
               for stream_mode in stream_modes:
                    stream_rate = stream['rate']
-                   if len(stream_packets) > 1:
+                   if len(stream_packets['measurement']) > 1:
                         stream_rate /= len(protocols)
 
                    if 'latency' in stream_modes and stream_mode == 'default':
                         stream_rate -= t_global.args.latency_rate
-                   elif stream_mode == 'latency':
+                        if stream_rate <= 0:
+                             continue
+                   elif stream_mode == 'latency' and stream_rate > t_global.args.latency_rate:
                         stream_rate = t_global.args.latency_rate
 
-                   for stream_packet in stream_packets:
+                   for stream_packet in stream_packets['measurement']:
                         if device_pair[direction]['pg_ids'][stream_mode]['available']:
                              stream_pg_id = device_pair[direction]['pg_ids'][stream_mode]['start_index'] + (device_pair[direction]['pg_ids'][stream_mode]['total'] - device_pair[direction]['pg_ids'][stream_mode]['available'])
                              device_pair[direction]['pg_ids'][stream_mode]['available'] -= 1
@@ -323,13 +385,15 @@ def create_stream (stream, device_pair, direction, other_direction):
               device_pair[direction]['teaching_warmup_max_run_time'] = max(device_pair[direction]['teaching_warmup_max_run_time'],
                                                                            (stream['flows'] / stream_rate))
 
-              myprint("\tTeaching warmup stream for '%s' with frame size=%d and rate=%f" % (device_pair[direction]['id_string'],
-                                                                                            stream['frame_size'],
-                                                                                            stream_rate))
-              device_pair[direction]['teaching_warmup_traffic_streams'].append(STLStream(packet = stream_packets[0]['packet'],
-                                                                                         mode = stream_control,
-                                                                                         next = None,
-                                                                                         self_start = True))
+              for stream_packet in stream_packets['teaching']:
+                   myprint("\tTeaching warmup stream for '%s' with frame size=%d, rate=%f, and protocol=%s" % (device_pair[direction]['id_string'],
+                                                                                                               stream['frame_size'],
+                                                                                                               stream_rate,
+                                                                                                               stream_packet['protocol']))
+                   device_pair[direction]['teaching_warmup_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
+                                                                                              mode = stream_control,
+                                                                                              next = None,
+                                                                                              self_start = True))
          elif stream_type == 'teaching_measurement' and t_global.args.send_teaching_measurement:
               # if teaching_measurement is the only type for this stream, use the stream's configured rate
               # otherwise use the global default for teaching measurement rate
@@ -344,14 +408,16 @@ def create_stream (stream, device_pair, direction, other_direction):
                                                  count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
                                                  pps = stream_rate)
 
-              myprint("\tTeaching measurement stream for '%s' with frame size=%d, rate=%f, and interval=%f" % (device_pair[direction]['id_string'],
-                                                                                                               stream['frame_size'],
-                                                                                                               stream_rate,
-                                                                                                               t_global.args.teaching_measurement_interval))
-              device_pair[direction]['teaching_measurement_traffic_streams'].append(STLStream(packet = stream_packets[0]['packet'],
-                                                                                              mode = stream_control,
-                                                                                              next = None,
-                                                                                              self_start = True))
+              for stream_packet in stream_packets['teaching']:
+                   myprint("\tTeaching measurement stream for '%s' with frame size=%d, rate=%f, interval=%f, and protocol=%s" % (device_pair[direction]['id_string'],
+                                                                                                                                 stream['frame_size'],
+                                                                                                                                 stream_rate,
+                                                                                                                                 t_global.args.teaching_measurement_interval,
+                                                                                                                                 stream_packet['protocol']))
+                   device_pair[direction]['teaching_measurement_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
+                                                                                                   mode = stream_control,
+                                                                                                   next = None,
+                                                                                                   self_start = True))
          else:
               raise ValueError("Invalid stream_type: %s" % (stream_type))
 

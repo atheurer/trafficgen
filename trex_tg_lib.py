@@ -23,38 +23,61 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_icmp_bcast_pkt (mac_dst, ip_dst, vlan_id, flow_mods, num_flows, enable_flow_cache):
-    mac_target = 'ff:ff:ff:ff:ff:ff'
+def create_icmp_bcast_pkt (mac_src, ip_src, vlan_id, flow_mods, num_flows, enable_flow_cache):
+    mac_dst = 'ff:ff:ff:ff:ff:ff'
+    ip_dst  = '255.255.255.255'
 
+    local_flow_mods = copy.deepcopy(flow_mods)
+
+    local_flow_mods['mac']['dst'] = False
+    local_flow_mods['ip']['dst'] = False
+
+    return create_icmp_pkt(64, mac_src, mac_dst, ip_src, ip_dst, vlan_id, local_flow_mods, num_flows, enable_flow_cache)
+
+def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods, num_flows, enable_flow_cache):
+    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
     ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
 
     vm = []
-    if flow_mods['ip']['dst'] and num_flows:
+    if flow_mods['ip']['src'] and num_flows:
          vm = vm + [
-              STLVmFlowVar(name = "ip_src", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmFlowVar(name = "ip_src", min_value = ip_src['start'], max_value = ip_src['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_src", pkt_offset = "IP.src")
          ]
 
-    if flow_mods['mac']['dst'] and num_flows:
+    if flow_mods['ip']['dst'] and num_flows:
+         vm = vm + [
+              STLVmFlowVar(name = "ip_dst", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ip_dst", pkt_offset = "IP.dst")
+         ]
+
+    if flow_mods['mac']['src'] and num_flows:
          vm = vm + [
               STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
               #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
          ]
 
-    the_packet = Ether(src = mac_dst, dst = mac_target)
+    if flow_mods['mac']['dst'] and num_flows:
+         vm = vm + [
+              STLVmFlowVar(name = "ether_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
+              STLVmWrFlowVar(fv_name = "ether_mac_dst", pkt_offset = 7)
+              #STLVmWrFlowVar(fv_name = "ether_mac_dst", pkt_offset = "Ether.dst", offset_fixup = 1)
+         ]
+
+    the_packet = Ether(src = mac_src, dst = mac_dst)
 
     if vlan_id is not None:
          the_packet = the_packet/Dot1Q(vlan = vlan_id)
 
-    the_packet = the_packet/IP(src = str(ip_dst['start']), dst = str(ip_to_int('255.255.255.255')))/ICMP(type = 8, code = 0, id = 0, seq = 0)
+    the_packet = the_packet/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))/ICMP(type = 8, code = 0, id = 0, seq = 0)
 
-    pad = max(0, 64 - len(the_packet)) * 'x'
+    pad = max(0, size - len(the_packet)) * 'x'
     the_packet = the_packet/pad
 
     #the_packet.show2()
 
-    if num_flows and (flow_mods['ip']['dst'] or flow_mods['mac']['dst']):
+    if num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst']):
          vm = vm + [STLVmFixIpv4(offset = "IP")]
 
          if enable_flow_cache:
@@ -66,23 +89,23 @@ def create_icmp_bcast_pkt (mac_dst, ip_dst, vlan_id, flow_mods, num_flows, enabl
     else:
          return STLPktBuilder(pkt = the_packet)
 
-def create_garp_pkt (mac_dst, ip_dst, vlan_id, arp_op, flow_mods, num_flows, enable_flow_cache):
+def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, enable_flow_cache):
     arp_mac_target = 'ff:ff:ff:ff:ff:ff'
 
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
+    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
 
     vm = []
-    if flow_mods['ip']['dst'] and num_flows:
+    if flow_mods['ip']['src'] and num_flows:
          vm = vm + [
-              STLVmFlowVar(name = "ip_psrc", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmFlowVar(name = "ip_psrc", min_value = ip_src['start'], max_value = ip_src['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_psrc", pkt_offset = "ARP.psrc")
          ]
          vm = vm + [
-              STLVmFlowVar(name = "ip_pdst", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
+              STLVmFlowVar(name = "ip_pdst", min_value = ip_src['start'], max_value = ip_src['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_pdst", pkt_offset = "ARP.pdst")
          ]
 
-    if flow_mods['mac']['dst'] and num_flows:
+    if flow_mods['mac']['src'] and num_flows:
          vm = vm + [
               STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
@@ -97,16 +120,16 @@ def create_garp_pkt (mac_dst, ip_dst, vlan_id, arp_op, flow_mods, num_flows, ena
               STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
          ]
 
-    the_packet = Ether(src = mac_dst, dst = arp_mac_target)
+    the_packet = Ether(src = mac_src, dst = arp_mac_target)
 
     if vlan_id is not None:
          the_packet = the_packet/Dot1Q(vlan = vlan_id)
 
-    the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_dst, psrc = str(ip_dst['start']), hwdst = arp_mac_target, pdst = str(ip_dst['start']))
+    the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_src, psrc = str(ip_src['start']), hwdst = arp_mac_target, pdst = str(ip_src['start']))
 
     #the_packet.show2()
 
-    if num_flows and (flow_mods['ip']['dst'] or flow_mods['mac']['dst']):
+    if num_flows and (flow_mods['ip']['src'] or flow_mods['mac']['src']):
          if enable_flow_cache:
               vm = STLScVmRaw(list_of_commands = vm,
                               cache_size = num_flows)
