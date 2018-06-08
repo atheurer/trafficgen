@@ -239,8 +239,11 @@ def create_stream (stream, device_pair, direction, other_direction):
                         stream_rate = t_global.args.latency_rate
 
                    for stream_packet in stream_packets:
-                        stream_pg_id = device_pair[direction]['pg_ids'][stream_mode]['start_index'] + (device_pair[direction]['pg_ids'][stream_mode]['total'] - device_pair[direction]['pg_ids'][stream_mode]['available'])
-                        device_pair[direction]['pg_ids'][stream_mode]['available'] -= 1
+                        if device_pair[direction]['pg_ids'][stream_mode]['available']:
+                             stream_pg_id = device_pair[direction]['pg_ids'][stream_mode]['start_index'] + (device_pair[direction]['pg_ids'][stream_mode]['total'] - device_pair[direction]['pg_ids'][stream_mode]['available'])
+                             device_pair[direction]['pg_ids'][stream_mode]['available'] -= 1
+                        else:
+                             raise RuntimeError("Not enough available pg_ids for the requested stream configuration")
                         stream_name = "%s-stream-%s-%d" % (stream_type, stream_packet['protocol'], stream_pg_id)
                         if stream_mode == 'default':
                              flow_stats = STLFlowStats(pg_id = stream_pg_id)
