@@ -354,13 +354,13 @@ def process_options ():
                         dest='teaching_warmup_packet_type',
                         help='Type of packet to send for the teaching warmup from the receiving port',
                         default = '',
-                        choices = ['garp', 'icmp', 'bulk']
+                        choices = ['garp', 'icmp', 'generic']
                         )
     parser.add_argument('--teaching-measurement-packet-type',
                         dest='teaching_measurement_packet_type',
                         help='Type of packet to send for the teaching measurement from the receiving port',
                         default = '',
-                        choices = ['garp', 'icmp', 'bulk']
+                        choices = ['garp', 'icmp', 'generic']
                         )
 
     t_global.args = parser.parse_args();

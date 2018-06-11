@@ -140,7 +140,7 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
          return STLPktBuilder(pkt = the_packet)
 
 # simple packet creation
-def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id, flow_mods, num_flows, enable_flow_cache):
+def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id, flow_mods, num_flows, enable_flow_cache):
     # adjust packet size due to CRC
     size = int(size)
     size -= 4

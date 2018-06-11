@@ -55,19 +55,19 @@ def create_teaching_icmp_packets (direction, other_direction, device_pair):
                                     t_global.args.num_flows,
                                     t_global.args.enable_flow_cache) ]
 
-def create_teaching_bulk_packets (direction, other_direction, device_pair):
-     return [ create_pkt(64,
-                         device_pair[direction]['packet_values']['macs']['dst'],
-                         device_pair[direction]['packet_values']['macs']['src'],
-                         device_pair[direction]['packet_values']['ips']['dst'],
-                         device_pair[direction]['packet_values']['ips']['src'],
-                         device_pair[direction]['packet_values']['ports']['dst'],
-                         device_pair[direction]['packet_values']['ports']['src'],
-                         "UDP",
-                         device_pair[other_direction]['packet_values']['vlan'],
-                         t_global.args.flow_mods,
-                         t_global.args.num_flows,
-                         t_global.args.enable_flow_cache) ]
+def create_teaching_generic_packets (direction, other_direction, device_pair):
+     return [ create_generic_pkt(64,
+                                 device_pair[direction]['packet_values']['macs']['dst'],
+                                 device_pair[direction]['packet_values']['macs']['src'],
+                                 device_pair[direction]['packet_values']['ips']['dst'],
+                                 device_pair[direction]['packet_values']['ips']['src'],
+                                 device_pair[direction]['packet_values']['ports']['dst'],
+                                 device_pair[direction]['packet_values']['ports']['src'],
+                                 "UDP",
+                                 device_pair[other_direction]['packet_values']['vlan'],
+                                 t_global.args.flow_mods,
+                                 t_global.args.num_flows,
+                                 t_global.args.enable_flow_cache) ]
 
 def create_teaching_warmup_traffic_profile (direction, other_direction, device_pair):
      myprint("Creating teaching warmup streams for device pair '%s' direction '%s' with TYPE=%s and MAC=%s and IP=%s" % (device_pair['device_pair'],
@@ -79,8 +79,8 @@ def create_teaching_warmup_traffic_profile (direction, other_direction, device_p
      teaching_packets = []
      if t_global.args.teaching_warmup_packet_type == "garp":
           teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
-     elif t_global.args.teaching_warmup_packet_type == "bulk":
-          teaching_packets = create_teaching_bulk_packets(direction, other_direction, device_pair)
+     elif t_global.args.teaching_warmup_packet_type == "generic":
+          teaching_packets = create_teaching_generic_packets(direction, other_direction, device_pair)
      if t_global.args.teaching_warmup_packet_type == "icmp":
           teaching_packets = create_teaching_icmp_packets(direction, other_direction, device_pair)
 
@@ -101,8 +101,8 @@ def create_teaching_measurement_traffic_profile (direction, other_direction, dev
      teaching_packets = []
      if t_global.args.teaching_measurement_packet_type == "garp":
           teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
-     elif t_global.args.teaching_measurement_packet_type == "bulk":
-          teaching_packets = create_teaching_bulk_packets(direction, other_direction, device_pair)
+     elif t_global.args.teaching_measurement_packet_type == "generic":
+          teaching_packets = create_teaching_generic_packets(direction, other_direction, device_pair)
      if t_global.args.teaching_measurement_packet_type == "icmp":
           teaching_packets = create_teaching_icmp_packets(direction, other_direction, device_pair)
 
@@ -327,18 +327,18 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                elif stream_mode == "continuous":
                     stream_mode_obj = STLTXCont(pps = stream_pps)
 
-               stream_packet = create_pkt(stream_frame_size,
-                                          device_pair[direction]['packet_values']['macs']['src'],
-                                          device_pair[direction]['packet_values']['macs']['dst'],
-                                          device_pair[direction]['packet_values']['ips']['src'],
-                                          device_pair[direction]['packet_values']['ips']['dst'],
-                                          device_pair[direction]['packet_values']['ports']['src'],
-                                          device_pair[direction]['packet_values']['ports']['dst'],
-                                          stream_packet_protocol,
-                                          device_pair[direction]['packet_values']['vlan'],
-                                          t_global.args.flow_mods,
-                                          t_global.args.num_flows,
-                                          t_global.args.enable_flow_cache)
+               stream_packet = create_generic_pkt(stream_frame_size,
+                                                  device_pair[direction]['packet_values']['macs']['src'],
+                                                  device_pair[direction]['packet_values']['macs']['dst'],
+                                                  device_pair[direction]['packet_values']['ips']['src'],
+                                                  device_pair[direction]['packet_values']['ips']['dst'],
+                                                  device_pair[direction]['packet_values']['ports']['src'],
+                                                  device_pair[direction]['packet_values']['ports']['dst'],
+                                                  stream_packet_protocol,
+                                                  device_pair[direction]['packet_values']['vlan'],
+                                                  t_global.args.flow_mods,
+                                                  t_global.args.num_flows,
+                                                  t_global.args.enable_flow_cache)
 
                if stream_loop:
                     myprint("Stream is being split into multiple substreams due to high total packet count")
@@ -637,13 +637,13 @@ def process_options ():
                         dest='teaching_warmup_packet_type',
                         help='Type of packet to send for the teaching warmup from the receiving port',
                         default = 'garp',
-                        choices = ['garp', 'icmp', 'bulk']
+                        choices = ['garp', 'icmp', 'generic']
                         )
     parser.add_argument('--teaching-measurement-packet-type',
                         dest='teaching_measurement_packet_type',
                         help='Type of packet to send for the teaching measurement from the receiving port',
                         default = 'garp',
-                        choices = ['garp', 'icmp', 'bulk']
+                        choices = ['garp', 'icmp', 'generic']
                         )
 
     t_global.args = parser.parse_args();
