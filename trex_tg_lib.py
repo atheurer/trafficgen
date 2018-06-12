@@ -268,3 +268,44 @@ def create_flow_mod_object (use_src_mac_flows = False,
                            'dst' : use_dst_port_flows },
             'protocol' : use_protocol_flows }
     return obj
+
+def load_traffic_profile (traffic_profile):
+     try:
+          traffic_profile_fp = open(traffic_profile, 'r')
+          profile = json.load(traffic_profile_fp)
+          traffic_profile_fp.close()
+
+          if not 'streams' in profile or len(profile['streams']) == 0:
+               raise ValueError("There are no streams in the loaded traffic profile")
+     except:
+          print("EXCEPTION: %s" % traceback.format_exc())
+          print("ERROR: Could not load a valid traffic profile from %s" % traffic_profile)
+          return 1
+
+     for stream in profile['streams']:
+          for key in stream:
+               if isinstance(stream[key], basestring):
+                    # convert from unicode to string
+                    stream[key] = str(stream[key])
+
+                    fields = stream[key].split(':')
+                    if len(fields) == 2:
+                         if fields[0] == 'function':
+                              stream[key] = eval(fields[1])
+
+          if not 'stream_types' in stream:
+               stream['stream_types'] = [ 'measurement' ]
+
+          if not 'frame_type' in stream:
+               stream['frame_type'] = 'generic'
+
+          if not 'latency_only' in stream:
+               stream['latency_only'] = False
+
+          if not 'latency' in stream:
+               stream['latency'] = True
+
+          if not 'protocol' in stream:
+               stream['protocol'] = 'UDP'
+
+     return profile

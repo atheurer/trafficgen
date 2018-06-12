@@ -150,42 +150,16 @@ def process_options ():
 
     myprint(t_global.args)
 
-def load_traffic_profile (profile):
-    for stream in profile['streams']:
-        for key in stream:
-            if isinstance(stream[key], basestring):
-                # convert from unicode to string
-                stream[key] = str(stream[key])
-
-                fields = stream[key].split(':')
-                if len(fields) == 2:
-                    if fields[0] == 'function':
-                        stream[key] = eval(fields[1])
-
-    return profile
-
 def create_stream (stream, device_pair, direction, other_direction):
-    stream_types = [ 'measurement' ]
-    if 'stream_types' in stream:
-        stream_types = stream['stream_types']
+    stream_types = stream['stream_types']
+    frame_type = stream['frame_type']
+    latency_only = stream['latency_only']
+    protocols = [ stream['protocol'] ]
 
-    frame_type = 'generic'
-    if 'frame_type' in stream:
-        frame_type = stream['frame_type']
-
-    latency_only = False
-    if 'latency_only' in stream:
-        latency_only = stream['latency_only']
-
-    latency = True
+    latency = stream['latency']
     if not t_global.args.measure_latency:
         latency = False
-    elif 'latency' in stream:
-        latency = stream['latency']
 
-    protocols = [ 'UDP' ]
-    if 'protocol' in stream:
-        protocols = [ stream['protocol'] ]
 
     if stream['flow_mods']['protocol']:
          if protocols[0] == 'UDP':
@@ -533,21 +507,13 @@ def main():
     stats = 0
     return_value = 1
 
-    try:
-        traffic_profile_fp = open(t_global.args.traffic_profile, 'r')
-        traffic_profile = load_traffic_profile(json.load(traffic_profile_fp))
-        traffic_profile_fp.close()
+    traffic_profile = load_traffic_profile(t_global.args.traffic_profile)
+    if not 'streams' in traffic_profile:
+         return return_value
 
-        myprint("READABLE TRAFFIC PROFILE:", stderr_only = True)
-        myprint(dump_json_readable(traffic_profile), stderr_only = True)
-        myprint("PARSABLE TRAFFIC PROFILE: %s" % dump_json_parsable(traffic_profile), stderr_only = True)
-
-        if not 'streams' in traffic_profile or len(traffic_profile['streams']) == 0:
-            raise ValueError("There are no streams in the loaded traffic profile")
-    except:
-        myprint("EXCEPTION: %s" % traceback.format_exc())
-        myprint("ERROR: Could not load a valid traffic profile from %s" % t_global.args.traffic_profile)
-        return return_value
+    myprint("READABLE TRAFFIC PROFILE:", stderr_only = True)
+    myprint(dump_json_readable(traffic_profile), stderr_only = True)
+    myprint("PARSABLE TRAFFIC PROFILE: %s" % dump_json_parsable(traffic_profile), stderr_only = True)
 
     c = STLClient()
 
