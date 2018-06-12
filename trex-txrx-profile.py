@@ -331,16 +331,16 @@ def create_stream (stream, device_pair, direction, other_direction):
                                                                                         next = None,
                                                                                         self_start = True))
 
-                   device_pair[direction]['traffic_profile'][stream_mode]['protocol'].append(protocols)
-                   device_pair[direction]['traffic_profile'][stream_mode]['pps'].append(stream_rate)
-                   device_pair[direction]['traffic_profile'][stream_mode]['pg_ids'].append(stream_pg_id)
-                   device_pair[direction]['traffic_profile'][stream_mode]['names'].append(stream_name)
-                   device_pair[direction]['traffic_profile'][stream_mode]['next_stream_names'].append(None)
-                   device_pair[direction]['traffic_profile'][stream_mode]['frame_sizes'].append(stream['frame_size'])
-                   device_pair[direction]['traffic_profile'][stream_mode]['traffic_shares'].append(1.0)
-                   device_pair[direction]['traffic_profile'][stream_mode]['self_starts'].append(True)
-                   device_pair[direction]['traffic_profile'][stream_mode]['run_time'].append(t_global.args.runtime)
-                   device_pair[direction]['traffic_profile'][stream_mode]['stream_modes'].append('burst')
+                        device_pair[direction]['traffic_profile'][stream_mode]['protocol'].append(stream_packet['protocol'])
+                        device_pair[direction]['traffic_profile'][stream_mode]['pps'].append(stream_rate)
+                        device_pair[direction]['traffic_profile'][stream_mode]['pg_ids'].append(stream_pg_id)
+                        device_pair[direction]['traffic_profile'][stream_mode]['names'].append(stream_name)
+                        device_pair[direction]['traffic_profile'][stream_mode]['next_stream_names'].append(None)
+                        device_pair[direction]['traffic_profile'][stream_mode]['frame_sizes'].append(stream['frame_size'])
+                        device_pair[direction]['traffic_profile'][stream_mode]['traffic_shares'].append(None)
+                        device_pair[direction]['traffic_profile'][stream_mode]['self_starts'].append(True)
+                        device_pair[direction]['traffic_profile'][stream_mode]['run_time'].append(t_global.args.runtime)
+                        device_pair[direction]['traffic_profile'][stream_mode]['stream_modes'].append('burst')
          elif stream_type == 'teaching_warmup' and t_global.args.send_teaching_warmup:
               # if teaching_warmup is the only type for this stream, use the stream's configured rate
               # otherwise use the global default for teaching warmup rate
