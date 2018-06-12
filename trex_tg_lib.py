@@ -269,7 +269,7 @@ def create_flow_mod_object (use_src_mac_flows = False,
             'protocol' : use_protocol_flows }
     return obj
 
-def load_traffic_profile (traffic_profile):
+def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
      try:
           traffic_profile_fp = open(traffic_profile, 'r')
           profile = json.load(traffic_profile_fp)
@@ -307,5 +307,7 @@ def load_traffic_profile (traffic_profile):
 
           if not 'protocol' in stream:
                stream['protocol'] = 'UDP'
+
+          stream['rate'] = stream['rate'] * rate_modifier / 100.0
 
      return profile

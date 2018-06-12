@@ -69,6 +69,12 @@ def process_options ():
                         default=5,
                         type = float,
                         )
+    parser.add_argument('--rate-modifier',
+                        dest='rate_modifier',
+                        help='Percentage to modifiy the traffic profile\'s specified rates by',
+                        default = 100.0,
+                        type = float
+                        )
     parser.add_argument('--measure-latency',
                         dest='measure_latency',
                         help='Collect latency statistics or not',
@@ -507,7 +513,8 @@ def main():
     stats = 0
     return_value = 1
 
-    traffic_profile = load_traffic_profile(t_global.args.traffic_profile)
+    traffic_profile = load_traffic_profile(traffic_profile = t_global.args.traffic_profile,
+                                           rate_modifier = t_global.args.rate_modifier)
     if not 'streams' in traffic_profile:
          return return_value
 
