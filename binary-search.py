@@ -2,6 +2,7 @@
 
 from __future__ import print_function
 
+from trex_tg_lib import *
 import sys, getopt
 import argparse
 import subprocess
@@ -258,7 +259,7 @@ def process_options ():
                         )
     parser.add_argument('--traffic-generator', 
                         dest='traffic_generator',
-                        help='name of traffic generator: trex-txrx or moongen-txrx of null-txrx',
+                        help='name of traffic generator: trex-txrx or trex-txrx-profile or moongen-txrx of null-txrx',
                         default="trex-txrx"
                         )
     parser.add_argument('--measure-latency',
@@ -361,6 +362,12 @@ def process_options ():
                         help='Type of packet to send for the teaching measurement from the receiving port',
                         default = '',
                         choices = ['garp', 'icmp', 'generic']
+                        )
+    parser.add_argument('--traffic-profile',
+                        dest='traffic_profile',
+                        help='Name of the file containing traffic profiles to load',
+                        default = '',
+                        type = str
                         )
 
     t_global.args = parser.parse_args();
@@ -483,7 +490,14 @@ def calculate_tx_pps_target(trial_params, streams, tmp_stats):
      target_default_bytes = 0.0
      target_default_rate = 0.0
      if trial_params['rate_unit'] == "%":
-          total_target_bytes = (tmp_stats['tx_available_bandwidth'] / bits_per_byte) * (trial_params['rate'] / 100)
+          if trial_params['traffic_generator'] == 'trex-txrx':
+               total_target_bytes = (tmp_stats['tx_available_bandwidth'] / bits_per_byte) * (trial_params['rate'] / 100)
+          elif trial_params['traffic_generator'] == 'trex-txrx-profile':
+               total_target_bytes = 0
+
+               for stream in trial_params['loaded_traffic_profile']['streams']:
+                    if 'measurement' in stream['stream_types']:
+                         total_target_bytes += (stream['frame_size'] + packet_overhead_bytes) * (stream['rate'] * trial_params['rate'] / 100.0)
      else:
           if trial_params['frame_size'] < 64:
                frame_size = 64
@@ -491,22 +505,27 @@ def calculate_tx_pps_target(trial_params, streams, tmp_stats):
                frame_size = trial_params['frame_size']
           total_target_bytes = (frame_size + packet_overhead_bytes) * trial_params['rate'] * 1000000
 
-     for frame_size, traffic_shares in zip(streams['default']['frame_sizes'], streams['default']['traffic_shares']):
-          default_packet_avg_bytes += (frame_size * traffic_shares)
+     if trial_params['traffic_generator'] == 'trex-txrx-profile':
+          for stream in trial_params['loaded_traffic_profile']['streams']:
+               if 'measurement' in stream['stream_types']:
+                    rate_target += (stream['rate'] * trial_params['rate'] / 100.0)
+     else:
+          for frame_size, traffic_shares in zip(streams['default']['frame_sizes'], streams['default']['traffic_shares']):
+               default_packet_avg_bytes += (frame_size * traffic_shares)
 
-     if trial_params['measure_latency']:
-          for frame_size, traffic_shares in zip(streams['latency']['frame_sizes'], streams['latency']['traffic_shares']):
-               latency_packet_avg_bytes += (frame_size * traffic_shares)
+          if trial_params['measure_latency']:
+               for frame_size, traffic_shares in zip(streams['latency']['frame_sizes'], streams['latency']['traffic_shares']):
+                    latency_packet_avg_bytes += (frame_size * traffic_shares)
 
-          target_latency_bytes = (latency_packet_avg_bytes + packet_overhead_bytes) * trial_params['latency_rate']
+               target_latency_bytes = (latency_packet_avg_bytes + packet_overhead_bytes) * trial_params['latency_rate']
 
-     target_default_bytes = total_target_bytes - target_latency_bytes
+          target_default_bytes = total_target_bytes - target_latency_bytes
 
-     target_default_rate = target_default_bytes / (default_packet_avg_bytes + packet_overhead_bytes)
+          target_default_rate = target_default_bytes / (default_packet_avg_bytes + packet_overhead_bytes)
 
-     rate_target = target_default_rate
-     if trial_params['measure_latency']:
-          rate_target += trial_params['latency_rate']
+          rate_target = target_default_rate
+          if trial_params['measure_latency']:
+               rate_target += trial_params['latency_rate']
 
      tmp_stats['packet_overhead_bytes'] = packet_overhead_bytes
      tmp_stats['bits_per_byte'] = bits_per_byte
@@ -534,7 +553,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
          stats[1] = dict()
          stats[1]['tx_packets'] = 0
          stats[1]['rx_packets'] = 0
-    elif trial_params['traffic_generator'] == 'trex-txrx':
+    elif trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
          for dev_pair in trial_params['test_dev_pairs']:
               for port in [ 'tx', 'rx' ]:
                    if not dev_pair[port] in stats:
@@ -595,6 +614,43 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
          cmd = 'python null-txrx.py'
          cmd = cmd + ' --mirrored-log'
          cmd = cmd + ' --rate=' + str(trial_params['rate'])
+    elif trial_params['traffic_generator'] == 'trex-txrx-profile':
+        for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
+             tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
+
+        cmd = 'python trex-txrx-profile.py'
+        cmd = cmd + ' --mirrored-log'
+        cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
+        cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
+
+        traffic_direction = 'unidirec'
+        if trial_params['run_bidirec']:
+             traffic_direction = 'bidirec'
+        elif trial_params['run_revunidirec']:
+             traffic_direction = 'revunidirec'
+        cmd = cmd + ' --traffic-direction=' + traffic_direction
+
+        cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
+        cmd = cmd + ' --runtime-tolerance=' + str(trial_params['runtime_tolerance'])
+        cmd = cmd + ' --rate-modifier=' + str(trial_params['rate'])
+        if trial_params['measure_latency']:
+             cmd = cmd + ' --measure-latency'
+        cmd = cmd + ' --latency-rate=' + str(trial_params['latency_rate'])
+        cmd = cmd + ' --max-loss-pct=' + str(trial_params['max_loss_pct'])
+        if not trial_params['enable_flow_cache']:
+             cmd = cmd + ' --disable-flow-cache'
+        if trial_params['send_teaching_warmup']:
+             cmd = cmd + ' --send-teaching-warmup'
+        if trial_params['seng_teaching_measurement']:
+             cmd = cmd + ' --send-teaching-measurement'
+        if trial_params['teaching_measurement_interval']:
+             cmd = cmd + ' --teaching-measurement-interval=' + str(trial_params['teaching_measurement_interval'])
+        if trial_params['teaching_warmup_packet_rate']:
+             cmd = cmd + ' --teaching-warmup-packet-rate=' + str(trial_params['teaching_warmup_packet_rate'])
+        if trial_params['teaching_measurement_packet_rate']:
+             cmd = cmd + ' --teaching-measurement-packet-rate=' + str(trial_params['teaching_measurement_packet_rate'])
+        cmd = cmd + ' --traffic-profile=' + trial_params['traffic_profile']
+
     elif trial_params['traffic_generator'] == 'trex-txrx':
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
@@ -773,7 +829,7 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                                  stats[0]['rx_pps'] = float(fail_packets) / float(trial_params['runtime'])
                                  stats[0]['rx_lost_packets'] = total_packets - fail_packets
                                  stats[0]['rx_lost_packets_pct'] = float(stats[0]['rx_lost_packets']) / float(total_packets)
-             elif trial_params['traffic_generator'] == 'trex-txrx':
+             elif trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
                   if line.rstrip('\n') == "Connection severed":
                        capture_output = False
                        exit_event.set()
@@ -805,8 +861,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   print(line.rstrip('\n'))
-             elif trial_params['traffic_generator'] == 'trex-txrx':
-                  m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE STREAMS FOR DIRECTION '([0-9]+->[0-9]+)':\s+(.*)$", line)
+             elif trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
+                  m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE STREAMS FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
                   if m:
                        dev_pair = m.group(1)
                        path = m.group(2)
@@ -867,9 +923,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['tx']]['tx_l2_bps'] = float(stats[device_pair['tx']]['tx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
                                  stats[device_pair['rx']]['rx_l2_bps'] = float(stats[device_pair['rx']]['rx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
-                                 direction_string = "%d->%d" % (device_pair['tx'], device_pair['rx'])
-                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps']))
-                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps']))
+                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps']))
+                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps']))
 
                                  if trial_params['measure_latency']:
                                       stream_types.append('latency')
@@ -930,11 +985,10 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                                 stats[device_pair['tx']]['tx_latency_l2_bps'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])]) * (frame_size - tmp_stats[device_pair['tx']]['crc_bytes'])
                                                 stats[device_pair['rx']]['rx_latency_l2_bps'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * (frame_size - tmp_stats[device_pair['tx']]['crc_bytes'])
 
-                                      direction_string = "%d->%d" % (device_pair['tx'], device_pair['rx'])
-                                      if results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string] != "N/A":
-                                           if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string]) < 0:
+                                      if results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']] != "N/A":
+                                           if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) < 0:
                                                 stats_error_append_pg_id(stats[device_pair['rx']], 'rx_negative_loss', pg_id)
-                                           elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][direction_string]) > trial_params["max_loss_pct"]:
+                                           elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
                                                 stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
 
                             if not trial_params['use_device_stats']:
@@ -953,8 +1007,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['tx']]['tx_l2_bps'] = float(stats[device_pair['tx']]['tx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
                                  stats[device_pair['rx']]['rx_l2_bps'] = float(stats[device_pair['rx']]['rx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
-                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (direction_string, stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps']))
-                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (direction_string, stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps']))
+                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps']))
+                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps']))
 
                             if trial_params['measure_latency']:
                                  stats[device_pair['rx']]['rx_latency_lost_packets'] = stats[device_pair['tx']]['tx_latency_packets'] - stats[device_pair['rx']]['rx_latency_packets']
@@ -977,8 +1031,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                       # ERROR?
                                       stats[device_pair['rx']]['rx_latency_average'] = -1.0
 
-                                 print("Device Pair: %s | Latency TX | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (direction_string, stats[device_pair['tx']]['tx_latency_packets'], stats[device_pair['tx']]['tx_latency_pps'], stats[device_pair['tx']]['tx_latency_l1_bps'], stats[device_pair['tx']]['tx_latency_l2_bps']))
-                                 print("Device Pair: %s | Latency RX | packets=%d rate=%f l1_bps=%f l2_bps=%f average=%f maximum=%f" % (direction_string, stats[device_pair['rx']]['rx_latency_packets'], stats[device_pair['rx']]['rx_latency_pps'], stats[device_pair['rx']]['rx_latency_l1_bps'], stats[device_pair['rx']]['rx_latency_l2_bps'], stats[device_pair['rx']]['rx_latency_average'], stats[device_pair['rx']]['rx_latency_maximum']))
+                                 print("Device Pair: %s | Latency TX | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['tx']]['tx_latency_packets'], stats[device_pair['tx']]['tx_latency_pps'], stats[device_pair['tx']]['tx_latency_l1_bps'], stats[device_pair['tx']]['tx_latency_l2_bps']))
+                                 print("Device Pair: %s | Latency RX | packets=%d rate=%f l1_bps=%f l2_bps=%f average=%f maximum=%f" % (device_pair['path'], stats[device_pair['rx']]['rx_latency_packets'], stats[device_pair['rx']]['rx_latency_pps'], stats[device_pair['rx']]['rx_latency_l1_bps'], stats[device_pair['rx']]['rx_latency_l2_bps'], stats[device_pair['rx']]['rx_latency_average'], stats[device_pair['rx']]['rx_latency_maximum']))
                        for direction in stats['directional']:
                             stats['directional'][direction]['rx_lost_packets'] = stats['directional'][direction]['tx_packets'] - stats['directional'][direction]['rx_packets']
                             if stats['directional'][direction]['tx_packets']:
@@ -994,7 +1048,7 @@ def print_stats(trial_params, stats):
           print(',')
           print(json.dumps(stats[1], indent = 4, separators=(',', ': '), sort_keys = True))
           print(']')
-     elif t_global.args.traffic_generator == 'trex-txrx':
+     elif t_global.args.traffic_generator == 'trex-txrx' or t_global.args.traffic_generator == 'trex-txrx-profile':
           print('[')
           port = 0
           while port <= trial_params['max_port']:
@@ -1031,6 +1085,10 @@ def main():
          print("The null-txrx traffic generator does not support --rate-unit=mpps")
          quit(1)
 
+    if t_global.args.traffic_generator == 'trex-txrx-profile' and t_global.args.rate_unit == "mpps":
+         print("The trex-txrx-profile traffic generator does not support --rate-unit=mpps")
+         quit(1)
+
     if t_global.args.traffic_generator == 'null-txrx' and t_global.args.measure_latency:
          print("The null-txrx traffic generator does not support latency measurements")
          quit(1)
@@ -1047,7 +1105,7 @@ def main():
 
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
-        if t_global.args.traffic_generator == "null-txrx" or (t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%"):
+        if t_global.args.traffic_generator == "null-txrx" or t_global.args.traffic_generator == "trex-txrx-profile" or (t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%"):
              rate = 100.0
         else:
              rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
@@ -1113,6 +1171,8 @@ def main():
     config_print('teaching-measurement-packet-rate', t_global.args.teaching_measurement_packet_rate)
     config_print('teaching-warmup-packet-type', t_global.args.teaching_warmup_packet_type)
     config_print('teaching-measurement-packet-type', t_global.args.teaching_measurement_packet_type)
+    if t_global.args.traffic_generator == 'trex-txrx-profile':
+         config_print('traffic-profile', t_global.args.traffic_profile)
 
     trial_params = {} 
     # trial parameters which do not change during binary search
@@ -1170,7 +1230,14 @@ def main():
     trial_params['teaching_warmup_packet_type'] = t_global.args.teaching_warmup_packet_type
     trial_params['teaching_measurement_packet_type'] = t_global.args.teaching_measurement_packet_type
 
-    if t_global.args.traffic_generator == "trex-txrx":
+    if t_global.args.traffic_generator == 'trex-txrx-profile':
+         trial_params['traffic_profile'] = t_global.args.traffic_profile
+         trial_params['loaded_traffic_profile'] = load_traffic_profile(traffic_profile = trial_params['traffic_profile'],
+                                                                       rate_modifier = 100.0)
+         if trial_params['loaded_traffic_profile'] == 1:
+              quit(1)
+
+    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['null_stats'] = { 'rx_l1_bps':                   0.0,
                                         'rx_l2_bps':                   0.0,
                                         'rx_packets':                  0,
@@ -1231,8 +1298,13 @@ def main():
          if trial_params['run_revunidirec']:
               test_dev_pair_obj['tx'] = int(ports[1])
               test_dev_pair_obj['rx'] = int(ports[0])
-              test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
               test_dev_pair_obj['direction'] = "<-"
+
+              if t_global.args.traffic_generator == 'trex-txrx-profile':
+                   test_dev_pair_obj['path'] = "%d<-%d" % (test_dev_pair_obj['rx'], test_dev_pair_obj['tx'])
+              else:
+                   test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
+
               trial_params['test_dev_pairs'].append(test_dev_pair_obj)
          else:
               test_dev_pair_obj['tx'] = int(ports[0])
@@ -1245,14 +1317,19 @@ def main():
                    test_dev_pair_obj = copy.deepcopy(test_dev_pair_obj)
                    test_dev_pair_obj['tx'] = int(ports[1])
                    test_dev_pair_obj['rx'] = int(ports[0])
-                   test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
                    test_dev_pair_obj['direction'] = "<-"
+
+                   if t_global.args.traffic_generator == 'trex-txrx-profile':
+                        test_dev_pair_obj['path'] = "%d<-%d" % (test_dev_pair_obj['rx'], test_dev_pair_obj['tx'])
+                   else:
+                        test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
+
                    trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
     port_speed_verification_fail = False
 
     port_info = None
-    if t_global.args.traffic_generator == "trex-txrx":
+    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == 'trex-txrx-profile':
          port_info = get_trex_port_info(trial_params, trial_params['claimed_dev_pairs'])
          trial_results['port_info'] = port_info
 
@@ -1369,7 +1446,7 @@ def main():
                         tx_rate = trial_stats[dev_pair['tx']]['tx_pps'] / 1000000.0
                         tolerance_min = 0.0
                         tolerance_max = 0.0
-                        if t_global.args.traffic_generator == 'trex-txrx':
+                        if t_global.args.traffic_generator == 'trex-txrx' or t_global.args.traffic_generator == 'trex-txrx-profile':
                              tolerance_min = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
                              tolerance_max = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
                              if tx_rate > tolerance_max or tx_rate < tolerance_min:
@@ -1506,7 +1583,7 @@ def main():
                    if t_global.args.traffic_generator == 'moongen-txrx' or t_global.args.traffic_generator == 'null-txrx':
                         failed_stats.append(copy.deepcopy(trial_params['null_stats']))
                         failed_stats.append(copy.deepcopy(trial_params['null_stats']))
-                   elif t_global.args.traffic_generator == 'trex-txrx':
+                   elif t_global.args.traffic_generator == 'trex-txrx' or t_global.args.traffic_generator == 'trex-txrx-profile':
                         port = 0
                         while port <= trial_params['max_port']:
                              failed_stats.append(copy.deepcopy(trial_params['null_stats']))
