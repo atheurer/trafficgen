@@ -130,18 +130,6 @@ def process_options ():
                         default = 1000,
                         type = int
                         )
-    parser.add_argument('--teaching-warmup-packet-type',
-                        dest='teaching_warmup_packet_type',
-                        help='Type of packet to send for the teaching warmup from the receiving port',
-                        default = 'garp',
-                        choices = ['garp', 'icmp', 'generic']
-                        )
-    parser.add_argument('--teaching-measurement-packet-type',
-                        dest='teaching_measurement_packet_type',
-                        help='Type of packet to send for the teaching measurement from the receiving port',
-                        default = 'garp',
-                        choices = ['garp', 'icmp', 'generic']
-                        )
     parser.add_argument('--traffic-profile',
                         dest='traffic_profile',
                         help='Name of the file containing traffic profiles to load',
