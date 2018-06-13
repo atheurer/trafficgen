@@ -641,46 +641,51 @@ def main():
 
         if t_global.args.send_teaching_warmup:
              myprint("Teaching Warmup")
+             have_teaching_streams = False
              for device_pair in device_pairs:
                   for direction in directions:
                        if len(device_pair[direction]['teaching_warmup_traffic_streams']):
                             myprint("\tAdding stream(s) for '%s'" % (device_pair[direction]['id_string']))
                             c.add_streams(streams = device_pair[direction]['teaching_warmup_traffic_streams'], ports = device_pair[direction]['ports']['tx'])
+                            have_teaching_streams = True
 
-             start_time = datetime.datetime.now()
-             myprint("\tStarting transmission at %s" % (start_time.strftime("%H:%M:%S on %Y-%m-%d")))
+             if have_teaching_streams:
+                  start_time = datetime.datetime.now()
+                  myprint("\tStarting transmission at %s" % (start_time.strftime("%H:%M:%S on %Y-%m-%d")))
 
-             warmup_timeout = 30.0
-             for device_pair in device_pairs:
-                  for direction in directions:
-                       warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_run_time'] * 1.05))
+                  warmup_timeout = 30.0
+                  for device_pair in device_pairs:
+                       for direction in directions:
+                            warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_run_time'] * 1.05))
 
-             timeout_time = start_time + datetime.timedelta(seconds = warmup_timeout)
-             myprint("\tThe transmission will timeout with an error at %s" % (timeout_time.strftime("%H:%M:%S on %Y-%m-%d")))
+                  timeout_time = start_time + datetime.timedelta(seconds = warmup_timeout)
+                  myprint("\tThe transmission will timeout with an error at %s" % (timeout_time.strftime("%H:%M:%S on %Y-%m-%d")))
 
-             warmup_ports = teaching_ports
+                  warmup_ports = teaching_ports
 
-             try:
-                  c.start(ports = warmup_ports, force = True)
-                  c.wait_on_traffic(ports = warmup_ports, timeout = warmup_timeout)
+                  try:
+                       c.start(ports = warmup_ports, force = True)
+                       c.wait_on_traffic(ports = warmup_ports, timeout = warmup_timeout)
 
-                  stop_time = datetime.datetime.now()
-                  total_time = stop_time - start_time
-                  myprint("\tFinished transmission at %s" % (stop_time.strftime("%H:%M:%S on %Y-%m-%d")))
-                  myprint("\tWarmup ran for %d second(s) (%s)" % (total_time.total_seconds(), total_time))
-             except STLTimeoutError as e:
-                  c.stop(ports = warmup_ports)
-                  stop_time = datetime.datetime.now()
-                  total_time = stop_time - start_time
-                  myprint("TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%d seconds) -- %d total second(s) elapsed" % (warmup_timeout, total_time.total_seconds()))
-                  return return_value
-             except STLError as e:
-                  c.stop(ports = warmup_ports)
-                  myprint("ERROR: wait_on_traffic: STLError: %s" % e)
-                  return return_value
+                       stop_time = datetime.datetime.now()
+                       total_time = stop_time - start_time
+                       myprint("\tFinished transmission at %s" % (stop_time.strftime("%H:%M:%S on %Y-%m-%d")))
+                       myprint("\tWarmup ran for %d second(s) (%s)" % (total_time.total_seconds(), total_time))
+                  except STLTimeoutError as e:
+                       c.stop(ports = warmup_ports)
+                       stop_time = datetime.datetime.now()
+                       total_time = stop_time - start_time
+                       myprint("TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%d seconds) -- %d total second(s) elapsed" % (warmup_timeout, total_time.total_seconds()))
+                       return return_value
+                  except STLError as e:
+                       c.stop(ports = warmup_ports)
+                       myprint("ERROR: wait_on_traffic: STLError: %s" % e)
+                       return return_value
 
-             c.reset(ports = warmup_ports)
-             c.set_port_attr(ports = warmup_ports, promiscuous = True)
+                  c.reset(ports = warmup_ports)
+                  c.set_port_attr(ports = warmup_ports, promiscuous = True)
+             else:
+                  myprint("\tNo streams configured")
 
         run_ports = []
 
