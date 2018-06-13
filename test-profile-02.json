@@ -1,0 +1,27 @@
+{
+    "streams": [
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 15000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"measurement"
+	    ]
+	}
+    ],
+    "streams_documentation": [
+	"{",
+	"flows: <required, number of flows>,",
+	"frame_size: <required, frame size in bytes>,",
+	"flow_mods: <required, flow mod object ie. \"function:create_flow_mod_object(<flows to use>)\">,",
+	"rate: <required, frame rate in Mpps>,",
+	"frame_type: <optional, type of frames to send, defaults to 'generic', options are: ['generic', 'icmp', 'garp']>,",
+	"stream_types: <optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement']>",
+	"latency: <optional, should latency frames be sent for this stream (latency frames only apply to measurement streams), defaults to True, options are: [True, False]>,",
+	"latency_only: <optional, should this stream only be latency frames, defaults to False, options are: [True, False]>,",
+	"protocol: <optional, what protocol is used for this stream, defaults to UDP, options are: ['UDP', 'TCP']>",
+	"}"
+    ]
+}
