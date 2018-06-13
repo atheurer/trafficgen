@@ -716,7 +716,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
-    print('running trial %03d, rate %f' % (trial_params['trial'], trial_params['rate']))
+    print('running trial %03d, rate %f%s' % (trial_params['trial'], trial_params['rate'], trial_params['rate_unit']))
     print('cmd:', cmd)
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_exit_event = threading.Event()
