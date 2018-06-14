@@ -641,7 +641,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --disable-flow-cache'
         if trial_params['send_teaching_warmup']:
              cmd = cmd + ' --send-teaching-warmup'
-        if trial_params['seng_teaching_measurement']:
+        if trial_params['send_teaching_measurement']:
              cmd = cmd + ' --send-teaching-measurement'
         if trial_params['teaching_measurement_interval']:
              cmd = cmd + ' --teaching-measurement-interval=' + str(trial_params['teaching_measurement_interval'])
@@ -701,7 +701,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --disable-flow-cache'
         if trial_params['send_teaching_warmup']:
              cmd = cmd + ' --send-teaching-warmup'
-        if trial_params['seng_teaching_measurement']:
+        if trial_params['send_teaching_measurement']:
              cmd = cmd + ' --send-teaching-measurement'
         if trial_params['teaching_measurement_interval']:
              cmd = cmd + ' --teaching-measurement-interval=' + str(trial_params['teaching_measurement_interval'])
@@ -1061,7 +1061,9 @@ def print_stats(trial_params, stats):
                port += 1
           print(']')
 
-def config_print(variable, value, config_tag = True):
+def setup_config_var(variable, value, trial_params, config_tag = True):
+     trial_params[variable] = value
+
      if config_tag:
           print("CONFIG | %s=%s" % (variable, value))
      else:
@@ -1114,121 +1116,85 @@ def main():
     prev_pass_rate = [0]
     prev_fail_rate = rate
 
-    # be verbose, dump all options to binary-search
-    config_print("output_dir", t_global.args.output_dir, config_tag = False)
-    config_print("traffic_generator", t_global.args.traffic_generator)
-    config_print("rate", rate)
-    config_print("min_rate", t_global.args.min_rate)
-    config_print("rate_unit", t_global.args.rate_unit)
-    config_print("rate_tolerance", t_global.args.rate_tolerance)
-    config_print("runtime_tolerance", t_global.args.runtime_tolerance)
-    config_print("frame_size", t_global.args.frame_size)
-    config_print("measure_latency", t_global.args.measure_latency)
-    config_print("latency_rate", t_global.args.latency_rate)
-    config_print("max_loss_pct", t_global.args.max_loss_pct)
-    config_print("one_shot", t_global.args.one_shot)
-    config_print("trial_gap", t_global.args.trial_gap)
-    config_print("search-runtime", t_global.args.search_runtime)
-    config_print("validation-runtime", t_global.args.validation_runtime)
-    config_print("sniff-runtime", t_global.args.sniff_runtime)
-    config_print("run-bidirec", t_global.args.run_bidirec)
-    config_print("run-revunidirec", t_global.args.run_revunidirec)
-    config_print("use-num-flows", t_global.args.num_flows)
-    config_print("use-src-mac-flows", t_global.args.use_src_mac_flows)
-    config_print("use-dst-mac-flows", t_global.args.use_dst_mac_flows)
-    config_print("use-src-ip-flows", t_global.args.use_src_ip_flows)
-    config_print("use-dst-ip-flows", t_global.args.use_dst_ip_flows)
-    config_print("use-src-port-flows", t_global.args.use_src_port_flows)
-    config_print("use-dst-port-flows", t_global.args.use_dst_port_flows)
-    config_print("use-protocol-flows", t_global.args.use_protocol_flows)
-    config_print("use-encap-src-mac-flows", t_global.args.use_encap_src_mac_flows)
-    config_print("use-encap-dst-mac-flows", t_global.args.use_encap_dst_mac_flows)
-    config_print("use-encap-src-ip-flows", t_global.args.use_encap_src_ip_flows)
-    config_print("use-encap-dst-ip-flows", t_global.args.use_encap_dst_ip_flows)
-    config_print("src-macs", t_global.args.src_macs)
-    config_print("dest-macs", t_global.args.dst_macs)
-    config_print("encap-src-macs", t_global.args.encap_src_macs)
-    config_print("encap-dest-macs", t_global.args.encap_dst_macs)
-    config_print("src-ips", t_global.args.src_ips)
-    config_print("dest-ips", t_global.args.dst_ips)
-    config_print("encap-src-ips", t_global.args.encap_src_ips)
-    config_print("encap-dest-ips", t_global.args.encap_dst_ips)
-    config_print("src-ports", t_global.args.src_ports)
-    config_print("dst-ports", t_global.args.dst_ports)
-    config_print("packet-protocol", t_global.args.packet_protocol)
-    config_print("stream-mode", t_global.args.stream_mode)
-    config_print("use-device-stats", t_global.args.use_device_stats)
-    config_print("search-granularity", t_global.args.search_granularity)
-    config_print("enable-segment-monitor", t_global.args.enable_segment_monitor)
-    config_print("loss-granularity", t_global.args.loss_granularity)
-    config_print("device-pairs", t_global.args.device_pairs)
-    config_print('active-device-pairs', t_global.args.active_device_pairs)
-    config_print('enable-flow-cache', t_global.args.enable_flow_cache)
-    config_print('send-teaching-warmup', t_global.args.send_teaching_warmup)
-    config_print('send-teaching-measurement', t_global.args.send_teaching_measurement)
-    config_print('teaching-measurement-interval', t_global.args.teaching_measurement_interval)
-    config_print('teaching-warmup-packet-rate', t_global.args.teaching_warmup_packet_rate)
-    config_print('teaching-measurement-packet-rate', t_global.args.teaching_measurement_packet_rate)
-    config_print('teaching-warmup-packet-type', t_global.args.teaching_warmup_packet_type)
-    config_print('teaching-measurement-packet-type', t_global.args.teaching_measurement_packet_type)
-    if t_global.args.traffic_generator == 'trex-txrx-profile':
-         config_print('traffic-profile', t_global.args.traffic_profile)
-
     trial_params = {} 
-    # trial parameters which do not change during binary search
-    trial_params['output_dir'] = t_global.args.output_dir
-    trial_params['measure_latency'] = t_global.args.measure_latency
-    trial_params['latency_rate'] = t_global.args.latency_rate
-    trial_params['max_loss_pct'] = t_global.args.max_loss_pct
-    trial_params['min_rate'] = t_global.args.min_rate
-    trial_params['rate_unit'] = t_global.args.rate_unit
-    trial_params['rate_tolerance'] = t_global.args.rate_tolerance
-    trial_params['runtime_tolerance'] = t_global.args.runtime_tolerance
-    trial_params['frame_size'] = t_global.args.frame_size
-    trial_params['run_bidirec'] = t_global.args.run_bidirec
-    trial_params['run_revunidirec'] = t_global.args.run_revunidirec
-    trial_params['num_flows'] = t_global.args.num_flows
-    trial_params['use_src_mac_flows']= t_global.args.use_src_mac_flows
-    trial_params['use_dst_mac_flows']= t_global.args.use_dst_mac_flows
-    trial_params['use_src_port_flows'] = t_global.args.use_src_port_flows
-    trial_params['use_dst_port_flows'] = t_global.args.use_dst_port_flows
-    trial_params['use_encap_src_mac_flows'] = t_global.args.use_encap_src_mac_flows
-    trial_params['use_encap_dst_mac_flows'] = t_global.args.use_encap_dst_mac_flows
-    trial_params['use_src_ip_flows'] = t_global.args.use_src_ip_flows
-    trial_params['use_dst_ip_flows'] = t_global.args.use_dst_ip_flows
-    trial_params['use_protocol_flows'] = t_global.args.use_protocol_flows
-    trial_params['use_encap_src_ip_flows'] = t_global.args.use_encap_src_ip_flows
-    trial_params['use_encap_dst_ip_flows'] = t_global.args.use_encap_dst_ip_flows
-    trial_params['src_macs'] = t_global.args.src_macs
-    trial_params['dst_macs'] = t_global.args.dst_macs
-    trial_params['encap_src_macs'] = t_global.args.encap_src_macs
-    trial_params['encap_dst_macs'] = t_global.args.encap_dst_macs
-    trial_params['src_ips'] = t_global.args.src_ips
-    trial_params['dst_ips'] = t_global.args.dst_ips
-    trial_params['encap_src_ips'] = t_global.args.encap_src_ips
-    trial_params['encap_dst_ips'] = t_global.args.encap_dst_ips
-    trial_params['vlan_ids'] = t_global.args.vlan_ids
-    trial_params['vxlan_ids'] = t_global.args.vxlan_ids
-    trial_params['traffic_generator'] = t_global.args.traffic_generator
-    trial_params['max_retries'] = t_global.args.max_retries
-    trial_params['search_granularity'] = t_global.args.search_granularity
-    trial_params['src_ports'] = t_global.args.src_ports
-    trial_params['dst_ports'] = t_global.args.dst_ports
-    trial_params['packet_protocol'] = t_global.args.packet_protocol
-    trial_params['stream_mode'] = t_global.args.stream_mode
-    trial_params['use_device_stats'] = t_global.args.use_device_stats
-    trial_params['enable_segment_monitor'] = t_global.args.enable_segment_monitor
-    trial_params['loss_granularity'] = t_global.args.loss_granularity
-    trial_params['device_pairs'] = t_global.args.device_pairs
-    trial_params['active_device_pairs'] = t_global.args.active_device_pairs
-    trial_params['enable_flow_cache'] = t_global.args.enable_flow_cache
-    trial_params['send_teaching_warmup'] = t_global.args.send_teaching_warmup
-    trial_params['seng_teaching_measurement'] = t_global.args.send_teaching_measurement
-    trial_params['teaching_measurement_interval'] = t_global.args.teaching_measurement_interval
-    trial_params['teaching_warmup_packet_rate'] = t_global.args.teaching_warmup_packet_rate
-    trial_params['teaching_measurement_packet_rate'] = t_global.args.teaching_measurement_packet_rate
-    trial_params['teaching_warmup_packet_type'] = t_global.args.teaching_warmup_packet_type
-    trial_params['teaching_measurement_packet_type'] = t_global.args.teaching_measurement_packet_type
+
+    # be verbose, dump all options to binary-search
+    setup_config_var("output_dir", t_global.args.output_dir, trial_params, config_tag = False)
+    setup_config_var("traffic_generator", t_global.args.traffic_generator, trial_params)
+    setup_config_var("rate", rate, trial_params)
+    setup_config_var("runtime_tolerance", t_global.args.runtime_tolerance, trial_params)
+    setup_config_var("rate_tolerance", t_global.args.rate_tolerance, trial_params)
+    setup_config_var("one_shot", t_global.args.one_shot, trial_params)
+    setup_config_var("min_rate", t_global.args.min_rate, trial_params)
+    setup_config_var("max_loss_pct", t_global.args.max_loss_pct, trial_params)
+    setup_config_var("trial_gap", t_global.args.trial_gap, trial_params)
+    setup_config_var("search_runtime", t_global.args.search_runtime, trial_params)
+    setup_config_var("validation_runtime", t_global.args.validation_runtime, trial_params)
+    setup_config_var("sniff_runtime", t_global.args.sniff_runtime, trial_params)
+    setup_config_var("search_granularity", t_global.args.search_granularity, trial_params)
+    setup_config_var("max_retries", t_global.args.max_retries, trial_params)
+    setup_config_var("loss_granularity", t_global.args.loss_granularity, trial_params)
+
+    if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
+         setup_config_var("run_bidirec", t_global.args.run_bidirec, trial_params)
+         setup_config_var("run_revunidirec", t_global.args.run_revunidirec, trial_params)
+
+    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
+         setup_config_var("num_flows", t_global.args.num_flows, trial_params)
+         setup_config_var("frame_size", t_global.args.frame_size, trial_params)
+         setup_config_var("use_src_mac_flows", t_global.args.use_src_mac_flows, trial_params)
+         setup_config_var("use_dst_mac_flows", t_global.args.use_dst_mac_flows, trial_params)
+         setup_config_var("use_src_ip_flows", t_global.args.use_src_ip_flows, trial_params)
+         setup_config_var("use_dst_ip_flows", t_global.args.use_dst_ip_flows, trial_params)
+         setup_config_var("src_macs", t_global.args.src_macs, trial_params)
+         setup_config_var("dst_macs", t_global.args.dst_macs, trial_params)
+         setup_config_var("src_ips", t_global.args.src_ips, trial_params)
+         setup_config_var("dst_ips", t_global.args.dst_ips, trial_params)
+         setup_config_var("vlan_ids", t_global.args.vlan_ids, trial_params)
+
+    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
+         setup_config_var("device_pairs", t_global.args.device_pairs, trial_params)
+         setup_config_var('active_device_pairs', t_global.args.active_device_pairs, trial_params)
+         setup_config_var("rate_unit", t_global.args.rate_unit, trial_params)
+         setup_config_var("measure_latency", t_global.args.measure_latency, trial_params)
+         setup_config_var("latency_rate", t_global.args.latency_rate, trial_params)
+         setup_config_var('enable_flow_cache', t_global.args.enable_flow_cache, trial_params)
+         setup_config_var('send_teaching_warmup', t_global.args.send_teaching_warmup, trial_params)
+         setup_config_var('send_teaching_measurement', t_global.args.send_teaching_measurement, trial_params)
+         setup_config_var('teaching_measurement_interval', t_global.args.teaching_measurement_interval, trial_params)
+         setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
+         setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
+         setup_config_var("use_device_stats", t_global.args.use_device_stats, trial_params)
+
+    if t_global.args.traffic_generator == "moongen-txrx":
+         setup_config_var("encap_src_macs", t_global.args.encap_src_macs, trial_params)
+         setup_config_var("encap_dest_macs", t_global.args.encap_dst_macs, trial_params)
+         setup_config_var("encap_src_ips", t_global.args.encap_src_ips, trial_params)
+         setup_config_var("encap_dest_ips", t_global.args.encap_dst_ips, trial_params)
+         setup_config_var("vxlan_ids", t_global.args.vxlan_ids, trial_params)
+         setup_config_var("use_encap_src_mac_flows", t_global.args.use_encap_src_mac_flows)
+         setup_config_var("use_encap_dst_mac_flows", t_global.args.use_encap_dst_mac_flows)
+         setup_config_var("use_encap_src_ip_flows", t_global.args.use_encap_src_ip_flows)
+         setup_config_var("use_encap_dst_ip_flows", t_global.args.use_encap_dst_ip_flows)
+
+    if t_global.args.traffic_generator == "null-txrx":
+         # empty for now
+         foo = None
+
+    if t_global.args.traffic_generator == "trex-txrx":
+         setup_config_var("use_src_port_flows", t_global.args.use_src_port_flows, trial_params)
+         setup_config_var("use_dst_port_flows", t_global.args.use_dst_port_flows, trial_params)
+         setup_config_var("src_ports", t_global.args.src_ports, trial_params)
+         setup_config_var("dst_ports", t_global.args.dst_ports, trial_params)
+         setup_config_var("use_protocol_flows", t_global.args.use_protocol_flows, trial_params)
+         setup_config_var("packet_protocol", t_global.args.packet_protocol, trial_params)
+         setup_config_var("stream_mode", t_global.args.stream_mode, trial_params)
+         setup_config_var("enable_segment_monitor", t_global.args.enable_segment_monitor, trial_params)
+         setup_config_var('teaching_warmup_packet_type', t_global.args.teaching_warmup_packet_type, trial_params)
+         setup_config_var('teaching_measurement_packet_type', t_global.args.teaching_measurement_packet_type, trial_params)
+
+    if t_global.args.traffic_generator == "trex-txrx-profile":
+         setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
 
     if t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['traffic_profile'] = t_global.args.traffic_profile
