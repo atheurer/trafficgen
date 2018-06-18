@@ -302,7 +302,7 @@ def create_stream (stream, device_pair, direction, other_direction):
                              for loop_idx in range(1, stream_loops+1):
                                   substream_name = "%s_sub_%d" % (stream_name, loop_idx)
                                   substream_next_name = "%s_sub_%d" % (stream_name, loop_idx+1)
-                                  myprint("\t\tCreating substream %d with name %s" % (loop_idx, substream_name))
+                                  myprint("\t\tCreating substream %d with name=%s" % (loop_idx, substream_name))
                                   stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = max_uint32)
                                   device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet['packet'],
                                                                                              flow_stats = flow_stats,
@@ -313,7 +313,7 @@ def create_stream (stream, device_pair, direction, other_direction):
                                   substream_self_start = False
 
                              substream_name = "%s_sub_%d" % (stream_name, stream_loops+1)
-                             myprint("\t\tCreating substream %d with name %s" % (stream_loops+1, substream_name))
+                             myprint("\t\tCreating substream %d with name=%s" % (stream_loops+1, substream_name))
                              stream_control = STLTXSingleBurst(pps = stream_rate, total_pkts = stream_loop_remainder)
                              device_pair[direction]['traffic_streams'].append(STLStream(packet = stream_packet['packet'],
                                                                                         flow_stats = flow_stats,
