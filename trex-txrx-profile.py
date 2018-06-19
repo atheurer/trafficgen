@@ -86,11 +86,6 @@ def process_options ():
                         default = 1000,
                         type = int
                         )
-    parser.add_argument('--skip-hw-flow-stats',
-                        dest='skip_hw_flow_stats',
-                        help='Should hardware flow stat support be used',
-                        action = 'store_true',
-                        )
     parser.add_argument('--max-loss-pct',
                         dest='max_loss_pct',
                         help='Maximum percentage of packet loss',
