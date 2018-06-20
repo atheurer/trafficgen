@@ -245,6 +245,9 @@ def create_stream (stream, device_pair, direction, other_direction):
     stream_rate = stream['rate']
 
     for stream_type in stream['stream_types']:
+         if stream_type != 'measurement' and stream_type != 'teaching_warmup' and stream_type != 'teaching_measurement':
+              raise ValueError("Invalid stream_type: %s" % (stream_type))
+
          if stream_type == 'measurement':
               for stream_mode in stream_modes:
                    stream_rate = stream['rate']
@@ -348,10 +351,10 @@ def create_stream (stream, device_pair, direction, other_direction):
                                                                                                                stream['frame_size'],
                                                                                                                stream_rate,
                                                                                                                stream_packet['protocol']))
-                   device_pair[direction]['teaching_warmup_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
-                                                                                              mode = stream_control,
-                                                                                              next = None,
-                                                                                              self_start = True))
+                   device_pair[other_direction]['teaching_warmup_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
+                                                                                                    mode = stream_control,
+                                                                                                    next = None,
+                                                                                                    self_start = True))
          elif stream_type == 'teaching_measurement' and t_global.args.send_teaching_measurement:
               # if teaching_measurement is the only type for this stream, use the stream's configured rate
               # otherwise use the global default for teaching measurement rate
@@ -372,12 +375,10 @@ def create_stream (stream, device_pair, direction, other_direction):
                                                                                                                                  stream_rate,
                                                                                                                                  t_global.args.teaching_measurement_interval,
                                                                                                                                  stream_packet['protocol']))
-                   device_pair[direction]['teaching_measurement_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
+                   device_pair[other_direction]['teaching_measurement_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
                                                                                                    mode = stream_control,
                                                                                                    next = None,
                                                                                                    self_start = True))
-         else:
-              raise ValueError("Invalid stream_type: %s" % (stream_type))
 
     return
 
