@@ -1518,24 +1518,44 @@ def main():
               elif trial_result == "pass":
                    passed_stats = trial_stats
                    if final_validation: # no longer necessary to continue searching
-                        break
-                   if do_sniff:
-                        do_sniff = False
-                        do_search = True
-                        next_rate = rate # since this was only the sniff test, keep the current rate
-                   else:
-                        prev_pass_rate.append(rate) # add the newly passed rate to the stack of passed rates; this will become the new reference for passed rates
-                        next_rate = (prev_fail_rate + rate) / 2
-                        if abs(rate - next_rate)/rate * 100 < trial_params['search_granularity']: # trigger final validation
-                             final_validation = True
-                             do_search = False
-                        else:
+                        if initial_rate == rate:
+                             print("Detected requested rate is too low, doubling rate and restarting search")
+
+                             final_validation = False
+
                              if perform_sniffs:
                                   do_sniff = True
                                   do_search = False
-                   prev_rate = rate
-                   rate = next_rate
-                   retries = 0
+                             else:
+                                  do_sniff = False
+                                  do_search = True
+
+                             rate = 2 * initial_rate
+                             initial_rate = rate
+                             prev_rate = 0
+                             prev_pass_rate = [0]
+                             prev_fail_rate = rate
+                             retries = 0
+                        else:
+                             break
+                   else:
+                        if do_sniff:
+                             do_sniff = False
+                             do_search = True
+                             next_rate = rate # since this was only the sniff test, keep the current rate
+                        else:
+                             prev_pass_rate.append(rate) # add the newly passed rate to the stack of passed rates; this will become the new reference for passed rates
+                             next_rate = (prev_fail_rate + rate) / 2
+                             if abs(rate - next_rate)/rate * 100 < trial_params['search_granularity']: # trigger final validation
+                                  final_validation = True
+                                  do_search = False
+                             else:
+                                  if perform_sniffs:
+                                       do_sniff = True
+                                       do_search = False
+                        prev_rate = rate
+                        rate = next_rate
+                        retries = 0
 
               if rate < minimum_rate and prev_rate > minimum_rate:
                    print("Setting the rate to the minimum allowed by the search granularity as a last attempt at passing.")
