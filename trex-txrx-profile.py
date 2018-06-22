@@ -16,6 +16,7 @@ from trex_tg_lib import *
 
 class t_global(object):
      args=None
+     constants=None
 
 def myprint(*args, **kwargs):
      stderr_only = False
@@ -27,6 +28,17 @@ def myprint(*args, **kwargs):
      if stderr_only or t_global.args.mirrored_log:
           print(*args, file = sys.stderr, **kwargs)
      return
+
+def setup_constants ():
+     forward_direction = '->'
+     reverse_direction = '<-'
+
+     t_global.constants = { 'forward_direction': forward_direction,
+                            'reverse_direction': reverse_direction,
+                            'both_directions': "%s%s" % (reverse_direction, forward_direction),
+                            'directions': [ forward_direction,
+                                            reverse_direction ],
+                       }
 
 def process_options ():
     parser = argparse.ArgumentParser(usage="generate network traffic and report packet loss")
@@ -383,15 +395,10 @@ def create_stream (stream, device_pair, direction, other_direction):
     return
 
 def main():
+    setup_constants()
     process_options()
 
     traffic_profile = {}
-
-    forward_direction = '->'
-    reverse_direction = '<-'
-    both_directions = "%s%s" % (reverse_direction, forward_direction)
-
-    directions = [ forward_direction, reverse_direction ]
 
     packet_values = { 'ports': { 'src': 32768,
                                  'dst': 53 },
@@ -437,11 +444,11 @@ def main():
          port_b = int(ports[1])
          string = ''
          if t_global.args.traffic_direction == 'bidirec':
-              string = "%s" % (both_directions)
+              string = "%s" % (t_global.constants['both_directions'])
          elif t_global.args.traffic_direction == 'unidirec':
-              string = "%s" % (forward_direction)
+              string = "%s" % (t_global.constants['forward_direction'])
          elif t_global.args.traffic_direction == 'revunidirec':
-              string = "%s" % (reverse_direction)
+              string = "%s" % (t_global.constants['reverse_direction'])
 
          myprint("Configuring device pair: %d%s%d" % (port_a, string, port_b))
          all_ports.extend([port_a, port_b])
@@ -462,30 +469,30 @@ def main():
              if t_global.args.send_teaching_warmup or t_global.args.send_teaching_measurement:
                  teaching_ports.append(port_a)
 
-         device_pairs.append({ forward_direction: { 'ports': { 'tx': port_a,
-                                                               'rx': port_b },
-                                                    'id_string': "%s%s%s" % (port_a, forward_direction, port_b),
-                                                    'packet_values': copy.deepcopy(packet_values),
-                                                    'pg_ids': copy.deepcopy(pg_id_values),
-                                                    'traffic_profile': { 'default': copy.deepcopy(stream_profile_object),
-                                                                         'latency': copy.deepcopy(stream_profile_object) },
-                                                    'traffic_streams': [],
-                                                    'teaching_warmup_traffic_streams': [],
-                                                    'teaching_warmup_max_run_time': 0,
-                                                    'teaching_measurement_traffic_streams': [],
-                                                    'active': False },
-                               reverse_direction: { 'ports': { 'tx': port_b,
-                                                               'rx': port_a },
-                                                    'id_string': "%s%s%s" % (port_a, reverse_direction, port_b),
-                                                    'packet_values': copy.deepcopy(packet_values),
-                                                    'pg_ids': copy.deepcopy(pg_id_values),
-                                                    'traffic_profile': { 'default': copy.deepcopy(stream_profile_object),
-                                                                         'latency': copy.deepcopy(stream_profile_object) },
-                                                    'traffic_streams': [],
-                                                    'teaching_warmup_traffic_streams': [],
-                                                    'teaching_warmup_max_run_time': 0,
-                                                    'teaching_measurement_traffic_streams': [],
-                                                    'active': False },
+         device_pairs.append({ t_global.constants['forward_direction']: { 'ports': { 'tx': port_a,
+                                                                                     'rx': port_b },
+                                                                          'id_string': "%s%s%s" % (port_a, t_global.constants['forward_direction'], port_b),
+                                                                          'packet_values': copy.deepcopy(packet_values),
+                                                                          'pg_ids': copy.deepcopy(pg_id_values),
+                                                                          'traffic_profile': { 'default': copy.deepcopy(stream_profile_object),
+                                                                                               'latency': copy.deepcopy(stream_profile_object) },
+                                                                          'traffic_streams': [],
+                                                                          'teaching_warmup_traffic_streams': [],
+                                                                          'teaching_warmup_max_run_time': 0,
+                                                                          'teaching_measurement_traffic_streams': [],
+                                                                          'active': False },
+                               t_global.constants['reverse_direction']: { 'ports': { 'tx': port_b,
+                                                                                     'rx': port_a },
+                                                                          'id_string': "%s%s%s" % (port_a, t_global.constants['reverse_direction'], port_b),
+                                                                          'packet_values': copy.deepcopy(packet_values),
+                                                                          'pg_ids': copy.deepcopy(pg_id_values),
+                                                                          'traffic_profile': { 'default': copy.deepcopy(stream_profile_object),
+                                                                                               'latency': copy.deepcopy(stream_profile_object) },
+                                                                          'traffic_streams': [],
+                                                                          'teaching_warmup_traffic_streams': [],
+                                                                          'teaching_warmup_max_run_time': 0,
+                                                                          'teaching_measurement_traffic_streams': [],
+                                                                          'active': False },
                                'max_default_pg_ids': 0,
                                'max_latency_pg_ids': 0,
                                'device_pair': device_pair })
@@ -509,16 +516,16 @@ def main():
          active_ports = len(all_ports)
 
          for device_pair in device_pairs:
-              device_pair[forward_direction]['active'] = True
-              device_pair[reverse_direction]['active'] = True
+              device_pair[t_global.constants['forward_direction']]['active'] = True
+              device_pair[t_global.constants['reverse_direction']]['active'] = True
     else:
          active_ports = len(all_ports) / 2
 
          for device_pair in device_pairs:
               if t_global.args.traffic_direction == 'unidirec':
-                   device_pair[forward_direction]['active'] = True
+                   device_pair[t_global.constants['forward_direction']]['active'] = True
               elif t_global.args.traffic_direction == 'revunidirec':
-                   device_pair[reverse_direction]['active'] = True
+                   device_pair[t_global.constants['reverse_direction']]['active'] = True
 
     myprint("Active TX Ports: %d" % active_ports)
 
@@ -545,12 +552,12 @@ def main():
         port_speed_verification_fail = False
 
         for device_pair in device_pairs:
-            for direction in directions:
+            for direction in t_global.constants['directions']:
                 other_direction = ''
-                if direction == forward_direction:
-                    other_direction = reverse_direction
+                if direction == t_global.constants['forward_direction']:
+                    other_direction = t_global.constants['reverse_direction']
                 else:
-                    other_direction = forward_direction
+                    other_direction = t_global.constants['forward_direction']
 
                 if port_info[device_pair[direction]['ports']['tx']]['speed'] == 0:
                     port_speed_verification_fail = True
@@ -572,24 +579,24 @@ def main():
 
         for device_pair in device_pairs:
              if t_global.args.traffic_direction == 'bidirec':
-                  if port_info[device_pair[forward_direction]['ports']['tx']]["rx"]["counters"] <= port_info[device_pair[forward_direction]['ports']['rx']]["rx"]["counters"]:
-                       device_pair['max_default_pg_ids'] = port_info[device_pair[forward_direction]['ports']['tx']]["rx"]["counters"] / len(device_pairs)
+                  if port_info[device_pair[t_global.constants['forward_direction']]['ports']['tx']]["rx"]["counters"] <= port_info[device_pair[t_global.constants['forward_direction']]['ports']['rx']]["rx"]["counters"]:
+                       device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['tx']]["rx"]["counters"] / len(device_pairs)
                   else:
-                       device_pair['max_default_pg_ids'] = port_info[device_pair[forward_direction]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
              else:
                   if t_global.args.traffic_direction == 'unidirec':
-                       device_pair['max_default_pg_ids'] = port_info[device_pair[forward_direction]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
                   elif t_global.args.traffic_direction == 'revunidirec':
-                       device_pair['max_default_pg_ids'] = port_info[device_pair[reverse_direction]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['reverse_direction']]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
 
              device_pair['max_latency_pg_ids'] = 128 / len(device_pairs) # 128 is the maximum number of software counters for latency in TRex
 
         pg_id_base = 1000
         for device_pair in device_pairs:
              if not t_global.args.traffic_direction == 'bidirec':
-                  direction = forward_direction
+                  direction = t_global.constants['forward_direction']
                   if t_global.args.traffic_direction == 'revunidirec':
-                       direction = reverse_direction
+                       direction = t_global.constants['reverse_direction']
 
                   device_pair[direction]['pg_ids']['default']['total']       = device_pair['max_default_pg_ids']
                   device_pair[direction]['pg_ids']['default']['available']   = device_pair[direction]['pg_ids']['default']['total']
@@ -598,19 +605,19 @@ def main():
                   device_pair[direction]['pg_ids']['latency']['available']   = device_pair[direction]['pg_ids']['latency']['total']
                   device_pair[direction]['pg_ids']['latency']['start_index'] = device_pair[direction]['pg_ids']['default']['start_index'] + device_pair[direction]['pg_ids']['default']['total']
              else:
-                  device_pair[forward_direction]['pg_ids']['default']['total']       = device_pair['max_default_pg_ids'] / 2
-                  device_pair[forward_direction]['pg_ids']['default']['available']   = device_pair[forward_direction]['pg_ids']['default']['total']
-                  device_pair[forward_direction]['pg_ids']['default']['start_index'] = pg_id_base
-                  device_pair[forward_direction]['pg_ids']['latency']['total']       = device_pair['max_latency_pg_ids'] / 2
-                  device_pair[forward_direction]['pg_ids']['latency']['available']   = device_pair[forward_direction]['pg_ids']['latency']['total']
-                  device_pair[forward_direction]['pg_ids']['latency']['start_index'] = device_pair[forward_direction]['pg_ids']['default']['start_index'] + device_pair[forward_direction]['pg_ids']['default']['total']
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']       = device_pair['max_default_pg_ids'] / 2
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['available']   = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['start_index'] = pg_id_base
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']       = device_pair['max_latency_pg_ids'] / 2
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['available']   = device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['start_index'] = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['start_index'] + device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']
 
-                  device_pair[reverse_direction]['pg_ids']['default']['total']       = device_pair[forward_direction]['pg_ids']['default']['total']
-                  device_pair[reverse_direction]['pg_ids']['default']['available']   = device_pair[reverse_direction]['pg_ids']['default']['total']
-                  device_pair[reverse_direction]['pg_ids']['default']['start_index'] = device_pair[forward_direction]['pg_ids']['default']['start_index'] + device_pair[forward_direction]['pg_ids']['default']['total'] + device_pair[forward_direction]['pg_ids']['latency']['total']
-                  device_pair[reverse_direction]['pg_ids']['latency']['total']       = device_pair[forward_direction]['pg_ids']['latency']['total']
-                  device_pair[reverse_direction]['pg_ids']['latency']['available']   = device_pair[reverse_direction]['pg_ids']['latency']['total']
-                  device_pair[reverse_direction]['pg_ids']['latency']['start_index'] = device_pair[reverse_direction]['pg_ids']['default']['start_index'] + device_pair[reverse_direction]['pg_ids']['default']['total']
+                  device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['total']       = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']
+                  device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['available']   = device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['total']
+                  device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['start_index'] = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['start_index'] + device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total'] + device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']
+                  device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['total']       = device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']
+                  device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['available']   = device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['total']
+                  device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['start_index'] = device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['start_index'] + device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['total']
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
@@ -618,14 +625,14 @@ def main():
         for device_pair in device_pairs:
             for stream in traffic_profile['streams']:
                 if t_global.args.traffic_direction == 'bidirec' or t_global.args.traffic_direction == 'unidirec':
-                    if not 'direction' in stream or stream['direction'] == forward_direction or stream['direction'] == both_directions:
-                        create_stream(stream, device_pair, forward_direction, reverse_direction)
+                    if not 'direction' in stream or stream['direction'] == t_global.constants['forward_direction'] or stream['direction'] == t_global.constants['both_directions']:
+                        create_stream(stream, device_pair, t_global.constants['forward_direction'], t_global.constants['reverse_direction'])
 
                 if t_global.args.traffic_direction == 'bidirec' or t_global.args.traffic_direction == 'revunidirec':
-                    if not 'direction' in stream or stream['direction'] == reverse_direction or stream['direction'] == both_directions:
-                        create_stream(stream, device_pair, reverse_direction, forward_direction)
+                    if not 'direction' in stream or stream['direction'] == t_global.constants['reverse_direction'] or stream['direction'] == t_global.constants['both_directions']:
+                        create_stream(stream, device_pair, t_global.constants['reverse_direction'], t_global.constants['forward_direction'])
 
-            for direction in directions:
+            for direction in t_global.constants['directions']:
                 if len(device_pair[direction]['traffic_streams']):
                     myprint("DEVICE PAIR %s | READABLE STREAMS FOR DIRECTION '%s':" % (device_pair['device_pair'], device_pair[direction]['id_string']), stderr_only = True)
                     myprint(dump_json_readable(device_pair[direction]['traffic_profile']), stderr_only = True)
@@ -635,7 +642,7 @@ def main():
              myprint("Teaching Warmup")
              have_teaching_streams = False
              for device_pair in device_pairs:
-                  for direction in directions:
+                  for direction in t_global.constants['directions']:
                        if len(device_pair[direction]['teaching_warmup_traffic_streams']):
                             myprint("\tAdding stream(s) for '%s'" % (device_pair[direction]['id_string']))
                             c.add_streams(streams = device_pair[direction]['teaching_warmup_traffic_streams'], ports = device_pair[direction]['ports']['tx'])
@@ -647,7 +654,7 @@ def main():
 
                   warmup_timeout = 30.0
                   for device_pair in device_pairs:
-                       for direction in directions:
+                       for direction in t_global.constants['directions']:
                             warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_run_time'] * 1.05))
 
                   timeout_time = start_time + datetime.timedelta(seconds = warmup_timeout)
@@ -683,7 +690,7 @@ def main():
 
         myprint("Measurement")
         for device_pair in device_pairs:
-             for direction in directions:
+             for direction in t_global.constants['directions']:
                   port_streams = 0
 
                   if len(device_pair[direction]['traffic_streams']):
@@ -755,7 +762,7 @@ def main():
                   if flows_id == "global":
                        continue
 
-                  if not int(flows_id) in device_pair[forward_direction]['traffic_profile']['default']['pg_ids'] and not int(flows_id) in device_pair[reverse_direction]['traffic_profile']['default']['pg_ids'] and not int(flows_id) in device_pair[forward_direction]['traffic_profile']['latency']['pg_ids'] and not int(flows_id) in device_pair[reverse_direction]['traffic_profile']['latency']['pg_ids']:
+                  if not int(flows_id) in device_pair[t_global.constants['forward_direction']]['traffic_profile']['default']['pg_ids'] and not int(flows_id) in device_pair[t_global.constants['reverse_direction']]['traffic_profile']['default']['pg_ids'] and not int(flows_id) in device_pair[t_global.constants['forward_direction']]['traffic_profile']['latency']['pg_ids'] and not int(flows_id) in device_pair[t_global.constants['reverse_direction']]['traffic_profile']['latency']['pg_ids']:
                        continue
 
                   flow_tx = 0
@@ -766,7 +773,7 @@ def main():
                        stats["flow_stats"][flows_id]["loss"]["pct"] = dict()
                        stats["flow_stats"][flows_id]["loss"]["cnt"] = dict()
 
-                  for direction in directions:
+                  for direction in t_global.constants['directions']:
                        if device_pair[direction]['ports']['tx'] in stats["flow_stats"][flows_id]["tx_pkts"] and device_pair[direction]['ports']['rx'] in stats["flow_stats"][flows_id]["rx_pkts"] and stats["flow_stats"][flows_id]["tx_pkts"][device_pair[direction]['ports']['tx']]:
                             stats["flow_stats"][flows_id]["loss"]["pct"][device_pair[direction]['id_string']] = (1 - (float(stats["flow_stats"][flows_id]["rx_pkts"][device_pair[direction]['ports']['rx']]) / float(stats["flow_stats"][flows_id]["tx_pkts"][device_pair[direction]['ports']['tx']]))) * 100
                             stats["flow_stats"][flows_id]["loss"]["cnt"][device_pair[direction]['id_string']] = float(stats["flow_stats"][flows_id]["tx_pkts"][device_pair[direction]['ports']['tx']]) - float(stats["flow_stats"][flows_id]["rx_pkts"][device_pair[direction]['ports']['rx']])
