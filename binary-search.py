@@ -476,6 +476,8 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
           output_file.close()
 
 def calculate_tx_pps_target(trial_params, streams, tmp_stats):
+     stream_types = [ 'default', 'latency' ]
+
      rate_target = 0.0
 
      # packet overhead is (7 byte preamable + 1 byte SFD -- Start of Frame Delimiter -- + 12 byte IFG -- Inter Frame Gap)
@@ -495,9 +497,9 @@ def calculate_tx_pps_target(trial_params, streams, tmp_stats):
           elif trial_params['traffic_generator'] == 'trex-txrx-profile':
                total_target_bytes = 0
 
-               for stream in trial_params['loaded_traffic_profile']['streams']:
-                    if 'measurement' in stream['stream_types']:
-                         total_target_bytes += (stream['frame_size'] + packet_overhead_bytes) * (stream['rate'] * trial_params['rate'] / 100.0)
+               for stream_type in stream_types:
+                    for stream_frame_size, stream_pps in zip(streams[stream_type]['frame_sizes'], streams[stream_type]['pps']):
+                         total_target_bytes += (stream_frame_size + packet_overhead_bytes) * stream_pps
      else:
           if trial_params['frame_size'] < 64:
                frame_size = 64
@@ -506,9 +508,9 @@ def calculate_tx_pps_target(trial_params, streams, tmp_stats):
           total_target_bytes = (frame_size + packet_overhead_bytes) * trial_params['rate'] * 1000000
 
      if trial_params['traffic_generator'] == 'trex-txrx-profile':
-          for stream in trial_params['loaded_traffic_profile']['streams']:
-               if 'measurement' in stream['stream_types']:
-                    rate_target += (stream['rate'] * trial_params['rate'] / 100.0)
+          for stream_type in stream_types:
+               for stream_pps in streams[stream_type]['pps']:
+                    rate_target += stream_pps
      else:
           for frame_size, traffic_shares in zip(streams['default']['frame_sizes'], streams['default']['traffic_shares']):
                default_packet_avg_bytes += (frame_size * traffic_shares)
@@ -622,14 +624,6 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
-
-        traffic_direction = 'unidirec'
-        if trial_params['run_bidirec']:
-             traffic_direction = 'bidirec'
-        elif trial_params['run_revunidirec']:
-             traffic_direction = 'revunidirec'
-        cmd = cmd + ' --traffic-direction=' + traffic_direction
-
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
         cmd = cmd + ' --runtime-tolerance=' + str(trial_params['runtime_tolerance'])
         cmd = cmd + ' --rate-modifier=' + str(trial_params['rate'])
@@ -1136,10 +1130,12 @@ def main():
     setup_config_var("loss_granularity", t_global.args.loss_granularity, trial_params)
 
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
-         setup_config_var("run_bidirec", t_global.args.run_bidirec, trial_params)
-         setup_config_var("run_revunidirec", t_global.args.run_revunidirec, trial_params)
+         # empty for now
+         foo = None
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
+         setup_config_var("run_bidirec", t_global.args.run_bidirec, trial_params)
+         setup_config_var("run_revunidirec", t_global.args.run_revunidirec, trial_params)
          setup_config_var("num_flows", t_global.args.num_flows, trial_params)
          setup_config_var("frame_size", t_global.args.frame_size, trial_params)
          setup_config_var("use_src_mac_flows", t_global.args.use_src_mac_flows, trial_params)
@@ -1195,6 +1191,8 @@ def main():
 
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
+         setup_config_var("run_bidirec", 1, trial_params, config_tag = False)
+         setup_config_var("run_revunidirec", 0, trial_params, config_tag = False)
 
     if t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['traffic_profile'] = t_global.args.traffic_profile
