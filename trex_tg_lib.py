@@ -308,6 +308,18 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           if not 'protocol' in stream:
                stream['protocol'] = 'UDP'
 
+          if not 'traffic_direction' in stream:
+               stream['traffic_direction'] = "bidirectional"
+
+          if stream['traffic_direction'] == "bidirectional":
+               stream['direction'] = "<-->"
+          elif stream['traffic_direction'] == "unidirectional":
+               stream['direction'] = "->"
+          elif stream['traffic_direction'] == "revunidirectional":
+               stream['direction'] = "<-"
+          else:
+               raise ValueError("You must specify a valid traffic direction (not '%s')" % stream['traffic_direction'])
+
           stream['rate'] = stream['rate'] * rate_modifier / 100.0
 
      return profile
