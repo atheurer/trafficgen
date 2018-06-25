@@ -436,9 +436,8 @@ def main():
          ports = device_pair.split(':')
          port_a = int(ports[0])
          port_b = int(ports[1])
-         string = ''
 
-         myprint("Configuring device pair: %d%s%d" % (port_a, string, port_b))
+         myprint("Configuring device pair: %s" % (device_pair))
          all_ports.extend([port_a, port_b])
 
          device_pairs.append({ t_global.constants['forward_direction']: { 'ports': { 'tx': port_a,
