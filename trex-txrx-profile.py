@@ -351,10 +351,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
               if len(stream['stream_types']) != 1:
                    stream_rate = t_global.args.teaching_warmup_packet_rate
 
-              stream_control = STLTXSingleBurst(total_pkts = stream['flows'], pps = stream_rate)
+              stream_control = STLTXSingleBurst(total_pkts = stream_flows, pps = stream_rate)
 
               device_pair[direction]['teaching_warmup_max_run_time'] = max(device_pair[direction]['teaching_warmup_max_run_time'],
-                                                                           (stream['flows'] / stream_rate))
+                                                                           (stream_flows / stream_rate))
 
               for stream_packet in stream_packets['teaching']:
                    myprint("\tTeaching warmup stream for '%s' with flows=%d, frame size=%d, rate=%f, and protocol=%s" % (device_pair[direction]['id_string'],
@@ -372,10 +372,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
               if len(stream['stream_types']) != 1:
                    stream_rate = t_global.args.teaching_warmup_packet_rate
 
-              burst_length = stream['flows'] / stream_rate
+              burst_length = stream_flows / stream_rate
 
               # IBG is in usec, so we multiply by 1,000,000 to convert to seconds
-              measurement_mode = STLTXMultiBurst(pkts_per_burst = stream['flows'],
+              measurement_mode = STLTXMultiBurst(pkts_per_burst = stream_flows,
                                                  ibg = (t_global.args.teaching_measurement_interval * 1000000),
                                                  count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
                                                  pps = stream_rate)
