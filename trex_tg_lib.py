@@ -282,44 +282,67 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           print("ERROR: Could not load a valid traffic profile from %s" % traffic_profile)
           return 1
 
-     for stream in profile['streams']:
-          for key in stream:
-               if isinstance(stream[key], basestring):
-                    # convert from unicode to string
-                    stream[key] = str(stream[key])
+     try:
+          for stream in profile['streams']:
+               for key in stream:
+                    if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction' ]:
+                         raise ValueError("Invalid property found (%s)" % (key))
 
-                    fields = stream[key].split(':')
-                    if len(fields) == 2:
-                         if fields[0] == 'function':
-                              stream[key] = eval(fields[1])
+                    if isinstance(stream[key], basestring):
+                         # convert from unicode to string
+                         stream[key] = str(stream[key])
 
-          if not 'stream_types' in stream:
-               stream['stream_types'] = [ 'measurement' ]
+                         fields = stream[key].split(':')
+                         if len(fields) == 2:
+                              if fields[0] == 'function':
+                                   stream[key] = eval(fields[1])
 
-          if not 'frame_type' in stream:
-               stream['frame_type'] = 'generic'
+               if not 'stream_types' in stream or len(stream['stream_types']) == 0:
+                    stream['stream_types'] = [ 'measurement' ]
+               else:
+                    for stream_type in stream['stream_types']:
+                         if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement' ]:
+                              raise ValueError("You must specify a valid stream type (not '%s')" % (stream_type))
 
-          if not 'latency_only' in stream:
-               stream['latency_only'] = False
+               if not 'frame_type' in stream:
+                    stream['frame_type'] = 'generic'
+               else:
+                    if not stream['frame_type'] in [ 'generic', 'icmp', 'garp' ]:
+                         raise ValueError("You must specify a valid frame type (not '%s')" % (stream['frame_type']))
 
-          if not 'latency' in stream:
-               stream['latency'] = True
+               if not 'latency_only' in stream:
+                    stream['latency_only'] = False
 
-          if not 'protocol' in stream:
-               stream['protocol'] = 'UDP'
+               if not 'latency' in stream:
+                    stream['latency'] = True
 
-          if not 'traffic_direction' in stream:
-               stream['traffic_direction'] = "bidirectional"
+               if not 'protocol' in stream:
+                    stream['protocol'] = 'UDP'
+               else:
+                    stream['protocol'] = stream['protocol'].upper()
 
-          if stream['traffic_direction'] == "bidirectional":
-               stream['direction'] = "<-->"
-          elif stream['traffic_direction'] == "unidirectional":
-               stream['direction'] = "->"
-          elif stream['traffic_direction'] == "revunidirectional":
-               stream['direction'] = "<-"
-          else:
-               raise ValueError("You must specify a valid traffic direction (not '%s')" % stream['traffic_direction'])
+                    if not stream['protocol'] in [ 'TCP', 'UDP' ]:
+                         raise ValueError("You must specify a valid protocol (not '%s')" % (stream['protocol']))
 
-          stream['rate'] = stream['rate'] * rate_modifier / 100.0
+               if not 'traffic_direction' in stream:
+                    stream['traffic_direction'] = "bidirectional"
+               else:
+                    stream['traffic_direction'] = stream['traffic_direction'].lower()
+
+                    if not stream['traffic_direction'] in [ 'bidirectional', 'unidirectional', 'revunidirectional' ]:
+                         raise ValueError("You must specify a valid traffic direction (not '%s')" % (stream['traffic_direction']))
+
+               if stream['traffic_direction'] == "bidirectional":
+                    stream['direction'] = "<-->"
+               elif stream['traffic_direction'] == "unidirectional":
+                    stream['direction'] = "->"
+               elif stream['traffic_direction'] == "revunidirectional":
+                    stream['direction'] = "<-"
+
+               stream['rate'] = stream['rate'] * rate_modifier / 100.0
+     except:
+          print("EXCEPTION: %s" % traceback.format_exc())
+          print("ERROR: Could not process the traffic profile from %s" % traffic_profile)
+          return 1
 
      return profile
