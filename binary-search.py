@@ -1055,13 +1055,14 @@ def print_stats(trial_params, stats):
                port += 1
           print(']')
 
-def setup_config_var(variable, value, trial_params, config_tag = True):
+def setup_config_var(variable, value, trial_params, config_tag = True, silent = False):
      trial_params[variable] = value
 
      if config_tag:
           print("CONFIG | %s=%s" % (variable, value))
      else:
-          print("%s=%s" % (variable, value))
+          if not silent:
+               print("%s=%s" % (variable, value))
 
 def main():
     process_options()
@@ -1191,8 +1192,8 @@ def main():
 
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
-         setup_config_var("run_bidirec", 1, trial_params, config_tag = False)
-         setup_config_var("run_revunidirec", 0, trial_params, config_tag = False)
+         setup_config_var("run_bidirec", 1, trial_params, config_tag = False, silent = True)
+         setup_config_var("run_revunidirec", 0, trial_params, config_tag = False, silent = True)
 
     if t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['traffic_profile'] = t_global.args.traffic_profile
