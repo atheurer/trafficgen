@@ -285,11 +285,11 @@ def process_options ():
                         default = 3,
                         type = int
                         )
-    parser.add_argument('--rx-loss-scope',
-                        dest='rx_loss_scope',
-                        help='Test for rx packet loss at either direction or device scope',
+    parser.add_argument('--loss-granularity',
+                        dest='loss_granularity',
+                        help='Test for packet loss at a granularity of direction, device, or segment',
                         default = "direction",
-                        choices = [ 'direction', 'device' ]
+                        choices = [ 'direction', 'device', 'segment' ]
                         )
     parser.add_argument('--stream-mode',
                         dest='stream_mode',
@@ -829,16 +829,16 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                        stats['global']['force_quit'] = results['global']['force_quit']
 
                        stats['directional'] = dict()
-                       stats['directional']['fwd'] = dict()
-                       stats['directional']['fwd']['tx_packets'] = 0
-                       stats['directional']['fwd']['rx_packets'] = 0
-                       stats['directional']['fwd']['rx_lost_packets'] = 0
-                       stats['directional']['fwd']['rx_lost_packets_pct'] = 0
-                       stats['directional']['rev'] = dict()
-                       stats['directional']['rev']['tx_packets'] = 0
-                       stats['directional']['rev']['rx_packets'] = 0
-                       stats['directional']['rev']['rx_lost_packets'] = 0
-                       stats['directional']['rev']['rx_lost_packets_pct'] = 0
+                       stats['directional']['->'] = dict()
+                       stats['directional']['->']['tx_packets'] = 0
+                       stats['directional']['->']['rx_packets'] = 0
+                       stats['directional']['->']['rx_lost_packets'] = 0
+                       stats['directional']['->']['rx_lost_packets_pct'] = 0
+                       stats['directional']['<-'] = dict()
+                       stats['directional']['<-']['tx_packets'] = 0
+                       stats['directional']['<-']['rx_packets'] = 0
+                       stats['directional']['<-']['rx_lost_packets'] = 0
+                       stats['directional']['<-']['rx_lost_packets_pct'] = 0
 
                        for device_pair in trial_params['test_dev_pairs']:
                             stream_types = []
@@ -1102,7 +1102,7 @@ def main():
     config_print("use-device-stats", t_global.args.use_device_stats)
     config_print("search-granularity", t_global.args.search_granularity)
     config_print("enable-segment-monitor", t_global.args.enable_segment_monitor)
-    config_print("rx-loss_scope", t_global.args.rx_loss_scope)
+    config_print("loss-granularity", t_global.args.loss_granularity)
     config_print("device-pairs", t_global.args.device_pairs)
     config_print('active-device-pairs', t_global.args.active_device_pairs)
     config_print('enable-flow-cache', t_global.args.enable_flow_cache)
@@ -1158,7 +1158,7 @@ def main():
     trial_params['stream_mode'] = t_global.args.stream_mode
     trial_params['use_device_stats'] = t_global.args.use_device_stats
     trial_params['enable_segment_monitor'] = t_global.args.enable_segment_monitor
-    trial_params['rx_loss_scope'] = t_global.args.rx_loss_scope
+    trial_params['loss_granularity'] = t_global.args.loss_granularity
     trial_params['device_pairs'] = t_global.args.device_pairs
     trial_params['active_device_pairs'] = t_global.args.active_device_pairs
     trial_params['enable_flow_cache'] = t_global.args.enable_flow_cache
@@ -1232,13 +1232,13 @@ def main():
               test_dev_pair_obj['tx'] = int(ports[1])
               test_dev_pair_obj['rx'] = int(ports[0])
               test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
-              test_dev_pair_obj['direction'] = "rev"
+              test_dev_pair_obj['direction'] = "<-"
               trial_params['test_dev_pairs'].append(test_dev_pair_obj)
          else:
               test_dev_pair_obj['tx'] = int(ports[0])
               test_dev_pair_obj['rx'] = int(ports[1])
               test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
-              test_dev_pair_obj['direction'] = "fwd"
+              test_dev_pair_obj['direction'] = "->"
               trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
               if trial_params['run_bidirec']:
@@ -1246,7 +1246,7 @@ def main():
                    test_dev_pair_obj['tx'] = int(ports[1])
                    test_dev_pair_obj['rx'] = int(ports[0])
                    test_dev_pair_obj['path'] = "%d->%d" % (test_dev_pair_obj['tx'], test_dev_pair_obj['rx'])
-                   test_dev_pair_obj['direction'] = "rev"
+                   test_dev_pair_obj['direction'] = "<-"
                    trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
     port_speed_verification_fail = False
@@ -1341,7 +1341,7 @@ def main():
                         trial_result = 'fail'
                         print("(trial failed requirement, missing RX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_missing_error']))
 
-                   if 'rx_loss_error' in trial_stats[dev_pair['rx']]:
+                   if trial_params['loss_granularity'] == 'segment' and 'rx_loss_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
                         print("(trial failed requirement, individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_loss_error']))
 
@@ -1350,7 +1350,7 @@ def main():
                         print("(trial failed requirement, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_negative_loss_error']))
 
                    requirement_msg = "passed"
-                   if trial_params['rx_loss_scope'] == 'device':
+                   if trial_params['loss_granularity'] == 'device':
                         if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                              requirement_msg = "failed"
                              trial_result = 'fail'
@@ -1393,7 +1393,7 @@ def main():
                    print('Binary search aborting due to critical error')
                    quit(1)
 
-              if trial_params['rx_loss_scope'] == 'direction':
+              if trial_params['loss_granularity'] == 'direction':
                    for direction in trial_stats['directional']:
                         if trial_stats['directional'][direction]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                              requirement_msg = "failed"
