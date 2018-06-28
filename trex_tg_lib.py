@@ -246,7 +246,7 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
 
          if enable_flow_cache:
               vm = STLScVmRaw(list_of_commands = vm,
-                              cache_size = tmp_num_flows)
+                              cache_size = num_flows)
 
          return STLPktBuilder(pkt = the_packet,
                               vm  = vm)
