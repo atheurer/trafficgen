@@ -589,13 +589,13 @@ def main():
                             warmup_ports.append(device_pair[direction]['ports']['tx'])
 
              if len(warmup_ports):
-                  start_time = datetime.datetime.now()
-                  myprint("\tStarting transmission at %s" % (start_time.strftime("%H:%M:%S on %Y-%m-%d")))
-
                   warmup_timeout = 30.0
                   for device_pair in device_pairs:
                        for direction in t_global.constants['directions']:
                             warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_run_time'] * 1.05))
+
+                  start_time = datetime.datetime.now()
+                  myprint("\tStarting transmission at %s" % (start_time.strftime("%H:%M:%S on %Y-%m-%d")))
 
                   timeout_time = start_time + datetime.timedelta(seconds = warmup_timeout)
                   myprint("\tThe transmission will timeout with an error at %s" % (timeout_time.strftime("%H:%M:%S on %Y-%m-%d")))
