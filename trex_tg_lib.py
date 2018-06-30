@@ -23,7 +23,18 @@ def ip_to_int (ip):
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 
-def create_icmp_bcast_pkt (mac_src, ip_src, vlan_id, flow_mods, num_flows, enable_flow_cache):
+# Flow Mod Documentation
+#
+# When old_mac_flow = True, the generated MAC addresses are of the
+# form xx:YY:YY:YY:YY:xx where x is static and Y is being modified by
+# the TRex field engine.  This allows for a total of 4,294,967,295
+# flows.
+#
+# When old_mac_flow = False, the generated MAC addresses are of the
+# form xx:xx:xx:xx:YY:YY where x is static and Y is being modified by
+# the TRex field engine.  This allows for a total of 65,536 flows.
+
+def create_icmp_bcast_pkt (mac_src, ip_src, vlan_id, flow_mods, num_flows, enable_flow_cache, flow_offset = 0, old_mac_flow = True):
     mac_dst = 'ff:ff:ff:ff:ff:ff'
     ip_dst  = '255.255.255.255'
 
@@ -32,38 +43,52 @@ def create_icmp_bcast_pkt (mac_src, ip_src, vlan_id, flow_mods, num_flows, enabl
     local_flow_mods['mac']['dst'] = False
     local_flow_mods['ip']['dst'] = False
 
-    return create_icmp_pkt(64, mac_src, mac_dst, ip_src, ip_dst, vlan_id, local_flow_mods, num_flows, enable_flow_cache)
+    return create_icmp_pkt(64, mac_src, mac_dst, ip_src, ip_dst, vlan_id, local_flow_mods, num_flows, enable_flow_cache, flow_offset = flow_offset, old_mac_flow = old_mac_flow)
 
-def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods, num_flows, enable_flow_cache):
-    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + num_flows }
+def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods, num_flows, enable_flow_cache, flow_offset = 0, old_mac_flow = True):
+    tmp_num_flows = num_flows - 1
+
+    ip_src = { "start": ip_to_int(ip_src) + flow_offset, "end": ip_to_int(ip_src) + tmp_num_flows + flow_offset}
+    ip_dst = { "start": ip_to_int(ip_dst) + flow_offset, "end": ip_to_int(ip_dst) + tmp_num_flows + flow_offset}
 
     vm = []
-    if flow_mods['ip']['src'] and num_flows:
+    if flow_mods['ip']['src'] and tmp_num_flows:
          vm = vm + [
               STLVmFlowVar(name = "ip_src", min_value = ip_src['start'], max_value = ip_src['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_src", pkt_offset = "IP.src")
          ]
 
-    if flow_mods['ip']['dst'] and num_flows:
+    if flow_mods['ip']['dst'] and tmp_num_flows:
          vm = vm + [
               STLVmFlowVar(name = "ip_dst", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_dst", pkt_offset = "IP.dst")
          ]
 
-    if flow_mods['mac']['src'] and num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
-              #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
-         ]
+    if flow_mods['mac']['src'] and tmp_num_flows:
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op = "inc"),
+                   STLVmWrFlowVar(fv_name = "mac_src", pkt_offset = 7)
+                   #STLVmWrFlowVar(fv_name = "mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op="inc"),
+                   STLVmWrMaskFlowVar(fv_name = "mac_src", pkt_offset = "Ether.src", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
 
-    if flow_mods['mac']['dst'] and num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ether_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ether_mac_dst", pkt_offset = 7)
-              #STLVmWrFlowVar(fv_name = "ether_mac_dst", pkt_offset = "Ether.dst", offset_fixup = 1)
-         ]
+    if flow_mods['mac']['dst'] and tmp_num_flows:
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_dst", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op = "inc"),
+                   STLVmWrFlowVar(fv_name = "mac_dst", pkt_offset = 1)
+                   #STLVmWrFlowVar(fv_name = "ether_mac_dst", pkt_offset = "Ether.dst", offset_fixup = 1)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_dst", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op = "inc"),
+                   STLVmWrMaskFlowVar(fv_name = "mac_dst", pkt_offset = "Ether.dst", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
 
     the_packet = Ether(src = mac_src, dst = mac_dst)
 
@@ -77,7 +102,7 @@ def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods,
 
     #the_packet.show2()
 
-    if num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst']):
+    if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst']):
          vm = vm + [STLVmFixIpv4(offset = "IP")]
 
          if enable_flow_cache:
@@ -89,13 +114,15 @@ def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods,
     else:
          return STLPktBuilder(pkt = the_packet)
 
-def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, enable_flow_cache):
+def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, enable_flow_cache, flow_offset = 0, old_mac_flow = True):
     arp_mac_target = 'ff:ff:ff:ff:ff:ff'
 
-    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + num_flows }
+    tmp_num_flows = num_flows - 1
+
+    ip_src = { "start": ip_to_int(ip_src) + flow_offset, "end": ip_to_int(ip_src) + tmp_num_flows + flow_offset}
 
     vm = []
-    if flow_mods['ip']['src'] and num_flows:
+    if flow_mods['ip']['src'] and tmp_num_flows:
          vm = vm + [
               STLVmFlowVar(name = "ip_psrc", min_value = ip_src['start'], max_value = ip_src['end'], size = 4, op = "inc"),
               STLVmWrFlowVar(fv_name = "ip_psrc", pkt_offset = "ARP.psrc")
@@ -105,20 +132,26 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
               STLVmWrFlowVar(fv_name = "ip_pdst", pkt_offset = "ARP.pdst")
          ]
 
-    if flow_mods['mac']['src'] and num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
-              #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
-         ]
-         vm = vm + [
-              STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
-         ]
-         vm = vm + [
-              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
-         ]
+    if flow_mods['mac']['src'] and tmp_num_flows:
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "ether_mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op = "inc"),
+                   STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
+                   #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
+              ]
+              vm = vm + [
+                   STLVmFlowVar(name = "arp_mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op = "inc"),
+                   STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "ether_mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op="inc"),
+                   STLVmWrMaskFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
+              vm = vm + [
+                   STLVmFlowVar(name = "arp_mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op="inc"),
+                   STLVmWrMaskFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
 
     the_packet = Ether(src = mac_src, dst = arp_mac_target)
 
@@ -129,7 +162,7 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
 
     #the_packet.show2()
 
-    if num_flows and (flow_mods['ip']['src'] or flow_mods['mac']['src']):
+    if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['mac']['src']):
          if enable_flow_cache:
               vm = STLScVmRaw(list_of_commands = vm,
                               cache_size = num_flows)
@@ -140,7 +173,7 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
          return STLPktBuilder(pkt = the_packet)
 
 # simple packet creation
-def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id, flow_mods, num_flows, enable_flow_cache):
+def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id, flow_mods, num_flows, enable_flow_cache, flow_offset = 0, old_mac_flow = True):
     # adjust packet size due to CRC
     size = int(size)
     size -= 4
@@ -177,8 +210,8 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
 
     tmp_num_flows = num_flows - 1
 
-    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + tmp_num_flows }
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + tmp_num_flows }
+    ip_src = { "start": ip_to_int(ip_src) + flow_offset, "end": ip_to_int(ip_src) + tmp_num_flows + flow_offset }
+    ip_dst = { "start": ip_to_int(ip_dst) + flow_offset, "end": ip_to_int(ip_dst) + tmp_num_flows + flow_offset }
 
     vm = []
     if flow_mods['ip']['src'] and tmp_num_flows:
@@ -194,16 +227,28 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
         ]
 
     if flow_mods['mac']['src'] and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name="mac_src",min_value=0,max_value=tmp_num_flows,size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7)
-        ]
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op="inc"),
+                   STLVmWrFlowVar(fv_name = "mac_src", pkt_offset = 7)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op="inc"),
+                   STLVmWrMaskFlowVar(fv_name = "mac_src", pkt_offset = "Ether.src", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
 
     if flow_mods['mac']['dst'] and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name="mac_dst",min_value=0,max_value=tmp_num_flows,size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1)
-        ]
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_dst", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op = "inc"),
+                   STLVmWrFlowVar(fv_name = "mac_dst", pkt_offset = 1)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_dst", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op = "inc"),
+                   STLVmWrMaskFlowVar(fv_name = "mac_dst", pkt_offset = "Ether.dst", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
 
     if flow_mods['port']['src'] and tmp_num_flows:
         offset = "%s.sport" % (packet_protocol)
@@ -339,7 +384,15 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                elif stream['traffic_direction'] == "revunidirectional":
                     stream['direction'] = "<-"
 
+               max_flows = 256*256
+               if stream['flows'] > max_flows:
+                    raise ValueError("You must specify <= %d flows per stream (not %d)" % (max_flows, stream['flows']))
+
                stream['rate'] = stream['rate'] * rate_modifier / 100.0
+               if stream['rate'] <= 0:
+                    raise ValueError("You must specify a rate that is >= 0 (not %f)" % (stream['rate']))
+
+               stream['flow_offset'] = 0
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
           print("ERROR: Could not process the traffic profile from %s" % traffic_profile)

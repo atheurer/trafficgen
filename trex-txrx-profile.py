@@ -17,6 +17,7 @@ from trex_tg_lib import *
 class t_global(object):
      args=None
      constants=None
+     variables=None
 
 def myprint(*args, **kwargs):
      stderr_only = False
@@ -29,7 +30,7 @@ def myprint(*args, **kwargs):
           print(*args, file = sys.stderr, **kwargs)
      return
 
-def setup_constants ():
+def setup_global_constants ():
      forward_direction = '->'
      reverse_direction = '<-'
 
@@ -39,6 +40,34 @@ def setup_constants ():
                             'directions': [ forward_direction,
                                             reverse_direction ],
                        }
+
+def setup_global_variables ():
+     t_global.variables = { 'packet_resources': { 'ips': { 'dynamic_streams': { 'octet_1': 10,
+                                                                                'octet_2': { 'start': 2,
+                                                                                             'stop': 255,
+                                                                                             'current': 2 },
+                                                                                'octet_3': 0,
+                                                                                'octet_4': 0 },
+                                                           'static_streams': { 'octet_1': 10,
+                                                                               'octet_2': { 'A': 0,
+                                                                                            'B': 1 },
+                                                                               'octet_3': { 'A': { 'start': 0,
+                                                                                                   'stop': 255,
+                                                                                                   'current': 0 },
+                                                                                            'B': { 'start': 0,
+                                                                                                   'stop': 255,
+                                                                                                   'current': 0 } },
+                                                                               'octet_4': { 'A': { 'start': 0,
+                                                                                                   'stop': 255,
+                                                                                                   'current': 0 },
+                                                                                            'B': { 'start': 0,
+                                                                                                   'stop': 255,
+                                                                                                   'current': 0 } } } },
+                                                  'ports': { 'src': 32768,
+                                                             'dst': 49152 },
+                                                  'mac_prefixes': [],
+                                                  'vlan': None } }
+
 
 def process_options ():
     parser = argparse.ArgumentParser(usage="generate network traffic and report packet loss")
@@ -145,7 +174,72 @@ def process_options ():
 
     myprint(t_global.args)
 
+def get_stream_ip (stream, port_id):
+     ip = ""
+
+     if stream['flow_mods']['ip']['dst'] or stream['flow_mods']['ip']['src']:
+          if t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_2']['current'] > t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_2']['stop']:
+               raise ValueError("Exhausted dynamic stream IP address pool")
+
+          ip = "%d.%d.%d.%d" % (t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_1'],
+                                t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_2']['current'],
+                                t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_3'],
+                                t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_4'])
+
+          t_global.variables['packet_resources']['ips']['dynamic_streams']['octet_2']['current'] += 1
+     else:
+          if t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['current'] > t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['stop'] and t_global.variables['packet_resources']['ips']['static_streams']['octet_3'][port_id]['current'] > t_global.variables['packet_resources']['ips']['static_streams']['octet_3'][port_id]['stop']:
+               raise ValueError("Exhausted static stream IP address pool")
+
+          ip = "%d.%d.%d.%d" % (t_global.variables['packet_resources']['ips']['static_streams']['octet_1'],
+                                t_global.variables['packet_resources']['ips']['static_streams']['octet_2'][port_id],
+                                t_global.variables['packet_resources']['ips']['static_streams']['octet_3'][port_id]['current'],
+                                t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['current'])
+
+          t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['current'] += 1
+          if t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['current'] > t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['stop']:
+               t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['current'] = t_global.variables['packet_resources']['ips']['static_streams']['octet_4'][port_id]['start']
+               t_global.variables['packet_resources']['ips']['static_streams']['octet_3'][port_id]['current'] += 1
+
+     return ip
+
+def generate_random_mac ():
+     # ensure that we generate a unique prefix (first 4 octets) so
+     # that no two streams ever generate the same mac address
+     while True:
+          mac_prefix = "%02x:%02x:%02x:%02x" % (0x0,
+                                                0x16,
+                                                0x3e,
+                                                random.randint(0, 255))
+          if not mac_prefix in t_global.variables['packet_resources']['mac_prefixes']:
+               t_global.variables['packet_resources']['mac_prefixes'].append(mac_prefix)
+               break
+
+     return "%s:%02x:%02x" % (mac_prefix,
+                            random.randint(0, 255),
+                            random.randint(0, 255))
+
+def setup_stream_packet_values (stream):
+     if not 'packet_values' in stream:
+          stream['packet_values'] = { 'ports': { 'A': { 'src': t_global.variables['packet_resources']['ports']['src'],
+                                                        'dst': t_global.variables['packet_resources']['ports']['dst'] },
+                                                 'B': { 'src': t_global.variables['packet_resources']['ports']['src'],
+                                                        'dst': t_global.variables['packet_resources']['ports']['dst'] } },
+                                      'ips': { 'A': get_stream_ip(stream, 'A'),
+                                               'B': get_stream_ip(stream, 'B') },
+                                      'macs': { 'A': generate_random_mac(),
+                                                'B': generate_random_mac() },
+                                      'vlan': { 'A': t_global.variables['packet_resources']['vlan'],
+                                                'B': t_global.variables['packet_resources']['vlan'] } }
+
 def create_stream (stream, device_pair, direction, other_direction, flow_scaler):
+    # assume direction == t_global.constants['forward_direction']
+    src_port = 'A'
+    dst_port = 'B'
+    if direction == t_global.constants['reverse_direction']:
+         src_port = 'B'
+         dst_port = 'A'
+
     protocols = [ stream['protocol'] ]
 
     latency = stream['latency']
@@ -178,31 +272,35 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
          # teaching packets don't need to cover all the protocols; they just need to cover all the MAC addresses
          stream_packets['teaching'].append({ 'protocol': "%s-%s" % (stream['frame_type'], protocols[0]),
                                              'packet':   create_generic_pkt(stream['frame_size'],
-                                                                            device_pair[direction]['packet_values']['macs']['dst'],
-                                                                            device_pair[direction]['packet_values']['macs']['src'],
-                                                                            device_pair[direction]['packet_values']['ips']['dst'],
-                                                                            device_pair[direction]['packet_values']['ips']['src'],
-                                                                            device_pair[direction]['packet_values']['ports']['dst'],
-                                                                            device_pair[direction]['packet_values']['ports']['src'],
+                                                                            stream['packet_values']['macs'][dst_port],
+                                                                            stream['packet_values']['macs'][src_port],
+                                                                            stream['packet_values']['ips'][dst_port],
+                                                                            stream['packet_values']['ips'][src_port],
+                                                                            stream['packet_values']['ports'][dst_port]['src'],
+                                                                            stream['packet_values']['ports'][src_port]['dst'],
                                                                             protocols[0],
-                                                                            device_pair[other_direction]['packet_values']['vlan'],
+                                                                            stream['packet_values']['vlan'][dst_port],
                                                                             stream['flow_mods'],
                                                                             stream_flows,
-                                                                            t_global.args.enable_flow_cache) })
+                                                                            t_global.args.enable_flow_cache,
+                                                                            flow_offset = stream['flow_offset'],
+                                                                            old_mac_flow = False) })
          for protocol in protocols:
               stream_packets['measurement'].append({ 'protocol': "%s-%s" % (stream['frame_type'], protocol),
                                                      'packet':   create_generic_pkt(stream['frame_size'],
-                                                                                    device_pair[direction]['packet_values']['macs']['src'],
-                                                                                    device_pair[direction]['packet_values']['macs']['dst'],
-                                                                                    device_pair[direction]['packet_values']['ips']['src'],
-                                                                                    device_pair[direction]['packet_values']['ips']['dst'],
-                                                                                    device_pair[direction]['packet_values']['ports']['src'],
-                                                                                    device_pair[direction]['packet_values']['ports']['dst'],
+                                                                                    stream['packet_values']['macs'][src_port],
+                                                                                    stream['packet_values']['macs'][dst_port],
+                                                                                    stream['packet_values']['ips'][src_port],
+                                                                                    stream['packet_values']['ips'][dst_port],
+                                                                                    stream['packet_values']['ports'][src_port]['src'],
+                                                                                    stream['packet_values']['ports'][dst_port]['dst'],
                                                                                     protocol,
-                                                                                    device_pair[direction]['packet_values']['vlan'],
+                                                                                    stream['packet_values']['vlan'][src_port],
                                                                                     stream['flow_mods'],
                                                                                     stream_flows,
-                                                                                    t_global.args.enable_flow_cache) })
+                                                                                    t_global.args.enable_flow_cache,
+                                                                                    flow_offset = stream['flow_offset'],
+                                                                                    old_mac_flow = False) })
     elif stream['frame_type'] == 'garp':
          # GARP packet types: 0x1=request, 0x2=reply
          garp_packets = [ { 'name': 'request',
@@ -211,42 +309,50 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                             'opcode': 0x2 } ]
          for garp_packet in garp_packets:
               stream_packets['measurement'].append({ 'protocol': "%s-%s" % (stream['frame_type'], garp_packet['name']),
-                                                     'packet':   create_garp_pkt(device_pair[direction]['packet_values']['macs']['src'],
-                                                                                 device_pair[direction]['packet_values']['ips']['src'],
-                                                                                 device_pair[direction]['packet_values']['vlan'],
+                                                     'packet':   create_garp_pkt(stream['packet_values']['macs'][src_port],
+                                                                                 stream['packet_values']['ips'][src_port],
+                                                                                 stream['packet_values']['vlan'][src_port],
                                                                                  garp_packet['opcode'],
                                                                                  stream['flow_mods'],
                                                                                  stream_flows,
-                                                                                 t_global.args.enable_flow_cache) })
+                                                                                 t_global.args.enable_flow_cache,
+                                                                                 flow_offset = stream['flow_offset'],
+                                                                                 old_mac_flow = False) })
               stream_packets['teaching'].append({ 'protocol': "%s-%s" % (stream['frame_type'], garp_packet['name']),
-                                                  'packet':   create_garp_pkt(device_pair[direction]['packet_values']['macs']['dst'],
-                                                                              device_pair[direction]['packet_values']['ips']['dst'],
-                                                                              device_pair[other_direction]['packet_values']['vlan'],
+                                                  'packet':   create_garp_pkt(stream['packet_values']['macs'][dst_port],
+                                                                              stream['packet_values']['ips'][dst_port],
+                                                                              stream['packet_values']['vlan'][dst_port],
                                                                               garp_packet['opcode'],
                                                                               stream['flow_mods'],
                                                                               stream_flows,
-                                                                              t_global.args.enable_flow_cache) })
+                                                                              t_global.args.enable_flow_cache,
+                                                                              flow_offset = stream['flow_offset'],
+                                                                              old_mac_flow = False) })
     elif stream['frame_type'] == 'icmp':
          stream_packets['measurement'].append({ 'protocol': stream['frame_type'],
                                                 'packet':   create_icmp_pkt(stream['frame_size'],
-                                                                            device_pair[direction]['packet_values']['macs']['src'],
-                                                                            device_pair[direction]['packet_values']['macs']['dst'],
-                                                                            device_pair[direction]['packet_values']['ips']['src'],
-                                                                            device_pair[direction]['packet_values']['ips']['dst'],
-                                                                            device_pair[direction]['packet_values']['vlan'],
+                                                                            stream['packet_values']['macs'][src_port],
+                                                                            stream['packet_values']['macs'][dst_port],
+                                                                            stream['packet_values']['ips'][src_port],
+                                                                            stream['packet_values']['ips'][dst_port],
+                                                                            stream['packet_values']['vlan'][src_port],
                                                                             stream['flow_mods'],
                                                                             stream_flows,
-                                                                            t_global.args.enable_flow_cache) })
+                                                                            t_global.args.enable_flow_cache,
+                                                                            flow_offset = stream['flow_offset'],
+                                                                            old_mac_flow = False) })
          stream_packets['teaching'].append({ 'protocol': stream['frame_type'],
                                              'packet':   create_icmp_pkt(stream['frame_size'],
-                                                                         device_pair[direction]['packet_values']['macs']['dst'],
-                                                                         device_pair[direction]['packet_values']['macs']['src'],
-                                                                         device_pair[direction]['packet_values']['ips']['dst'],
-                                                                         device_pair[direction]['packet_values']['ips']['src'],
-                                                                         device_pair[other_direction]['packet_values']['vlan'],
+                                                                         stream['packet_values']['macs'][dst_port],
+                                                                         stream['packet_values']['macs'][src_port],
+                                                                         stream['packet_values']['ips'][dst_port],
+                                                                         stream['packet_values']['ips'][src_port],
+                                                                         stream['packet_values']['vlan'][dst_port],
                                                                          stream['flow_mods'],
                                                                          stream_flows,
-                                                                         t_global.args.enable_flow_cache) })
+                                                                         t_global.args.enable_flow_cache,
+                                                                         flow_offset = stream['flow_offset'],
+                                                                         old_mac_flow = False) })
     else:
          raise ValueError("Invalid frame_type: %s" % (stream['frame_type']))
 
@@ -391,22 +497,14 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                                    mode = stream_control,
                                                                                                    next = None,
                                                                                                    self_start = True))
-
     return
 
 def main():
-    setup_constants()
+    setup_global_constants()
+    setup_global_variables()
     process_options()
 
     traffic_profile = {}
-
-    packet_values = { 'ports': { 'src': 32768,
-                                 'dst': 53 },
-                      'macs':  { 'src': None,
-                                 'dst': None },
-                      'ips':   { 'src': None,
-                                 'dst': None },
-                      'vlan': None }
 
     pg_id_values = { "default": { 'available':   None,
                                   'total':       None,
@@ -450,7 +548,6 @@ def main():
          device_pairs.append({ t_global.constants['forward_direction']: { 'ports': { 'tx': port_a,
                                                                                      'rx': port_b },
                                                                           'id_string': "%s%s%s" % (port_a, t_global.constants['forward_direction'], port_b),
-                                                                          'packet_values': copy.deepcopy(packet_values),
                                                                           'pg_ids': copy.deepcopy(pg_id_values),
                                                                           'traffic_profile': { 'default': copy.deepcopy(stream_profile_object),
                                                                                                'latency': copy.deepcopy(stream_profile_object) },
@@ -461,7 +558,6 @@ def main():
                                t_global.constants['reverse_direction']: { 'ports': { 'tx': port_b,
                                                                                      'rx': port_a },
                                                                           'id_string': "%s%s%s" % (port_a, t_global.constants['reverse_direction'], port_b),
-                                                                          'packet_values': copy.deepcopy(packet_values),
                                                                           'pg_ids': copy.deepcopy(pg_id_values),
                                                                           'traffic_profile': { 'default': copy.deepcopy(stream_profile_object),
                                                                                                'latency': copy.deepcopy(stream_profile_object) },
@@ -480,6 +576,9 @@ def main():
                                            rate_modifier = t_global.args.rate_modifier)
     if not 'streams' in traffic_profile:
          return return_value
+
+    for stream in traffic_profile['streams']:
+         setup_stream_packet_values(stream)
 
     myprint("READABLE TRAFFIC PROFILE:", stderr_only = True)
     myprint(dump_json_readable(traffic_profile), stderr_only = True)
@@ -508,29 +607,11 @@ def main():
         myprint("PARSABLE PORT INFO: %s" % dump_json_parsable(port_info), stderr_only = True)
 
         port_speed_verification_fail = False
-
         for device_pair in device_pairs:
             for direction in t_global.constants['directions']:
-                other_direction = ''
-                if direction == t_global.constants['forward_direction']:
-                    other_direction = t_global.constants['reverse_direction']
-                else:
-                    other_direction = t_global.constants['forward_direction']
-
                 if port_info[device_pair[direction]['ports']['tx']]['speed'] == 0:
                     port_speed_verification_fail = True
                     myprint("ERROR: Device with port index = %d failed speed verification test" % device_pair[direction]['ports']['tx'])
-
-                device_pair[direction]['packet_values']['macs']['src'] = port_info[device_pair[direction]['ports']['tx']]['src_mac']
-                device_pair[direction]['packet_values']['macs']['dst'] = port_info[device_pair[direction]['ports']['rx']]['src_mac']
-
-                if port_info[device_pair[direction]['ports']['tx']]['src_ipv4'] != "-":
-                    device_pair[direction]['packet_values']['ips']['src'] = port_info[device_pair[direction]['ports']['tx']]['src_ipv4']
-                    device_pair[other_direction]['packet_values']['ips']['dst'] = port_info[device_pair[direction]['ports']['tx']]['src_ipv4']
-                else:
-                    ip_address = "%d.%d.%d.%d" % (device_pair[direction]['ports']['tx']+1, device_pair[direction]['ports']['tx']+1, device_pair[direction]['ports']['tx']+1, device_pair[direction]['ports']['tx']+1)
-                    device_pair[direction]['packet_values']['ips']['src'] = ip_address
-                    device_pair[other_direction]['packet_values']['ips']['dst'] = ip_address
 
         if port_speed_verification_fail:
              raise RuntimeError("Failed port speed verification")
@@ -570,6 +651,9 @@ def main():
 
                  if stream['direction'] == t_global.constants['reverse_direction'] or stream['direction'] == t_global.constants['both_directions']:
                       create_stream(stream, device_pair, t_global.constants['reverse_direction'], t_global.constants['forward_direction'], flow_port_divider)
+
+                 # update the flow offset so that each port gets unique flows for the same stream
+                 stream['flow_offset'] += int(stream['flows'] * flow_port_divider)
 
             for direction in t_global.constants['directions']:
                 if len(device_pair[direction]['traffic_streams']):
