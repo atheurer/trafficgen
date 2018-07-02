@@ -66,6 +66,7 @@ def setup_global_variables ():
                                                   'ports': { 'src': 32768,
                                                              'dst': 49152 },
                                                   'mac_prefixes': [],
+                                                  'stream_ids': {},
                                                   'vlan': None } }
 
 
@@ -220,17 +221,25 @@ def generate_random_mac ():
                             random.randint(0, 255))
 
 def setup_stream_packet_values (stream):
-     if not 'packet_values' in stream:
-          stream['packet_values'] = { 'ports': { 'A': { 'src': t_global.variables['packet_resources']['ports']['src'],
-                                                        'dst': t_global.variables['packet_resources']['ports']['dst'] },
-                                                 'B': { 'src': t_global.variables['packet_resources']['ports']['src'],
-                                                        'dst': t_global.variables['packet_resources']['ports']['dst'] } },
-                                      'ips': { 'A': get_stream_ip(stream, 'A'),
-                                               'B': get_stream_ip(stream, 'B') },
-                                      'macs': { 'A': generate_random_mac(),
-                                                'B': generate_random_mac() },
-                                      'vlan': { 'A': t_global.variables['packet_resources']['vlan'],
-                                                'B': t_global.variables['packet_resources']['vlan'] } }
+     if stream['stream_id'] and stream['stream_id'] in t_global.variables['packet_resources']['stream_ids']:
+          stream['packet_values'] = t_global.variables['packet_resources']['stream_ids'][stream['stream_id']]
+     else:
+          if not 'packet_values' in stream:
+               stream['packet_values'] = { 'ports': { 'A': { 'src': t_global.variables['packet_resources']['ports']['src'],
+                                                             'dst': t_global.variables['packet_resources']['ports']['dst'] },
+                                                      'B': { 'src': t_global.variables['packet_resources']['ports']['src'],
+                                                             'dst': t_global.variables['packet_resources']['ports']['dst'] } },
+                                           'ips': { 'A': get_stream_ip(stream, 'A'),
+                                                    'B': get_stream_ip(stream, 'B') },
+                                           'macs': { 'A': generate_random_mac(),
+                                                     'B': generate_random_mac() },
+                                           'vlan': { 'A': t_global.variables['packet_resources']['vlan'],
+                                                     'B': t_global.variables['packet_resources']['vlan'] } }
+
+          if stream['stream_id']:
+               t_global.variables['packet_resources']['stream_ids'][stream['stream_id']] = stream['packet_values']
+
+     return
 
 def create_stream (stream, device_pair, direction, other_direction, flow_scaler):
     # assume direction == t_global.constants['forward_direction']
@@ -382,6 +391,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                         else:
                              raise RuntimeError("Not enough available pg_ids for the requested stream configuration")
                         stream_name = "%s-stream-%s-%d" % (stream_type, stream_packet['protocol'], stream_pg_id)
+                        if stream['stream_id']:
+                             stream_name = "%s-%s" % (stream_name, stream['stream_id'])
                         if stream_mode == 'default':
                              flow_stats = STLFlowStats(pg_id = stream_pg_id)
                         elif stream_mode == 'latency':

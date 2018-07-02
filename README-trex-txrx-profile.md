@@ -26,3 +26,5 @@ by the following parameters:
 9. protocol - optional, what protocol is used for this stream, defaults to 'UDP', options are: ['UDP', 'TCP']
 
 10. traffic_direction - optional, what direction is the traffic flowing, defaults to 'bidirectional', options are: ['bidirectional', 'unidirectional', 'revunidirectional']
+
+11. stream_id - optional, an identifier that can be used to identify the stream, if two streams share an identifier they will use the same flow properties (MACs, IPs, etc.), defaults to nothing, is a user defined string

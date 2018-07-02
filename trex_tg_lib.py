@@ -330,7 +330,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
      try:
           for stream in profile['streams']:
                for key in stream:
-                    if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction' ]:
+                    if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id' ]:
                          raise ValueError("Invalid property found (%s)" % (key))
 
                     if isinstance(stream[key], basestring):
@@ -383,6 +383,9 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                     stream['direction'] = "->"
                elif stream['traffic_direction'] == "revunidirectional":
                     stream['direction'] = "<-"
+
+               if not 'stream_id' in stream:
+                    stream['stream_id'] = False
 
                max_flows = 256*256
                if stream['flows'] > max_flows:

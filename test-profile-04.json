@@ -1,0 +1,29 @@
+{
+    "streams": [
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement"
+	    ],
+	    "stream_id": "fooA"
+	},
+	{
+	    "flows": 1024,
+	    "frame_size": 128,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement"
+	    ],
+	    "stream_id": "fooA"
+	}
+
+    ]
+}
