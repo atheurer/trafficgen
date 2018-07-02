@@ -1202,6 +1202,9 @@ def main():
          if trial_params['loaded_traffic_profile'] == 1:
               quit(1)
 
+         print("Loaded traffic profile from %s:" % (trial_params['traffic_profile']))
+         print(dump_json_readable(trial_params['loaded_traffic_profile']))
+
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['null_stats'] = { 'rx_l1_bps':                   0.0,
                                         'rx_l2_bps':                   0.0,
