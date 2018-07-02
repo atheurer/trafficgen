@@ -369,6 +369,12 @@ def process_options ():
                         default = '',
                         type = str
                         )
+    parser.add_argument('--random-seed',
+                        dest='random_seed',
+                        help='Specify a fixed random seed for repeatable results (defaults to not repeatable)',
+                        default = random.random(),
+                        type = float
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -622,6 +628,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
         cmd = 'python trex-txrx-profile.py'
         cmd = cmd + ' --mirrored-log'
+        cmd = cmd + ' --random-seed=' + str(trial_params['random_seed'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
@@ -1191,6 +1198,7 @@ def main():
          setup_config_var('teaching_measurement_packet_type', t_global.args.teaching_measurement_packet_type, trial_params)
 
     if t_global.args.traffic_generator == "trex-txrx-profile":
+         setup_config_var('random_seed', t_global.args.random_seed, trial_params)
          setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
          setup_config_var("run_bidirec", 1, trial_params, config_tag = False, silent = True)
          setup_config_var("run_revunidirec", 0, trial_params, config_tag = False, silent = True)

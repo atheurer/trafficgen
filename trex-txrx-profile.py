@@ -167,11 +167,19 @@ def process_options ():
                         default = '',
                         type = str
                         )
+    parser.add_argument('--random-seed',
+                        dest='random_seed',
+                        help='Specify a fixed random seed for repeatable results (defaults to not repeatable)',
+                        default = None,
+                        type = float
+                        )
 
     t_global.args = parser.parse_args()
 
     if t_global.args.active_device_pairs == '--':
          t_global.args.active_device_pairs = t_global.args.device_pairs
+
+    random.seed(t_global.args.random_seed)
 
     myprint(t_global.args)
 
