@@ -13,6 +13,9 @@ def dump_json_readable(obj):
 def dump_json_parsable(obj):
      return json.dumps(obj, separators=(',', ':'), default = not_json_serializable)
 
+def commify(string):
+     return str.format("{:,}", string)
+
 def ip_to_int (ip):
     ip_fields = ip.split(".")
     if len(ip_fields) != 4:

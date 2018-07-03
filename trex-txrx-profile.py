@@ -408,10 +408,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
 
                         stream_total_pkts = int(stream_rate * t_global.args.runtime)
 
-                        myprint("\tMeasurement stream for '%s' with flows=%d, frame size=%d, rate=%f, pg_id=%d, mode=%s, and name=%s" % (device_pair[direction]['id_string'],
-                                                                                                                                         stream_flows,
-                                                                                                                                         stream['frame_size'],
-                                                                                                                                         stream_rate,
+                        myprint("\tMeasurement stream for '%s' with flows=%s, frame size=%s, rate=%s, pg_id=%d, mode=%s, and name=%s" % (device_pair[direction]['id_string'],
+                                                                                                                                         commify(stream_flows),
+                                                                                                                                         commify(stream['frame_size']),
+                                                                                                                                         commify(stream_rate),
                                                                                                                                          stream_pg_id,
                                                                                                                                          stream_mode,
                                                                                                                                          stream_name))
@@ -482,10 +482,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                            (stream_flows / stream_rate))
 
               for stream_packet in stream_packets['teaching']:
-                   myprint("\tTeaching warmup stream for '%s' with flows=%d, frame size=%d, rate=%f, and protocol=%s" % (device_pair[direction]['id_string'],
-                                                                                                                         stream_flows,
-                                                                                                                         stream['frame_size'],
-                                                                                                                         stream_rate,
+                   myprint("\tTeaching warmup stream for '%s' with flows=%s, frame size=%s, rate=%s, and protocol=%s" % (device_pair[direction]['id_string'],
+                                                                                                                         commify(stream_flows),
+                                                                                                                         commify(stream['frame_size']),
+                                                                                                                         commify(stream_rate),
                                                                                                                          stream_packet['protocol']))
                    device_pair[other_direction]['teaching_warmup_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
                                                                                                     mode = stream_control,
@@ -506,11 +506,11 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                  pps = stream_rate)
 
               for stream_packet in stream_packets['teaching']:
-                   myprint("\tTeaching measurement stream for '%s' with flows=%d, frame size=%d, rate=%f, interval=%f, and protocol=%s" % (device_pair[direction]['id_string'],
-                                                                                                                                           stream_flows,
-                                                                                                                                           stream['frame_size'],
-                                                                                                                                           stream_rate,
-                                                                                                                                           t_global.args.teaching_measurement_interval,
+                   myprint("\tTeaching measurement stream for '%s' with flows=%s, frame size=%s, rate=%s, interval=%s, and protocol=%s" % (device_pair[direction]['id_string'],
+                                                                                                                                           commify(stream_flows),
+                                                                                                                                           commify(stream['frame_size']),
+                                                                                                                                           commify(stream_rate),
+                                                                                                                                           commify(t_global.args.teaching_measurement_interval),
                                                                                                                                            stream_packet['protocol']))
                    device_pair[other_direction]['teaching_measurement_traffic_streams'].append(STLStream(packet = stream_packet['packet'],
                                                                                                    mode = stream_control,
@@ -710,12 +710,12 @@ def main():
                        stop_time = datetime.datetime.now()
                        total_time = stop_time - start_time
                        myprint("\tFinished transmission at %s" % (stop_time.strftime("%H:%M:%S on %Y-%m-%d")))
-                       myprint("\tWarmup ran for %d second(s) (%s)" % (total_time.total_seconds(), total_time))
+                       myprint("\tWarmup ran for %s second(s) (%s)" % (commify(total_time.total_seconds()), total_time))
                   except STLTimeoutError as e:
                        c.stop(ports = warmup_ports)
                        stop_time = datetime.datetime.now()
                        total_time = stop_time - start_time
-                       myprint("TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%d seconds) -- %d total second(s) elapsed" % (warmup_timeout, total_time.total_seconds()))
+                       myprint("TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%s seconds) -- %s total second(s) elapsed" % (commify(warmup_timeout), commify(total_time.total_seconds())))
                        return return_value
                   except STLError as e:
                        c.stop(ports = warmup_ports)
@@ -790,7 +790,7 @@ def main():
         # log end of test
         myprint("\tFinished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
         total_time = stop_time - start_time
-        myprint("\tTrial ran for %d second(s) (%s)" % (total_time.total_seconds(), total_time))
+        myprint("\tTrial ran for %s second(s) (%s)" % (commify(total_time.total_seconds()), total_time))
 
         stats = c.get_stats(sync_now = True)
         stats["global"]["runtime"] = total_time.total_seconds()
@@ -844,9 +844,9 @@ def main():
                   myprint("\t\t%s" % event)
 
         myprint("\tStatistics")
-        myprint("\t\tTX Utilization: %f%%" % stats['global']['cpu_util'])
-        myprint("\t\tRX Utilization: %f%%" % stats['global']['rx_cpu_util'])
-        myprint("\t\tTX Queue Full:  %d"   % stats['global']['queue_full'])
+        myprint("\t\tTX Utilization: %s%%" % (commify(stats['global']['cpu_util'])))
+        myprint("\t\tRX Utilization: %s%%" % (commify(stats['global']['rx_cpu_util'])))
+        myprint("\t\tTX Queue Full:  %s"   % (commify(stats['global']['queue_full'])))
 
         myprint("READABLE RESULT:", stderr_only = True)
         myprint(dump_json_readable(stats), stderr_only = True)

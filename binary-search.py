@@ -717,7 +717,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
-    print('running trial %03d, rate %f%s' % (trial_params['trial'], trial_params['rate'], trial_params['rate_unit']))
+    print('running trial %03d, rate %s%s' % (trial_params['trial'], commify(trial_params['rate']), trial_params['rate_unit']))
     print('cmd:', cmd)
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_exit_event = threading.Event()
@@ -924,8 +924,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['tx']]['tx_l2_bps'] = float(stats[device_pair['tx']]['tx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
                                  stats[device_pair['rx']]['rx_l2_bps'] = float(stats[device_pair['rx']]['rx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
-                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps']))
-                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps']))
+                                 print("Device Pair: %s |   All TX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_packets']), commify(stats[device_pair['tx']]['tx_pps']), commify(stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps'])))
+                                 print("Device Pair: %s |   All RX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_packets']), commify(stats[device_pair['rx']]['rx_pps']), commify(stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps'])))
 
                                  if trial_params['measure_latency']:
                                       stream_types.append('latency')
@@ -1008,8 +1008,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['tx']]['tx_l2_bps'] = float(stats[device_pair['tx']]['tx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
                                  stats[device_pair['rx']]['rx_l2_bps'] = float(stats[device_pair['rx']]['rx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
-                                 print("Device Pair: %s |   All TX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['tx']]['tx_packets'], stats[device_pair['tx']]['tx_pps'], stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps']))
-                                 print("Device Pair: %s |   All RX   | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['rx']]['rx_packets'], stats[device_pair['rx']]['rx_pps'], stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps']))
+                                 print("Device Pair: %s |   All TX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_packets']), commify(stats[device_pair['tx']]['tx_pps']), commify(stats[device_pair['tx']]['tx_l1_bps']), commify(stats[device_pair['tx']]['tx_l2_bps'])))
+                                 print("Device Pair: %s |   All RX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_packets']), commify(stats[device_pair['rx']]['rx_pps']), commify(stats[device_pair['rx']]['rx_l1_bps']), commify(stats[device_pair['rx']]['rx_l2_bps'])))
 
                             if trial_params['measure_latency']:
                                  stats[device_pair['rx']]['rx_latency_lost_packets'] = stats[device_pair['tx']]['tx_latency_packets'] - stats[device_pair['rx']]['rx_latency_packets']
@@ -1032,8 +1032,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                       # ERROR?
                                       stats[device_pair['rx']]['rx_latency_average'] = -1.0
 
-                                 print("Device Pair: %s | Latency TX | packets=%d rate=%f l1_bps=%f l2_bps=%f" % (device_pair['path'], stats[device_pair['tx']]['tx_latency_packets'], stats[device_pair['tx']]['tx_latency_pps'], stats[device_pair['tx']]['tx_latency_l1_bps'], stats[device_pair['tx']]['tx_latency_l2_bps']))
-                                 print("Device Pair: %s | Latency RX | packets=%d rate=%f l1_bps=%f l2_bps=%f average=%f maximum=%f" % (device_pair['path'], stats[device_pair['rx']]['rx_latency_packets'], stats[device_pair['rx']]['rx_latency_pps'], stats[device_pair['rx']]['rx_latency_l1_bps'], stats[device_pair['rx']]['rx_latency_l2_bps'], stats[device_pair['rx']]['rx_latency_average'], stats[device_pair['rx']]['rx_latency_maximum']))
+                                 print("Device Pair: %s | Latency TX | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_latency_packets']), commify(stats[device_pair['tx']]['tx_latency_pps']), commify(stats[device_pair['tx']]['tx_latency_l1_bps']), commify(stats[device_pair['tx']]['tx_latency_l2_bps'])))
+                                 print("Device Pair: %s | Latency RX | packets=%s rate=%s l1_bps=%s l2_bps=%s average=%s maximum=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_latency_packets']), commify(stats[device_pair['rx']]['rx_latency_pps']), commify(stats[device_pair['rx']]['rx_latency_l1_bps']), commify(stats[device_pair['rx']]['rx_latency_l2_bps']), commify(stats[device_pair['rx']]['rx_latency_average']), commify(stats[device_pair['rx']]['rx_latency_maximum'])))
                        for direction in stats['directional']:
                             stats['directional'][direction]['rx_lost_packets'] = stats['directional'][direction]['tx_packets'] - stats['directional'][direction]['rx_packets']
                             if stats['directional'][direction]['tx_packets']:
@@ -1407,14 +1407,14 @@ def main():
                         if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                              requirement_msg = "failed"
                              trial_result = 'fail'
-                        print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, trial_stats[dev_pair['rx']]['rx_lost_packets_pct'], trial_stats[dev_pair['rx']]['rx_lost_packets']))
+                        print("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(t_global.args.max_loss_pct), commify(trial_stats[dev_pair['rx']]['rx_lost_packets_pct']), commify(trial_stats[dev_pair['rx']]['rx_lost_packets'])))
      
                         if t_global.args.measure_latency:
                              requirement_msg = "passed"
                              if trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct'] > t_global.args.max_loss_pct:
                                   requirement_msg = "failed"
                                   trial_result = 'fail'
-                             print("(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], t_global.args.max_loss_pct, trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct'], trial_stats[dev_pair['rx']]['rx_latency_lost_packets']))
+                             print("(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(t_global.args.max_loss_pct), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct']), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets'])))
 
 
                    if t_global.args.traffic_generator != 'null-txrx':
@@ -1440,7 +1440,7 @@ def main():
                                        trial_result = "retry-to-quit"
                         trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
                         trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
-                        print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %f - %f, achieved: %f)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], (tolerance_min/1000000), (tolerance_max/1000000), tx_rate))
+                        print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %s - %s, achieved: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(tolerance_min/1000000), commify(tolerance_max/1000000), commify(tx_rate)))
 
               if test_abort:
                    print('Binary search aborting due to critical error')
@@ -1451,7 +1451,7 @@ def main():
                         if trial_stats['directional'][direction]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                              requirement_msg = "failed"
                              trial_result = 'fail'
-                        print("(trial %s requirement, percent loss, direction: %s, requested: %f%%, achieved: %f%%, lost packets: %d)" % (requirement_msg, direction, t_global.args.max_loss_pct, trial_stats['directional'][direction]['rx_lost_packets_pct'], trial_stats['directional'][direction]['rx_lost_packets']))
+                        print("(trial %s requirement, percent loss, direction: %s, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, direction, commify(t_global.args.max_loss_pct), commify(trial_stats['directional'][direction]['rx_lost_packets_pct']), commify(trial_stats['directional'][direction]['rx_lost_packets'])))
                         
 
               if 'global' in trial_stats:
@@ -1465,7 +1465,7 @@ def main():
                         trial_result = "retry-to-fail"
                    else:
                         if trial_stats['global']['runtime'] < tolerance_min or trial_stats['global']['runtime'] > tolerance_max:
-                             print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %f - %f, achieved: %f)" % (tolerance_min, tolerance_max, trial_stats['global']['runtime']))
+                             print("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %s - %s, achieved: %s)" % (commify(tolerance_min), commify(tolerance_max), commify(trial_stats['global']['runtime'])))
                              if trial_result == "pass":
                                   trial_result = "retry-to-fail"
 
@@ -1511,7 +1511,7 @@ def main():
                              # passing rate is considered a false positive and should be removed; ensure
                              # that at least the original passing rate (which is a special rate of 0) is never
                              # removed from the stack
-                             print("Removing false positive passing result: %f" % (prev_pass_rate.pop()))
+                             print("Removing false positive passing result: %s" % (commify(prev_pass_rate.pop())))
                         next_rate = (prev_pass_rate[len(prev_pass_rate)-1] + rate) / 2 # use the most recently added passing rate present in stack to calculate the next rate
                         if abs(rate - next_rate) < (trial_params['search_granularity'] * rate / 100):
                              next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
@@ -1590,7 +1590,7 @@ def main():
                    return(0)
 
               if t_global.args.trial_gap:
-                   print("Sleeping for %d seconds between trial attempts" % t_global.args.trial_gap)
+                   print("Sleeping for %s seconds between trial attempts" % (commify(t_global.args.trial_gap)))
                    time.sleep(t_global.args.trial_gap)
 
          print("RESULT:")
