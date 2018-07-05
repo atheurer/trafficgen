@@ -1,8 +1,11 @@
+from __future__ import print_function
+
 import sys
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
 import json
 from trex_stl_lib.api import *
+from collections import deque
 
 def not_json_serializable(obj):
      return "not JSON serializable"
@@ -405,3 +408,57 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           return 1
 
      return profile
+
+def trex_profiler (connection, claimed_device_pairs, interval, profiler_queue, thread_exit):
+     try:
+          while not thread_exit.is_set():
+               time.sleep(interval)
+
+               ts = time.time() * 1000
+
+               xstats = {}
+               for device in claimed_device_pairs:
+                    xstats[device] = connection.get_xstats(device)
+
+               stats = connection.get_stats(ports = claimed_device_pairs)
+               pgid = connection.get_pgid_stats()
+               util = connection.get_util_stats()
+
+               profiler_queue.append({ 'timestamp': ts,
+                                       'stats':     stats,
+                                       'pgid':      pgid,
+                                       'util':      util,
+                                       'xstats':    xstats })
+
+     except STLError as e:
+          print("TRex Profiler: STLERROR: %s" % e)
+
+     except StandardError as e:
+          print("TRex Profiler: STANDARDERROR: %s" % e)
+
+     finally:
+         return(0)
+
+def trex_profiler_logger (logfile, profiler_queue, thread_exit):
+     profiler_logfile = None
+
+     try:
+          profiler_logfile = open(logfile, 'w')
+          profiler_logfile_close = True
+
+     except IOError:
+          print("ERROR: Could not open profiler log %s for writing" % (logfile))
+          return(1)
+
+     while not thread_exit.is_set() or len(profiler_queue):
+          try:
+               log_entry = profiler_queue.popleft()
+               print(dump_json_parsable(log_entry), end = '\n\n', file = profiler_logfile)
+          except IndexError:
+               foo = None
+
+          time.sleep(1)
+
+     profiler_logfile.close()
+
+     return(0)
