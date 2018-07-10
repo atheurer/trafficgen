@@ -490,16 +490,27 @@ def handle_query_process_stdout(process, exit_event):
                     continue
 
 def handle_query_process_stderr(process, trial_params, port_info, exit_event):
-     output_file = None
-     close_file = False
-     trial_params['port_info_file'] = "binary-search.port-info.txt"
-     filename = "%s/%s" % (trial_params['output_dir'], trial_params['port_info_file'])
+     primary_output_file = None
+     primary_close_file = False
+     trial_params['port_primary_info_file'] = "binary-search.port-info.txt"
+     filename = "%s/%s" % (trial_params['output_dir'], trial_params['port_primary_info_file'])
      try:
-          output_file = open(filename, 'w')
-          close_file = True
+          primary_output_file = open(filename, 'w')
+          primary_close_file = True
      except IOError:
           print("ERROR: Could not open %s for writing" % filename)
-          output_file = sys.stdout
+          primary_output_file = sys.stdout
+
+     secondary_output_file = None
+     secondary_close_file = False
+     trial_params['port_secondary_info_file'] = "binary-search.port-info.extra.txt"
+     filename = "%s/%s" % (trial_params['output_dir'], trial_params['port_secondary_info_file'])
+     try:
+          secondary_output_file = open(filename, 'w')
+          secondary_close_file = True
+     except IOError:
+          print("ERROR: Could not open %s for writing" % filename)
+          secondary_output_file = sys.stdout
 
      capture_output = True
      do_loop = True
@@ -514,18 +525,25 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
 
                m = re.search(r"PARSABLE PORT INFO:\s+(.*)$", line)
                if m:
+                    print(line, file=secondary_output_file)
+
                     port_info['json'] = json.loads(m.group(1))
 
-               if close_file:
+                    continue
+
+               if primary_close_file:
                     print(line.rstrip('\n'))
-               print(line.rstrip('\n'), file=output_file)
+               print(line.rstrip('\n'), file=primary_output_file)
 
                if line.rstrip('\n') == "Connection severed":
                     capture_output = False
                     exit_event.set()
 
-     if close_file:
-          output_file.close()
+     if primary_close_file:
+          primary_output_file.close()
+
+     if secondary_close_file:
+          secondary_output_file.close()
 
 def calculate_tx_pps_target(trial_params, streams, tmp_stats):
      stream_types = [ 'default', 'latency' ]
@@ -881,16 +899,27 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                        exit_event.set()
 
 def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams, detailed_stats, exit_event):
-    output_file = None
-    close_file = False
-    trial_params['trial_output_file'] = "binary-search.trial-%03d.txt" % (trial_params['trial'])
-    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_output_file'])
+    primary_output_file = None
+    primary_close_file = False
+    trial_params['trial_primary_output_file'] = "binary-search.trial-%03d.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_primary_output_file'])
     try:
-         output_file = open(filename, 'w')
-         close_file = True
+         primary_output_file = open(filename, 'w')
+         primary_close_file = True
     except IOError:
          print("ERROR: Could not open %s for writing" % filename)
-         output_file = sys.stdout
+         primary_output_file = sys.stdout
+
+    secondary_output_file = None
+    secondary_close_file = False
+    trial_params['trial_secondary_output_file'] = "binary-search.trial-%03d.extra.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_secondary_output_file'])
+    try:
+         secondary_output_file = open(filename, 'w')
+         secondary_close_file = True
+    except IOError:
+         print("ERROR: Could not open %s for writing" % filename)
+         secondary_output_file = sys.stdout
 
     capture_output = True
     do_loop = True
@@ -903,13 +932,13 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                   do_loop = False
                   continue
 
-             print(line.rstrip('\n'), file=output_file)
-
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   print(line.rstrip('\n'))
-             elif trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
+             if trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
                   m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE STREAMS FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
                   if m:
+                       print(line, file=secondary_output_file)
+
                        dev_pair = m.group(1)
                        path = m.group(2)
                        json_data = m.group(3)
@@ -918,8 +947,12 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  if path == device_pair['path']:
                                       streams[device_pair['tx']] = json.loads(json_data)
                                       stats[device_pair['tx']]['tx_pps_target'] = calculate_tx_pps_target(trial_params, streams[device_pair['tx']], tmp_stats[device_pair['tx']])
+                       continue
+
                   m = re.search(r"PARSABLE RESULT:\s+(.*)$", line)
                   if m:
+                       print(line, file=secondary_output_file)
+
                        results = json.loads(m.group(1))
                        detailed_stats['stats'] = copy.deepcopy(results)
 
@@ -1084,8 +1117,15 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                             if stats['directional'][direction]['tx_packets']:
                                  stats['directional'][direction]['rx_lost_packets_pct'] = 100.0 * stats['directional'][direction]['rx_lost_packets'] / stats['directional'][direction]['tx_packets']
 
-    if close_file:
-         output_file.close()
+                       continue
+
+             print(line.rstrip('\n'), file=primary_output_file)
+
+    if primary_close_file:
+         primary_output_file.close()
+
+    if secondary_close_file:
+         secondary_output_file.close()
 
 def print_stats(trial_params, stats):
      if t_global.args.traffic_generator == 'moongen-txrx' or t_global.args.traffic_generator == 'null-txrx':
@@ -1538,7 +1578,7 @@ def main():
                         print("Received Force Quit")
                         return(1)
 
-              trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_output_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
+              trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_primary_output_file'], 'extra-logfile': trial_params['trial_secondary_output_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
 
               if trial_result == "pass":
                    print('(trial passed all requirements)')
