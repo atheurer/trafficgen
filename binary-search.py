@@ -383,6 +383,17 @@ def process_options ():
                         default = '',
                         type = str
                         )
+    parser.add_argument('--disable-trex-profiler',
+                        dest='enable_trex_profiler',
+                        help='Force disablement of the TRex profiler',
+                        action = 'store_false'
+                        )
+    parser.add_argument('--trex-profiler-interval',
+                        dest='trex_profiler_interval',
+                        help='Interval to collect samples on when using the TRex profiler',
+                        default = 3.0,
+                        type = float
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -635,6 +646,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     cmd = ""
 
+    trial_params['trial_profiler_file'] = "N/A"
+
     if trial_params['traffic_generator'] == 'moongen-txrx':
         cmd = './MoonGen/build/MoonGen txrx.lua'
         cmd = cmd + ' --devices=0,1' # fix to allow different devices
@@ -702,6 +715,11 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --measure-latency'
         cmd = cmd + ' --latency-rate=' + str(trial_params['latency_rate'])
         cmd = cmd + ' --max-loss-pct=' + str(trial_params['max_loss_pct'])
+        if trial_params['enable_trex_profiler']:
+             cmd = cmd + ' --enable-profiler'
+             cmd = cmd + ' --profiler-interval=' + str(trial_params['trex_profiler_interval'])
+             trial_params['trial_profiler_file'] = "binary-search.trial-%03d.profiler.txt" % (trial_params['trial'])
+             cmd = cmd + ' --profiler-logfile=' + trial_params['output_dir'] + '/' + trial_params['trial_profiler_file']
         if not trial_params['enable_flow_cache']:
              cmd = cmd + ' --disable-flow-cache'
         if trial_params['send_teaching_warmup']:
@@ -1286,6 +1304,9 @@ def main():
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('random_seed', t_global.args.random_seed, trial_params)
          setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
+         setup_config_var("enable_trex_profiler", t_global.args.enable_trex_profiler, trial_params)
+         setup_config_var("trex_profiler_interval", t_global.args.trex_profiler_interval, trial_params)
+
          setup_config_var("run_bidirec", 1, trial_params, config_tag = False, silent = True)
          setup_config_var("run_revunidirec", 0, trial_params, config_tag = False, silent = True)
 
@@ -1578,7 +1599,7 @@ def main():
                         print("Received Force Quit")
                         return(1)
 
-              trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_primary_output_file'], 'extra-logfile': trial_params['trial_secondary_output_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
+              trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_primary_output_file'], 'extra-logfile': trial_params['trial_secondary_output_file'], 'profiler-logfile': trial_params['trial_profiler_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
 
               if trial_result == "pass":
                    print('(trial passed all requirements)')
