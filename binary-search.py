@@ -17,6 +17,8 @@ import select
 import signal
 import copy
 import random
+import os
+import os.path
 # from decimal import *
 # from trex_stl_lib.api import *
 
@@ -375,6 +377,12 @@ def process_options ():
                         default = random.random(),
                         type = float
                         )
+    parser.add_argument('--pre-trial-cmd',
+                        dest='pre_trial_cmd',
+                        help='Specify a script/binary to execute prior to each trial',
+                        default = '',
+                        type = str
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -382,6 +390,44 @@ def process_options ():
     if t_global.args.active_device_pairs == '--':
          t_global.args.active_device_pairs = t_global.args.device_pairs
     print(t_global.args)
+
+def execute_pre_trial_cmd(trial_params):
+     cmd = trial_params['pre_trial_cmd']
+
+     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
+
+     print("Executing pre-trial-cmd [%s]" % (cmd))
+
+     the_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+     exit_event = threading.Event()
+
+     io_thread = threading.Thread(target = handle_pre_trial_cmd_io, args = (the_process, exit_event))
+
+     io_thread.start()
+
+     exit_event.wait()
+
+     retval = the_process.wait()
+
+     io_thread.join()
+
+     signal.signal(signal.SIGINT, previous_sig_handler)
+
+     print('return code', retval)
+
+def handle_pre_trial_cmd_io(process, exit_event):
+     capture_output = True
+     do_loop = True
+     while do_loop:
+          lines = handle_process_output(process, process.stdout, capture_output)
+
+          for line in lines:
+               if line == "--END--":
+                    exit_event.set()
+                    do_loop = False
+                    continue
+               else:
+                    print('Pre Trial CMD: %s' % (line.rstrip('\n')))
 
 def get_trex_port_info(trial_params, dev_pairs):
      devices = dict()
@@ -717,7 +763,6 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
-    print('running trial %03d, rate %s%s' % (trial_params['trial'], commify(trial_params['rate']), trial_params['rate_unit']))
     print('cmd:', cmd)
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_exit_event = threading.Event()
@@ -1136,6 +1181,7 @@ def main():
     setup_config_var("search_granularity", t_global.args.search_granularity, trial_params)
     setup_config_var("max_retries", t_global.args.max_retries, trial_params)
     setup_config_var("loss_granularity", t_global.args.loss_granularity, trial_params)
+    setup_config_var("pre_trial_cmd", t_global.args.pre_trial_cmd, trial_params)
 
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
@@ -1321,6 +1367,15 @@ def main():
     if port_speed_verification_fail:
          quit(1)
 
+    if len(trial_params['pre_trial_cmd']):
+         if not os.path.isfile(trial_params['pre_trial_cmd']):
+              print("ERROR: The pre-trial-cmd file does not exist [%s]" % (trial_params['pre_trial_cmd']))
+              quit(1)
+
+         if not os.access(trial_params['pre_trial_cmd'], os.X_OK):
+              print("ERROR: The pre-trial-cmd file is not executable [%s]" % (trial_params['pre_trial_cmd']))
+              quit(1)
+
     perform_sniffs = False
     do_sniff = False
     do_search = True
@@ -1358,6 +1413,12 @@ def main():
               trial_params['trial'] += 1
               stream_info = { 'streams': None }
               detailed_stats = { 'stats': None }
+
+              print('running trial %03d, rate %s%s' % (trial_params['trial'], commify(trial_params['rate']), trial_params['rate_unit']))
+
+              if len(trial_params['pre_trial_cmd']):
+                   execute_pre_trial_cmd(trial_params)
+
               trial_stats = run_trial(trial_params, port_info, stream_info, detailed_stats)
 
               trial_result = 'pass'
