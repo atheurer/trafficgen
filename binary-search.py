@@ -1599,7 +1599,17 @@ def main():
                         print("Received Force Quit")
                         return(1)
 
-              trial_results['trials'].append({ 'trial': trial_params['trial'], 'rate': trial_params['rate'], 'rate_unit': trial_params['rate_unit'], 'result': trial_result, 'logfile': trial_params['trial_primary_output_file'], 'extra-logfile': trial_params['trial_secondary_output_file'], 'profiler-logfile': trial_params['trial_profiler_file'], 'stats': trial_stats, 'trial_params': copy.deepcopy(trial_params), 'stream_info': copy.deepcopy(stream_info['streams']), 'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
+              trial_results['trials'].append({ 'trial': trial_params['trial'],
+                                               'rate': trial_params['rate'],
+                                               'rate_unit': trial_params['rate_unit'],
+                                               'result': trial_result,
+                                               'logfile': trial_params['trial_primary_output_file'],
+                                               'extra-logfile': trial_params['trial_secondary_output_file'],
+                                               'profiler-logfile': trial_params['trial_profiler_file'],
+                                               'stats': trial_stats,
+                                               'trial_params': copy.deepcopy(trial_params),
+                                               'stream_info': copy.deepcopy(stream_info['streams']),
+                                               'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
 
               if trial_result == "pass":
                    print('(trial passed all requirements)')
