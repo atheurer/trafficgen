@@ -462,3 +462,122 @@ def trex_profiler_logger (logfile, profiler_queue, thread_exit):
      profiler_logfile.close()
 
      return(0)
+
+def trex_profiler_process_sample(sample, stats):
+    sample = json.loads(sample)
+    #print(dump_json_readable(sample))
+
+    for pgid in sorted(sample['pgid']['flow_stats']):
+        if not pgid == 'global':
+            data = sample['pgid']['flow_stats'][pgid]
+            stat_sample = { 'tx_pps': {},
+                            'rx_pps': {} }
+
+            for port in sorted(data['tx_pps']):
+                stat_sample['tx_pps'][port] = data['tx_pps'][port]
+
+            for port in sorted(data['rx_pps']):
+                stat_sample['rx_pps'][port] = data['tx_pps'][port]
+
+            if pgid in sample['pgid']['latency']:
+                data = sample['pgid']['latency'][pgid]['latency']
+                stat_sample['latency'] = { 'average': data['average'],
+                                           'total_max': data['total_max'],
+                                           'total_min': data['total_min'] }
+
+            stats[sample['timestamp']]['pgids'][pgid] = stat_sample
+
+    for port in sorted(sample['stats']):
+        data = sample['stats'][port]
+
+        if not port in [ 'latency', 'global', 'flow_stats' ]:
+            stats[sample['timestamp']]['ports'][port] = { 'tx': { 'pps': data['tx_pps'],
+                                                                  'util': data['tx_util'],
+                                                                  'bps': data['tx_bps'],
+                                                                  'bps_l1': data['tx_bps_L1'] },
+                                                          'rx': { 'pps': data['rx_pps'],
+                                                                  'util': data['rx_util'],
+                                                                  'bps': data['rx_bps'],
+                                                                  'bps_l1': data['rx_bps_L1'] } }
+        elif port == 'global':
+            stats[sample['timestamp']]['global'] = { 'tx': { 'pps': data['tx_pps'],
+                                                             'bps': data['tx_bps'] },
+                                                     'rx': { 'pps': data['rx_pps'],
+                                                             'bps': data['rx_bps'],
+                                                             'drop_bps': data['rx_drop_bps'],
+                                                             'cpu_util': data['rx_cpu_util'] },
+                                                     'misc': { 'queue_full': data['queue_full'],
+                                                               'cpu_util': data['cpu_util'],
+                                                               'bw_per_core': data['bw_per_core'] } }
+
+    return(0)
+
+def trex_profiler_populate_lists (sample, lists):
+    sample = json.loads(sample)
+
+    lists['timestamps'].append(sample['timestamp'])
+
+    for pgid in sample['pgid']['flow_stats']:
+        if not pgid == 'global' and not pgid in lists['pgids']:
+            lists['pgids'].append(pgid)
+
+    for port in sample['stats']:
+        if not port in [ 'latency', 'global', 'total', 'flow_stats' ] and not port in lists['ports']:
+            lists['ports'].append(port)
+
+    return(0)
+
+def trex_profiler_build_stats_object (lists):
+    stats = {}
+
+    for timestamp in lists['timestamps']:
+        pgids = {}
+        for pgid in lists['pgids']:
+            pgids[pgid] = None
+
+        ports = { 'total': None }
+        for port in lists['ports']:
+            ports[port] = None
+
+        stat = { 'pgids': pgids,
+                 'ports': ports,
+                 'global': None }
+
+        stats[timestamp] = stat
+
+    return(stats)
+
+def trex_profiler_postprocess_file (input_file):
+    try:
+        fp = open(input_file, 'r')
+
+        lists = { 'pgids': [],
+                  'timestamps': [],
+                  'ports': []
+              }
+        for line in fp:
+            line = line.rstrip('\n')
+
+            if len(line):
+               trex_profiler_populate_lists(line, lists)
+
+        for key in lists:
+            lists[key].sort()
+
+        stats = trex_profiler_build_stats_object(lists)
+
+        fp.seek(0)
+        for line in fp:
+            line = line.rstrip('\n')
+
+            if len(line):
+                 trex_profiler_process_sample(line, stats)
+
+        fp.close()
+
+        return(stats)
+
+    except:
+        print("EXCEPTION: %s" % (traceback.format_exc()))
+        print("ERROR: Could not process the input file")
+        return(None)

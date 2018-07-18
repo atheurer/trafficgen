@@ -1599,6 +1599,10 @@ def main():
                         print("Received Force Quit")
                         return(1)
 
+              profiler_data = None
+              if trial_params['traffic_generator'] == 'trex-txrx-profile' and trial_params['enable_trex_profiler']:
+                   profiler_data = trex_profiler_postprocess_file("%s/%s" % (trial_params['output_dir'], trial_params['trial_profiler_file']))
+
               trial_results['trials'].append({ 'trial': trial_params['trial'],
                                                'rate': trial_params['rate'],
                                                'rate_unit': trial_params['rate_unit'],
@@ -1606,6 +1610,7 @@ def main():
                                                'logfile': trial_params['trial_primary_output_file'],
                                                'extra-logfile': trial_params['trial_secondary_output_file'],
                                                'profiler-logfile': trial_params['trial_profiler_file'],
+                                               'profiler-data': profiler_data,
                                                'stats': trial_stats,
                                                'trial_params': copy.deepcopy(trial_params),
                                                'stream_info': copy.deepcopy(stream_info['streams']),
