@@ -1,0 +1,58 @@
+{
+    "streams": [
+	{
+	    "flows": 128,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 20,
+	    "frame_type": "garp",
+	    "stream_types": [
+		"teaching_warmup"
+	    ]
+	},
+	{
+	    "flows": 64,
+	    "frame_size": 74,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
+	    "rate": 3500000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"measurement",
+		"teaching_measurement"
+	    ],
+	    "traffic_direction": "bidirectional"
+	},
+	{
+	    "flows": 256,
+	    "frame_size": 594,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
+	    "rate": 2000000,
+	    "traffic_direction": "unidirectional",
+	    "stream_types": [
+		"teaching_warmup",
+		"teaching_measurement",
+		"measurement"
+	    ]
+	},
+	{
+	    "flows": 192,
+	    "frame_size": 1518,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
+	    "rate": 500000,
+	    "protocol": "TCP",
+	    "traffic_direction": "revunidirectional",
+	    "stream_types": [
+		"teaching_warmup",
+		"teaching_measurement",
+		"measurement"
+	    ]
+	},
+	{
+	    "flows": 32,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 300,
+	    "frame_type": "icmp"
+	}
+    ]
+}

@@ -5,7 +5,6 @@ sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
 import argparse
 import stl_path
-import json
 import string
 import datetime
 import math
@@ -13,6 +12,7 @@ import threading
 import thread
 from decimal import *
 from trex_stl_lib.api import *
+from trex_tg_lib import *
 
 class t_global(object):
      args=None;
@@ -28,53 +28,46 @@ def myprint(*args, **kwargs):
           print(*args, file = sys.stderr, **kwargs)
      return
 
-def not_json_serializable(obj):
-     return "not JSON serializable"
-
-def dump_json_readable(obj):
-     return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True, default = not_json_serializable)
-
-def dump_json_parsable(obj):
-     return json.dumps(obj, separators=(',', ':'), default = not_json_serializable)
-
-def ip_to_int (ip):
-    ip_fields = ip.split(".")
-    if len(ip_fields) != 4:
-         raise ValueError("IP addresses should be in the form of W.X.Y.Z")
-    ip_int = 256**3 * int(ip_fields[0]) + 256**2 * int(ip_fields[1]) + 256**1 * int(ip_fields[2]) + int(ip_fields[3])
-    return ip_int
-
-def calculate_latency_pps (dividend, divisor, total_rate, protocols):
-     return int((float(dividend) / float(divisor) * total_rate / protocols))
-
 def create_teaching_garp_packets (direction, other_direction, device_pair):
      garp_request_packet = create_garp_pkt(device_pair[direction]['packet_values']['macs']['dst'],
                                            device_pair[direction]['packet_values']['ips']['dst'],
                                            device_pair[other_direction]['packet_values']['vlan'],
-                                           0x1)
+                                           0x1,
+                                           t_global.args.flow_mods,
+                                           t_global.args.num_flows,
+                                           t_global.args.enable_flow_cache)
 
      garp_reply_packet = create_garp_pkt(device_pair[direction]['packet_values']['macs']['dst'],
                                          device_pair[direction]['packet_values']['ips']['dst'],
                                          device_pair[other_direction]['packet_values']['vlan'],
-                                         0x2)
+                                         0x2,
+                                         t_global.args.flow_mods,
+                                         t_global.args.num_flows,
+                                         t_global.args.enable_flow_cache)
 
      return [garp_request_packet, garp_reply_packet]
 
 def create_teaching_icmp_packets (direction, other_direction, device_pair):
      return [ create_icmp_bcast_pkt(device_pair[direction]['packet_values']['macs']['dst'],
                                     device_pair[direction]['packet_values']['ips']['dst'],
-                                    device_pair[other_direction]['packet_values']['vlan']) ]
+                                    device_pair[other_direction]['packet_values']['vlan'],
+                                    t_global.args.flow_mods,
+                                    t_global.args.num_flows,
+                                    t_global.args.enable_flow_cache) ]
 
-def create_teaching_bulk_packets (direction, other_direction, device_pair):
-     return [ create_pkt(64,
-                         device_pair[direction]['packet_values']['macs']['dst'],
-                         device_pair[direction]['packet_values']['macs']['src'],
-                         device_pair[direction]['packet_values']['ips']['dst'],
-                         device_pair[direction]['packet_values']['ips']['src'],
-                         device_pair[direction]['packet_values']['ports']['dst'],
-                         device_pair[direction]['packet_values']['ports']['src'],
-                         "UDP",
-                         device_pair[other_direction]['packet_values']['vlan']) ]
+def create_teaching_generic_packets (direction, other_direction, device_pair):
+     return [ create_generic_pkt(64,
+                                 device_pair[direction]['packet_values']['macs']['dst'],
+                                 device_pair[direction]['packet_values']['macs']['src'],
+                                 device_pair[direction]['packet_values']['ips']['dst'],
+                                 device_pair[direction]['packet_values']['ips']['src'],
+                                 device_pair[direction]['packet_values']['ports']['dst'],
+                                 device_pair[direction]['packet_values']['ports']['src'],
+                                 "UDP",
+                                 device_pair[other_direction]['packet_values']['vlan'],
+                                 t_global.args.flow_mods,
+                                 t_global.args.num_flows,
+                                 t_global.args.enable_flow_cache) ]
 
 def create_teaching_warmup_traffic_profile (direction, other_direction, device_pair):
      myprint("Creating teaching warmup streams for device pair '%s' direction '%s' with TYPE=%s and MAC=%s and IP=%s" % (device_pair['device_pair'],
@@ -86,8 +79,8 @@ def create_teaching_warmup_traffic_profile (direction, other_direction, device_p
      teaching_packets = []
      if t_global.args.teaching_warmup_packet_type == "garp":
           teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
-     elif t_global.args.teaching_warmup_packet_type == "bulk":
-          teaching_packets = create_teaching_bulk_packets(direction, other_direction, device_pair)
+     elif t_global.args.teaching_warmup_packet_type == "generic":
+          teaching_packets = create_teaching_generic_packets(direction, other_direction, device_pair)
      if t_global.args.teaching_warmup_packet_type == "icmp":
           teaching_packets = create_teaching_icmp_packets(direction, other_direction, device_pair)
 
@@ -108,8 +101,8 @@ def create_teaching_measurement_traffic_profile (direction, other_direction, dev
      teaching_packets = []
      if t_global.args.teaching_measurement_packet_type == "garp":
           teaching_packets = create_teaching_garp_packets(direction, other_direction, device_pair)
-     elif t_global.args.teaching_measurement_packet_type == "bulk":
-          teaching_packets = create_teaching_bulk_packets(direction, other_direction, device_pair)
+     elif t_global.args.teaching_measurement_packet_type == "generic":
+          teaching_packets = create_teaching_generic_packets(direction, other_direction, device_pair)
      if t_global.args.teaching_measurement_packet_type == "icmp":
           teaching_packets = create_teaching_icmp_packets(direction, other_direction, device_pair)
 
@@ -122,99 +115,6 @@ def create_teaching_measurement_traffic_profile (direction, other_direction, dev
           device_pair[other_direction]['teaching_measurement_traffic_profile'].append(STLStream(packet = packet, mode = measurement_mode))
 
      return
-
-def create_icmp_bcast_pkt (mac_dst, ip_dst, vlan_id):
-    mac_target = 'ff:ff:ff:ff:ff:ff'
-
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + t_global.args.num_flows }
-
-    vm = []
-    if t_global.args.use_dst_ip_flows and t_global.args.num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ip_src", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ip_src", pkt_offset = "IP.src")
-         ]
-
-    if t_global.args.use_dst_mac_flows and t_global.args.num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
-              #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
-         ]
-
-    the_packet = Ether(src = mac_dst, dst = mac_target)
-
-    if vlan_id is not None:
-         the_packet = the_packet/Dot1Q(vlan = vlan_id)
-
-    the_packet = the_packet/IP(src = str(ip_dst['start']), dst = str(ip_to_int('255.255.255.255')))/ICMP(type = 8, code = 0, id = 0, seq = 0)
-
-    pad = max(0, 64 - len(the_packet)) * 'x'
-    the_packet = the_packet/pad
-
-    #the_packet.show2()
-
-    if t_global.args.num_flows and (t_global.args.use_dst_ip_flows or t_global.args.use_dst_mac_flows):
-         vm = vm + [STLVmFixIpv4(offset = "IP")]
-
-         if t_global.args.enable_flow_cache:
-              vm = STLScVmRaw(list_of_commands = vm,
-                              cache_size = t_global.args.num_flows)
-
-         return STLPktBuilder(pkt = the_packet,
-                              vm  = vm)
-    else:
-         return STLPktBuilder(pkt = the_packet)
-
-def create_garp_pkt (mac_dst, ip_dst, vlan_id, arp_op):
-    arp_mac_target = 'ff:ff:ff:ff:ff:ff'
-
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + t_global.args.num_flows }
-
-    vm = []
-    if t_global.args.use_dst_ip_flows and t_global.args.num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ip_psrc", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ip_psrc", pkt_offset = "ARP.psrc")
-         ]
-         vm = vm + [
-              STLVmFlowVar(name = "ip_pdst", min_value = ip_dst['start'], max_value = ip_dst['end'], size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ip_pdst", pkt_offset = "ARP.pdst")
-         ]
-
-    if t_global.args.use_dst_mac_flows and t_global.args.num_flows:
-         vm = vm + [
-              STLVmFlowVar(name = "ether_mac_src", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = 7)
-              #STLVmWrFlowVar(fv_name = "ether_mac_src", pkt_offset = "Ether.src", offset_fixup = 1)
-         ]
-         vm = vm + [
-              STLVmFlowVar(name = "arp_mac_src", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "arp_mac_src", pkt_offset = "ARP.hwsrc", offset_fixup = 1)
-         ]
-         vm = vm + [
-              STLVmFlowVar(name = "arp_mac_dst", min_value = 0, max_value = t_global.args.num_flows, size = 4, op = "inc"),
-              STLVmWrFlowVar(fv_name = "arp_mac_dst", pkt_offset = "ARP.hwdst", offset_fixup = 1)
-         ]
-
-    the_packet = Ether(src = mac_dst, dst = arp_mac_target)
-
-    if vlan_id is not None:
-         the_packet = the_packet/Dot1Q(vlan = vlan_id)
-
-    the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_dst, psrc = str(ip_dst['start']), hwdst = arp_mac_target, pdst = str(ip_dst['start']))
-
-    #the_packet.show2()
-
-    if t_global.args.num_flows and (t_global.args.use_dst_ip_flows or t_global.args.use_dst_mac_flows):
-         if t_global.args.enable_flow_cache:
-              vm = STLScVmRaw(list_of_commands = vm,
-                              cache_size = t_global.args.num_flows)
-
-         return STLPktBuilder(pkt = the_packet,
-                              vm  = vm)
-    else:
-         return STLPktBuilder(pkt = the_packet)
 
 def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed):
      streams = { 'default': { 'protocol': [],
@@ -235,7 +135,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
      bits_per_byte = 8
 
      protocols = [ t_global.args.packet_protocol ]
-     if t_global.args.use_protocol_flows:
+     if t_global.args.flow_mods['protocol']:
           if t_global.args.packet_protocol == "UDP":
                protocols.append("TCP")
           elif t_global.args.packet_protocol == "TCP":
@@ -427,15 +327,18 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                elif stream_mode == "continuous":
                     stream_mode_obj = STLTXCont(pps = stream_pps)
 
-               stream_packet = create_pkt(stream_frame_size,
-                                          device_pair[direction]['packet_values']['macs']['src'],
-                                          device_pair[direction]['packet_values']['macs']['dst'],
-                                          device_pair[direction]['packet_values']['ips']['src'],
-                                          device_pair[direction]['packet_values']['ips']['dst'],
-                                          device_pair[direction]['packet_values']['ports']['src'],
-                                          device_pair[direction]['packet_values']['ports']['dst'],
-                                          stream_packet_protocol,
-                                          device_pair[direction]['packet_values']['vlan'])
+               stream_packet = create_generic_pkt(stream_frame_size,
+                                                  device_pair[direction]['packet_values']['macs']['src'],
+                                                  device_pair[direction]['packet_values']['macs']['dst'],
+                                                  device_pair[direction]['packet_values']['ips']['src'],
+                                                  device_pair[direction]['packet_values']['ips']['dst'],
+                                                  device_pair[direction]['packet_values']['ports']['src'],
+                                                  device_pair[direction]['packet_values']['ports']['dst'],
+                                                  stream_packet_protocol,
+                                                  device_pair[direction]['packet_values']['vlan'],
+                                                  t_global.args.flow_mods,
+                                                  t_global.args.num_flows,
+                                                  t_global.args.enable_flow_cache)
 
                if stream_loop:
                     myprint("Stream is being split into multiple substreams due to high total packet count")
@@ -476,123 +379,16 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
      myprint(dump_json_readable(streams), stderr_only = True)
      myprint("DEVICE PAIR %s | PARSABLE STREAMS FOR DIRECTION '%s': %s" % (device_pair['device_pair'], device_pair[direction]['id_string'], dump_json_parsable(streams)), stderr_only = True)
 
-# simple packet creation
-def create_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, packet_protocol, vlan_id):
-    # adjust packet size due to CRC
-    size = int(size)
-    size -= 4
-
-    port_range = { "start": 0, "end": 65535 }
-    if t_global.args.num_flows > 1 and (t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows):
-         if t_global.args.num_flows < 1000:
-              num_flows_divisor = t_global.args.num_flows
-         elif (t_global.args.num_flows % 1000) == 0:
-              num_flows_divisor = 1000
-         elif (t_global.args.num_flows % 1024 == 0):
-              num_flows_divisor = 1024
-
-         if (port_src + num_flows_divisor) > port_range["end"]:
-              port_start = port_range["end"] - num_flows_divisor + 1
-              port_end = port_range["end"]
-         else:
-              port_start = port_src
-              port_end = port_src + num_flows_divisor - 1
-
-         port_src = { "start": port_start, "end": port_end, "init": port_src }
-
-         if (port_dst + num_flows_divisor) > port_range["end"]:
-              port_start = port_range["end"] - num_flows_divisor + 1
-              port_end = port_range["end"]
-         else:
-              port_start = port_dst
-              port_end = port_dst + num_flows_divisor - 1
-
-         port_dst = { "start": port_start, "end": port_end, "init": port_dst }
-    else:
-         port_src = { "init": port_src }
-         port_dst = { "init": port_dst }
-
-    tmp_num_flows = t_global.args.num_flows - 1
-
-    ip_src = { "start": ip_to_int(ip_src), "end": ip_to_int(ip_src) + tmp_num_flows }
-    ip_dst = { "start": ip_to_int(ip_dst), "end": ip_to_int(ip_dst) + tmp_num_flows }
-
-    vm = []
-    if t_global.args.use_src_ip_flows and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name="ip_src",min_value=ip_src['start'],max_value=ip_src['end'],size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src")
-        ]
-
-    if t_global.args.use_dst_ip_flows and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst")
-        ]
-
-    if t_global.args.use_src_mac_flows and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name="mac_src",min_value=0,max_value=tmp_num_flows,size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="mac_src",pkt_offset=7)
-        ]
-
-    if t_global.args.use_dst_mac_flows and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name="mac_dst",min_value=0,max_value=tmp_num_flows,size=4,op="inc"),
-            STLVmWrFlowVar(fv_name="mac_dst",pkt_offset=1)
-        ]
-
-    if t_global.args.use_src_port_flows and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name = "port_src", init_value = port_src['init'], min_value = port_src['start'], max_value = port_src['end'], size = 2, op = "inc"),
-            STLVmWrFlowVar(fv_name = "port_src", pkt_offset = packet_protocol + ".sport"),
-        ]
-
-    if t_global.args.use_dst_port_flows and tmp_num_flows:
-        vm = vm + [
-            STLVmFlowVar(name = "port_dst", init_value = port_dst['init'], min_value = port_dst['start'], max_value = port_dst['end'], size = 2, op = "inc"),
-            STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = packet_protocol + ".dport"),
-        ]
-
-    base = Ether(src = mac_src, dst = mac_dst)
-
-    if vlan_id is not None:
-        base = base/Dot1Q(vlan = vlan_id)
-        # with vlan tag, minimum 64 L2 frame size is required, otherwise trex will fail
-        size = max(64, size) 
-
-    base = base/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
-
-    if packet_protocol == "UDP":
-         base = base/UDP(sport = port_src['init'], dport = port_dst['init'] )
-    elif packet_protocol == "TCP":
-         base = base/TCP(sport = port_src['init'], dport = port_dst['init'] )
-    pad = max(0, size-len(base)) * 'x'
-
-    the_packet = base/pad
-    #the_packet.show2()
-
-    if tmp_num_flows and (t_global.args.use_src_ip_flows or t_global.args.use_dst_ip_flows or t_global.args.src_mac_flows or t_global.args.use_dst_mac_flows or t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows):
-         if packet_protocol == "UDP":
-              vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="UDP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_UDP)]
-         elif packet_protocol == "TCP":
-              vm = vm + [STLVmFixChecksumHw(l3_offset="IP",l4_offset="TCP",l4_type=CTRexVmInsFixHwCs.L4_TYPE_TCP)]
-
-         if t_global.args.enable_flow_cache:
-              vm = STLScVmRaw(list_of_commands = vm,
-                              cache_size = tmp_num_flows)
-
-         return STLPktBuilder(pkt = the_packet,
-                              vm  = vm)
-    else:
-         return STLPktBuilder(pkt = the_packet)
-
-
 def process_options ():
     parser = argparse.ArgumentParser(usage=""" 
     generate network traffic and report packet loss
     """);
 
+    parser.add_argument('--debug',
+                        dest='debug',
+                        help='Should debugging be enabled',
+                        action = 'store_true'
+                        )
     parser.add_argument('--mirrored-log',
                         dest='mirrored_log',
                         help='Should the logging sent to STDOUT be mirrored on STDERR',
@@ -841,13 +637,13 @@ def process_options ():
                         dest='teaching_warmup_packet_type',
                         help='Type of packet to send for the teaching warmup from the receiving port',
                         default = 'garp',
-                        choices = ['garp', 'icmp', 'bulk']
+                        choices = ['garp', 'icmp', 'generic']
                         )
     parser.add_argument('--teaching-measurement-packet-type',
                         dest='teaching_measurement_packet_type',
                         help='Type of packet to send for the teaching measurement from the receiving port',
                         default = 'garp',
-                        choices = ['garp', 'icmp', 'bulk']
+                        choices = ['garp', 'icmp', 'generic']
                         )
 
     t_global.args = parser.parse_args();
@@ -861,6 +657,13 @@ def process_options ():
     else:
          if t_global.args.num_flows and not t_global.args.enable_flow_cache:
               myprint("NOTE: User disablement of flow caching will cause higher resource requirements.")
+    t_global.args.flow_mods = create_flow_mod_object(use_src_mac_flows  = t_global.args.use_src_mac_flows,
+                                                     use_dst_mac_flows  = t_global.args.use_dst_mac_flows,
+                                                     use_src_ip_flows   = t_global.args.use_src_ip_flows,
+                                                     use_dst_ip_flows   = t_global.args.use_dst_ip_flows,
+                                                     use_src_port_flows = t_global.args.use_src_port_flows,
+                                                     use_dst_port_flows = t_global.args.use_dst_port_flows,
+                                                     use_protocol_flows = t_global.args.use_protocol_flows)
     myprint(t_global.args)
 
 def segment_monitor(connection, device_pairs, run_ports, max_loss_pct, normal_exit_event, early_exit_event):
@@ -1056,8 +859,9 @@ def main():
     myprint("Active TX Ports: %d" % active_ports)
 
     try:
-        # turn this on for some information
-        #c.set_verbose("high")
+        if t_global.args.debug:
+             # turn this on for some information
+             c.set_verbose("high")
 
         # connect to server
         myprint("Establishing connection to TRex server...")
@@ -1112,7 +916,7 @@ def main():
         if port_speed_verification_fail:
              raise RuntimeError("Failed port speed verification")
 
-        if t_global.args.use_src_port_flows or t_global.args.use_dst_port_flows:
+        if t_global.args.flow_mods['port']['src'] or t_global.args.flow_mods['port']['dst']:
              if t_global.args.num_flows >= 1000:
                   if ((t_global.args.num_flows % 1000) != 0) and ((t_global.args.num_flows % 1024) != 0):
                        raise ValueError("when source of destination port flows are enabled the number of flows must be divisible by 1000 or 1024")
