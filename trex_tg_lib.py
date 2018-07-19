@@ -1,8 +1,11 @@
+from __future__ import print_function
+
 import sys
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
 sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
 import json
 from trex_stl_lib.api import *
+from collections import deque
 
 def not_json_serializable(obj):
      return "not JSON serializable"
@@ -405,3 +408,176 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           return 1
 
      return profile
+
+def trex_profiler (connection, claimed_device_pairs, interval, profiler_queue, thread_exit):
+     try:
+          while not thread_exit.is_set():
+               time.sleep(interval)
+
+               ts = time.time() * 1000
+
+               xstats = {}
+               for device in claimed_device_pairs:
+                    xstats[device] = connection.get_xstats(device)
+
+               stats = connection.get_stats(ports = claimed_device_pairs)
+               pgid = connection.get_pgid_stats()
+               util = connection.get_util_stats()
+
+               profiler_queue.append({ 'timestamp': ts,
+                                       'stats':     stats,
+                                       'pgid':      pgid,
+                                       'util':      util,
+                                       'xstats':    xstats })
+
+     except STLError as e:
+          print("TRex Profiler: STLERROR: %s" % e)
+
+     except StandardError as e:
+          print("TRex Profiler: STANDARDERROR: %s" % e)
+
+     finally:
+         return(0)
+
+def trex_profiler_logger (logfile, profiler_queue, thread_exit):
+     profiler_logfile = None
+
+     try:
+          profiler_logfile = open(logfile, 'w')
+          profiler_logfile_close = True
+
+     except IOError:
+          print("ERROR: Could not open profiler log %s for writing" % (logfile))
+          return(1)
+
+     while not thread_exit.is_set() or len(profiler_queue):
+          try:
+               log_entry = profiler_queue.popleft()
+               print(dump_json_parsable(log_entry), end = '\n\n', file = profiler_logfile)
+          except IndexError:
+               foo = None
+
+          time.sleep(1)
+
+     profiler_logfile.close()
+
+     return(0)
+
+def trex_profiler_process_sample(sample, stats):
+    sample = json.loads(sample)
+    #print(dump_json_readable(sample))
+
+    for pgid in sorted(sample['pgid']['flow_stats']):
+        if not pgid == 'global':
+            data = sample['pgid']['flow_stats'][pgid]
+            stat_sample = { 'tx_pps': {},
+                            'rx_pps': {} }
+
+            for port in sorted(data['tx_pps']):
+                stat_sample['tx_pps'][port] = data['tx_pps'][port]
+
+            for port in sorted(data['rx_pps']):
+                stat_sample['rx_pps'][port] = data['tx_pps'][port]
+
+            if pgid in sample['pgid']['latency']:
+                data = sample['pgid']['latency'][pgid]['latency']
+                stat_sample['latency'] = { 'average': data['average'],
+                                           'total_max': data['total_max'],
+                                           'total_min': data['total_min'] }
+
+            stats[sample['timestamp']]['pgids'][pgid] = stat_sample
+
+    for port in sorted(sample['stats']):
+        data = sample['stats'][port]
+
+        if not port in [ 'latency', 'global', 'flow_stats' ]:
+            stats[sample['timestamp']]['ports'][port] = { 'tx': { 'pps': data['tx_pps'],
+                                                                  'util': data['tx_util'],
+                                                                  'bps': data['tx_bps'],
+                                                                  'bps_l1': data['tx_bps_L1'] },
+                                                          'rx': { 'pps': data['rx_pps'],
+                                                                  'util': data['rx_util'],
+                                                                  'bps': data['rx_bps'],
+                                                                  'bps_l1': data['rx_bps_L1'] } }
+        elif port == 'global':
+            stats[sample['timestamp']]['global'] = { 'tx': { 'pps': data['tx_pps'],
+                                                             'bps': data['tx_bps'] },
+                                                     'rx': { 'pps': data['rx_pps'],
+                                                             'bps': data['rx_bps'],
+                                                             'drop_bps': data['rx_drop_bps'],
+                                                             'cpu_util': data['rx_cpu_util'] },
+                                                     'misc': { 'queue_full': data['queue_full'],
+                                                               'cpu_util': data['cpu_util'],
+                                                               'bw_per_core': data['bw_per_core'] } }
+
+    return(0)
+
+def trex_profiler_populate_lists (sample, lists):
+    sample = json.loads(sample)
+
+    lists['timestamps'].append(sample['timestamp'])
+
+    for pgid in sample['pgid']['flow_stats']:
+        if not pgid == 'global' and not pgid in lists['pgids']:
+            lists['pgids'].append(pgid)
+
+    for port in sample['stats']:
+        if not port in [ 'latency', 'global', 'total', 'flow_stats' ] and not port in lists['ports']:
+            lists['ports'].append(port)
+
+    return(0)
+
+def trex_profiler_build_stats_object (lists):
+    stats = {}
+
+    for timestamp in lists['timestamps']:
+        pgids = {}
+        for pgid in lists['pgids']:
+            pgids[pgid] = None
+
+        ports = { 'total': None }
+        for port in lists['ports']:
+            ports[port] = None
+
+        stat = { 'pgids': pgids,
+                 'ports': ports,
+                 'global': None }
+
+        stats[timestamp] = stat
+
+    return(stats)
+
+def trex_profiler_postprocess_file (input_file):
+    try:
+        fp = open(input_file, 'r')
+
+        lists = { 'pgids': [],
+                  'timestamps': [],
+                  'ports': []
+              }
+        for line in fp:
+            line = line.rstrip('\n')
+
+            if len(line):
+               trex_profiler_populate_lists(line, lists)
+
+        for key in lists:
+            lists[key].sort()
+
+        stats = trex_profiler_build_stats_object(lists)
+
+        fp.seek(0)
+        for line in fp:
+            line = line.rstrip('\n')
+
+            if len(line):
+                 trex_profiler_process_sample(line, stats)
+
+        fp.close()
+
+        return(stats)
+
+    except:
+        print("EXCEPTION: %s" % (traceback.format_exc()))
+        print("ERROR: Could not process the input file")
+        return(None)

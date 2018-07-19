@@ -83,6 +83,11 @@ def process_options ():
                         help='Should the logging sent to STDOUT be mirrored on STDERR',
                         action = 'store_true',
                         )
+    parser.add_argument('--enable-profiler',
+                        dest='enable_profiler',
+                        help='Should the TRex profiler be enabled',
+                        action = 'store_true',
+                        )
     parser.add_argument('--device-pairs',
                         dest='device_pairs',
                         help='List of device pairs in the for A:B[,C:D][,E:F][,...]',
@@ -172,6 +177,18 @@ def process_options ():
                         help='Specify a fixed random seed for repeatable results (defaults to not repeatable)',
                         default = None,
                         type = float
+                        )
+    parser.add_argument('--profiler-interval',
+                        dest='profiler_interval',
+                        help='What interval (in seconds) should the TRex profiler collect data',
+                        default = 3.0,
+                        type = float
+                        )
+    parser.add_argument('--profiler-logfile',
+                        dest='profiler_logfile',
+                        help='Name of the file to log the profiler to',
+                        default = 'trex-profiler.log',
+                        type = str
                         )
 
     t_global.args = parser.parse_args()
@@ -661,6 +678,14 @@ def main():
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
+        thread_exit = threading.Event()
+        profiler_queue = deque()
+        profiler_worker_thread = threading.Thread(target = trex_profiler, args = (c, claimed_device_pairs, t_global.args.profiler_interval, profiler_queue, thread_exit))
+        profiler_logger_thread = threading.Thread(target = trex_profiler_logger, args = (t_global.args.profiler_logfile, profiler_queue, thread_exit))
+        if t_global.args.enable_profiler:
+             profiler_worker_thread.start()
+             profiler_logger_thread.start()
+
         myprint("Creating Streams from loaded traffic profile [%s]" % (t_global.args.traffic_profile))
         flow_port_divider = 1.0 / len(device_pairs)
         for device_pair in device_pairs:
@@ -787,6 +812,11 @@ def main():
              myprint("ERROR: wait_on_traffic: STLError: %s" % e)
              force_quit = True
 
+        if t_global.args.enable_profiler:
+             thread_exit.set()
+             profiler_worker_thread.join()
+             profiler_logger_thread.join()
+
         # log end of test
         myprint("\tFinished test at %s" % stop_time.strftime("%H:%M:%S on %Y-%m-%d"))
         total_time = stop_time - start_time
@@ -864,6 +894,7 @@ def main():
         myprint("EXCEPTION: %s" % traceback.format_exc())
 
     finally:
+        thread_exit.set()
         myprint("Disconnecting from TRex server...")
         c.disconnect()
         myprint("Connection severed")
