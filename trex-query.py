@@ -54,7 +54,7 @@ def main():
          if len(t_global.args.device) == 0:
               raise ValueError("You must provide at least one device to query")
     except ValueError as e:
-         myprint("ERROR: %s" % e)
+         myprint(error("%s" % (e)))
          quit(1)
 
     c = STLClient()

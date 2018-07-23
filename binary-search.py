@@ -509,7 +509,7 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
           primary_output_file = open(filename, 'w')
           primary_close_file = True
      except IOError:
-          print("ERROR: Could not open %s for writing" % filename)
+          print(error("Could not open %s for writing" % (filename)))
           primary_output_file = sys.stdout
 
      secondary_output_file = None
@@ -520,7 +520,7 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
           secondary_output_file = open(filename, 'w')
           secondary_close_file = True
      except IOError:
-          print("ERROR: Could not open %s for writing" % filename)
+          print(error("Could not open %s for writing" % (filename)))
           secondary_output_file = sys.stdout
 
      capture_output = True
@@ -925,7 +925,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
          primary_output_file = open(filename, 'w')
          primary_close_file = True
     except IOError:
-         print("ERROR: Could not open %s for writing" % filename)
+         print(error("Could not open %s for writing" % (filename)))
          primary_output_file = sys.stdout
 
     secondary_output_file = None
@@ -936,7 +936,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
          secondary_output_file = open(filename, 'w')
          secondary_close_file = True
     except IOError:
-         print("ERROR: Could not open %s for writing" % filename)
+         print(error("Could not open %s for writing" % (filename)))
          secondary_output_file = sys.stdout
 
     capture_output = True
@@ -1419,7 +1419,7 @@ def main():
          for port in port_info:
               if port['speed'] == 0:
                    port_speed_verification_fail = True
-                   print("ERROR: Port with HW MAC %s failed speed verification test" % port['hw_mac'])
+                   print(error("Port with HW MAC %s failed speed verification test" % (port['hw_mac'])))
               else:
                    if port['driver'] == "net_ixgbe" and not trial_params['use_device_stats']:
                         print("WARNING: Forcing use of device stats instead of stream stats due to issue with Intel 82599/Niantic flow programming")
@@ -1430,11 +1430,11 @@ def main():
 
     if len(trial_params['pre_trial_cmd']):
          if not os.path.isfile(trial_params['pre_trial_cmd']):
-              print("ERROR: The pre-trial-cmd file does not exist [%s]" % (trial_params['pre_trial_cmd']))
+              print(error("The pre-trial-cmd file does not exist [%s]" % (trial_params['pre_trial_cmd'])))
               quit(1)
 
          if not os.access(trial_params['pre_trial_cmd'], os.X_OK):
-              print("ERROR: The pre-trial-cmd file is not executable [%s]" % (trial_params['pre_trial_cmd']))
+              print(error("The pre-trial-cmd file is not executable [%s]" % (trial_params['pre_trial_cmd'])))
               quit(1)
 
     perform_sniffs = False
@@ -1565,7 +1565,7 @@ def main():
                         print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %s - %s, achieved: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(tolerance_min/1000000), commify(tolerance_max/1000000), commify(tx_rate)))
 
               if test_abort:
-                   print('Binary search aborting due to critical error')
+                   print(error('Binary search aborting due to critical error'))
                    quit(1)
 
               if trial_params['loss_granularity'] == 'direction':
@@ -1746,7 +1746,7 @@ def main():
               print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
               trial_json_file.close()
          except IOError:
-              print("ERROR: Could not open %s for writing" % trial_json_filename)
+              print(error("Could not open %s for writing" % (trial_json_filename)))
               print("TRIALS:")
               print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
 

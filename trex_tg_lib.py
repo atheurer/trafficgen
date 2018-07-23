@@ -7,6 +7,9 @@ import json
 from trex_stl_lib.api import *
 from collections import deque
 
+def error (string):
+    return("ERROR: %s" % (string))
+
 def not_json_serializable(obj):
      return "not JSON serializable"
 
@@ -330,7 +333,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                raise ValueError("There are no streams in the loaded traffic profile")
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
-          print("ERROR: Could not load a valid traffic profile from %s" % traffic_profile)
+          print(error("Could not load a valid traffic profile from %s" % (traffic_profile)))
           return 1
 
      try:
@@ -404,7 +407,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                stream['flow_offset'] = 0
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
-          print("ERROR: Could not process the traffic profile from %s" % traffic_profile)
+          print(error("Could not process the traffic profile from %s" % (traffic_profile)))
           return 1
 
      return profile
@@ -447,7 +450,7 @@ def trex_profiler_logger (logfile, profiler_queue, thread_exit):
           profiler_logfile_close = True
 
      except IOError:
-          print("ERROR: Could not open profiler log %s for writing" % (logfile))
+          print(error("Could not open profiler log %s for writing" % (logfile)))
           return(1)
 
      while not thread_exit.is_set() or len(profiler_queue):
@@ -581,5 +584,5 @@ def trex_profiler_postprocess_file (input_file):
 
     except:
         print("EXCEPTION: %s" % (traceback.format_exc()))
-        print("ERROR: Could not process the input file")
+        print(error("Could not process the input file"))
         return(None)
