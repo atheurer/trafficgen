@@ -10,10 +10,6 @@ from trex_tg_lib import *
 class t_global(object):
     args = None
 
-def error (string):
-    print("ERROR: %s" % (string))
-    return(0)
-
 def process_options ():
     parser = argparse.ArgumentParser(usage="postprocess a TRex profile")
 
@@ -27,13 +23,13 @@ def process_options ():
     t_global.args = parser.parse_args()
 
     if len(t_global.args.input_file) == 0:
-        error("You must specify an input file")
+        print(error("You must specify an input file"))
         return(1)
     elif not os.path.isfile(t_global.args.input_file):
-        error("You must specify a valid input file (not %s)" % (t_global.args.input_file))
+        print(error("You must specify a valid input file (not %s)" % (t_global.args.input_file)))
         return(1)
     elif not os.access(t_global.args.input_file, os.R_OK):
-        error("You must specify an input file that I have read access to")
+        print(error("You must specify an input file that I have read access to"))
         return(1)
 
     return(0)

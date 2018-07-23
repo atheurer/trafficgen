@@ -7,6 +7,9 @@ import json
 from trex_stl_lib.api import *
 from collections import deque
 
+def error (string):
+    return("ERROR: %s" % (string))
+
 def not_json_serializable(obj):
      return "not JSON serializable"
 
@@ -330,7 +333,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                raise ValueError("There are no streams in the loaded traffic profile")
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
-          print("ERROR: Could not load a valid traffic profile from %s" % traffic_profile)
+          print(error("Could not load a valid traffic profile from %s" % (traffic_profile)))
           return 1
 
      try:
@@ -404,7 +407,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                stream['flow_offset'] = 0
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
-          print("ERROR: Could not process the traffic profile from %s" % traffic_profile)
+          print(error("Could not process the traffic profile from %s" % (traffic_profile)))
           return 1
 
      return profile
@@ -447,7 +450,7 @@ def trex_profiler_logger (logfile, profiler_queue, thread_exit):
           profiler_logfile_close = True
 
      except IOError:
-          print("ERROR: Could not open profiler log %s for writing" % (logfile))
+          print(error("Could not open profiler log %s for writing" % (logfile)))
           return(1)
 
      while not thread_exit.is_set() or len(profiler_queue):
@@ -467,25 +470,26 @@ def trex_profiler_process_sample(sample, stats):
     sample = json.loads(sample)
     #print(dump_json_readable(sample))
 
-    for pgid in sorted(sample['pgid']['flow_stats']):
-        if not pgid == 'global':
-            data = sample['pgid']['flow_stats'][pgid]
-            stat_sample = { 'tx_pps': {},
+    if 'flow_stats' in sample['pgid']:
+        for pgid in sorted(sample['pgid']['flow_stats']):
+            if not pgid == 'global':
+                data = sample['pgid']['flow_stats'][pgid]
+                stat_sample = { 'tx_pps': {},
                             'rx_pps': {} }
 
-            for port in sorted(data['tx_pps']):
-                stat_sample['tx_pps'][port] = data['tx_pps'][port]
+                for port in sorted(data['tx_pps']):
+                    stat_sample['tx_pps'][port] = data['tx_pps'][port]
 
-            for port in sorted(data['rx_pps']):
-                stat_sample['rx_pps'][port] = data['tx_pps'][port]
+                for port in sorted(data['rx_pps']):
+                    stat_sample['rx_pps'][port] = data['tx_pps'][port]
 
-            if pgid in sample['pgid']['latency']:
-                data = sample['pgid']['latency'][pgid]['latency']
-                stat_sample['latency'] = { 'average': data['average'],
-                                           'total_max': data['total_max'],
-                                           'total_min': data['total_min'] }
+                if pgid in sample['pgid']['latency']:
+                    data = sample['pgid']['latency'][pgid]['latency']
+                    stat_sample['latency'] = { 'average': data['average'],
+                                               'total_max': data['total_max'],
+                                               'total_min': data['total_min'] }
 
-            stats[sample['timestamp']]['pgids'][pgid] = stat_sample
+                stats[sample['timestamp']]['pgids'][pgid] = stat_sample
 
     for port in sorted(sample['stats']):
         data = sample['stats'][port]
@@ -517,9 +521,10 @@ def trex_profiler_populate_lists (sample, lists):
 
     lists['timestamps'].append(sample['timestamp'])
 
-    for pgid in sample['pgid']['flow_stats']:
-        if not pgid == 'global' and not pgid in lists['pgids']:
-            lists['pgids'].append(pgid)
+    if 'flow_stats' in sample['pgid']:
+        for pgid in sample['pgid']['flow_stats']:
+            if not pgid == 'global' and not pgid in lists['pgids']:
+                lists['pgids'].append(pgid)
 
     for port in sample['stats']:
         if not port in [ 'latency', 'global', 'total', 'flow_stats' ] and not port in lists['ports']:
@@ -579,5 +584,5 @@ def trex_profiler_postprocess_file (input_file):
 
     except:
         print("EXCEPTION: %s" % (traceback.format_exc()))
-        print("ERROR: Could not process the input file")
+        print(error("Could not process the input file"))
         return(None)

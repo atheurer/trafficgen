@@ -517,10 +517,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
               burst_length = stream_flows / stream_rate
 
               # IBG is in usec, so we multiply by 1,000,000 to convert to seconds
-              measurement_mode = STLTXMultiBurst(pkts_per_burst = stream_flows,
-                                                 ibg = (t_global.args.teaching_measurement_interval * 1000000),
-                                                 count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
-                                                 pps = stream_rate)
+              stream_control = STLTXMultiBurst(pkts_per_burst = stream_flows,
+                                               ibg = (t_global.args.teaching_measurement_interval * 1000000),
+                                               count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
+                                               pps = stream_rate)
 
               for stream_packet in stream_packets['teaching']:
                    myprint("\tTeaching measurement stream for '%s' with flows=%s, frame size=%s, rate=%s, interval=%s, and protocol=%s" % (device_pair[direction]['id_string'],
@@ -647,7 +647,7 @@ def main():
             for direction in t_global.constants['directions']:
                 if port_info[device_pair[direction]['ports']['tx']]['speed'] == 0:
                     port_speed_verification_fail = True
-                    myprint("ERROR: Device with port index = %d failed speed verification test" % device_pair[direction]['ports']['tx'])
+                    myprint(error("Device with port index = %d failed speed verification test" % (device_pair[direction]['ports']['tx'])))
 
         if port_speed_verification_fail:
              raise RuntimeError("Failed port speed verification")
@@ -744,7 +744,7 @@ def main():
                        return return_value
                   except STLError as e:
                        c.stop(ports = warmup_ports)
-                       myprint("ERROR: wait_on_traffic: STLError: %s" % e)
+                       myprint(error("wait_on_traffic: STLError: %s" % (e)))
                        return return_value
 
                   c.reset(ports = warmup_ports)
@@ -809,7 +809,7 @@ def main():
         except STLError as e:
              c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
-             myprint("ERROR: wait_on_traffic: STLError: %s" % e)
+             myprint(error("wait_on_traffic: STLError: %s" % (e)))
              force_quit = True
 
         if t_global.args.enable_profiler:
@@ -888,7 +888,7 @@ def main():
         myprint("STLERROR: %s" % e)
 
     except (ValueError, RuntimeError) as e:
-        myprint("ERROR: %s" % e)
+        myprint(error("%s" % (e)))
 
     except:
         myprint("EXCEPTION: %s" % traceback.format_exc())

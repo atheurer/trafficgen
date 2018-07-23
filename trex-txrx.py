@@ -886,10 +886,10 @@ def main():
         for device_pair in device_pairs:
              if port_info[device_pair['->']['ports']['tx']]['speed'] == 0:
                   port_speed_verification_fail = True
-                  myprint("ERROR: Device with port index = %d failed speed verification test" % device_pair['->']['ports']['tx'])
+                  myprint(error("Device with port index = %d failed speed verification test" % (device_pair['->']['ports']['tx'])))
              if port_info[device_pair['<-']['ports']['tx']]['speed'] == 0:
                   port_speed_verification_fail = True
-                  myprint("ERROR: Device with port index = %d failed speed verification test" % device_pair['<-']['ports']['tx'])
+                  myprint(error("Device with port index = %d failed speed verification test" % (device_pair['<-']['ports']['tx'])))
 
              device_pair['->']['packet_values']['macs']['src'] = port_info[device_pair['->']['ports']['tx']]['src_mac']
              device_pair['->']['packet_values']['macs']['dst'] = port_info[device_pair['->']['ports']['rx']]['src_mac']
@@ -1181,7 +1181,7 @@ def main():
         except STLError as e:
              c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
-             myprint("ERROR: wait_on_traffic: STLError: %s" % e)
+             myprint(error("wait_on_traffic: STLError: %s" % (e)))
              force_quit = True
 
         # log end of test
@@ -1260,7 +1260,7 @@ def main():
         myprint("STLERROR: %s" % e)
 
     except (ValueError, RuntimeError) as e:
-        myprint("ERROR: %s" % e)
+        myprint(error("%s" % (e)))
 
     except:
         myprint("EXCEPTION: %s" % traceback.format_exc())

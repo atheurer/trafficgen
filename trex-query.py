@@ -11,6 +11,7 @@ import datetime
 import math
 from decimal import *
 from trex_stl_lib.api import *
+from trex_tg_lib import *
 
 class t_global(object):
      args=None;
@@ -25,12 +26,6 @@ def myprint(*args, **kwargs):
      if stderr_only or t_global.args.mirrored_log:
           print(*args, file = sys.stderr, **kwargs)
      return
-
-def dump_json_readable(obj):
-     return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True)
-
-def dump_json_parsable(obj):
-     return json.dumps(obj, separators=(',', ':'))
 
 def process_options ():
     parser = argparse.ArgumentParser(usage=""" 
@@ -59,7 +54,7 @@ def main():
          if len(t_global.args.device) == 0:
               raise ValueError("You must provide at least one device to query")
     except ValueError as e:
-         myprint("ERROR: %s" % e)
+         myprint(error("%s" % (e)))
          quit(1)
 
     c = STLClient()
