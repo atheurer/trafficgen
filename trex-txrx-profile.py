@@ -517,10 +517,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
               burst_length = stream_flows / stream_rate
 
               # IBG is in usec, so we multiply by 1,000,000 to convert to seconds
-              measurement_mode = STLTXMultiBurst(pkts_per_burst = stream_flows,
-                                                 ibg = (t_global.args.teaching_measurement_interval * 1000000),
-                                                 count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
-                                                 pps = stream_rate)
+              stream_control = STLTXMultiBurst(pkts_per_burst = stream_flows,
+                                               ibg = (t_global.args.teaching_measurement_interval * 1000000),
+                                               count = int(t_global.args.runtime / (t_global.args.teaching_measurement_interval + burst_length)),
+                                               pps = stream_rate)
 
               for stream_packet in stream_packets['teaching']:
                    myprint("\tTeaching measurement stream for '%s' with flows=%s, frame size=%s, rate=%s, interval=%s, and protocol=%s" % (device_pair[direction]['id_string'],
