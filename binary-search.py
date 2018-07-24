@@ -121,17 +121,11 @@ def process_options ():
                         default=0,
                         type = int,
                         )
-    parser.add_argument('--run-bidirec', 
-                        dest='run_bidirec',
-                        help='0 = Tx on first device, 1 = Tx on both devices',
-                        default=1,
-                        type = int,
-                        )
-    parser.add_argument('--run-revunidirec',
-                        dest='run_revunidirec',
-                        help='0 = Tx on first device, 1 = Tx on second devices',
-                        default=0,
-                        type = int,
+    parser.add_argument('--traffic-direction',
+                        dest='traffic_direction',
+                        help='What direction is the traffic flow?',
+                        default = 'bidirectional',
+                        choices = ['bidirectional', 'unidirectional', 'revunidirectional']
                         )
     parser.add_argument('--validation-runtime', 
                         dest='validation_runtime',
@@ -655,7 +649,12 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
 	cmd = cmd + ' --size=' + str(trial_params['frame_size'])
 	cmd = cmd + ' --runTime=' + str(trial_params['runtime'])
-	cmd = cmd + ' --bidirectional=' + str(trial_params['run_bidirec'])
+
+	traffic_direction=0
+	if trial_params['traffic_direction'] == 'bidirectional':
+            traffic_direction=1
+	cmd = cmd + ' --bidirectional=' + str(traffic_direction)
+
         if trial_params['vlan_ids'] != '':
             cmd = cmd + ' --vlanIds=' + str(trial_params['vlan_ids'])
         if trial_params['vxlan_ids'] != '':
@@ -749,8 +748,17 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + ' --size=' + str(trial_params['frame_size'])
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
         cmd = cmd + ' --runtime-tolerance=' + str(trial_params['runtime_tolerance'])
-        cmd = cmd + ' --run-bidirec=' + str(trial_params['run_bidirec'])
-        cmd = cmd + ' --run-revunidirec=' + str(trial_params['run_revunidirec'])
+
+        if trial_params['traffic_direction'] == 'bidirectional':
+             cmd = cmd + ' --run-bidirec=1'
+             cmd = cmd + ' --run-revunidirec=0'
+        elif trial_params['traffic_direction'] == 'unidirectional':
+             cmd = cmd + ' --run-bidirec=0'
+             cmd = cmd + ' --run-revunidirec=0'
+        elif trial_params['traffic_direction'] == 'revunidirectional':
+             cmd = cmd + ' --run-bidirec=0'
+             cmd = cmd + ' --run-revunidirec=1'
+
         cmd = cmd + ' --num-flows=' + str(trial_params['num_flows'])
         if trial_params['src_ports'] != '':
              cmd = cmd + ' --src-ports=' + str(trial_params['src_ports'])
@@ -882,14 +890,14 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                        fail_packets = total_packets - random.randint(max_lost_packets + 1, total_packets)
 
                        if m.group(1) == "pass":
-                            if not trial_params['run_revunidirec']:
+                            if trial_params['traffic_direction'] != 'revunidirectional':
                                  stats[0]['tx_packets'] = total_packets
                                  stats[0]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[1]['rx_packets'] = pass_packets
                                  stats[1]['rx_pps'] = float(pass_packets) / float(trial_params['runtime'])
                                  stats[1]['rx_lost_packets'] = total_packets - pass_packets
                                  stats[1]['rx_lost_packets_pct'] = float(stats[1]['rx_lost_packets']) / float(total_packets)
-                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                            if trial_params['traffic_direction'] == 'bidirectional' or trial_params['traffic_direction'] == 'revunidirectional':
                                  stats[1]['tx_packets'] = total_packets
                                  stats[1]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[0]['rx_packets'] = pass_packets
@@ -897,14 +905,14 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                                  stats[0]['rx_lost_packets'] = total_packets - pass_packets
                                  stats[0]['rx_lost_packets_pct'] = float(stats[0]['rx_lost_packets']) / float(total_packets)
                        elif m.group(1) == "fail":
-                            if not trial_params['run_revunidirec']:
+                            if trial_params['traffic_direction'] != 'revunidirectional':
                                  stats[0]['tx_packets'] = total_packets
                                  stats[0]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[1]['rx_packets'] = fail_packets
                                  stats[1]['rx_pps'] = float(fail_packets) / float(trial_params['runtime'])
                                  stats[1]['rx_lost_packets'] = total_packets - fail_packets
                                  stats[1]['rx_lost_packets_pct'] = float(stats[1]['rx_lost_packets']) / float(total_packets)
-                            if trial_params['run_bidirec'] or trial_params['run_revunidirec']:
+                            if trial_params['traffic_direction'] == 'bidirectional' or trial_params['traffic_direction'] == 'revunidirectional':
                                  stats[1]['tx_packets'] = total_packets
                                  stats[1]['tx_pps'] = float(total_packets) / float(trial_params['runtime'])
                                  stats[0]['rx_packets'] = fail_packets
@@ -1246,8 +1254,7 @@ def main():
          foo = None
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
-         setup_config_var("run_bidirec", t_global.args.run_bidirec, trial_params)
-         setup_config_var("run_revunidirec", t_global.args.run_revunidirec, trial_params)
+         setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
          setup_config_var("num_flows", t_global.args.num_flows, trial_params)
          setup_config_var("frame_size", t_global.args.frame_size, trial_params)
          setup_config_var("use_src_mac_flows", t_global.args.use_src_mac_flows, trial_params)
@@ -1307,8 +1314,7 @@ def main():
          setup_config_var("enable_trex_profiler", t_global.args.enable_trex_profiler, trial_params)
          setup_config_var("trex_profiler_interval", t_global.args.trex_profiler_interval, trial_params)
 
-         setup_config_var("run_bidirec", 1, trial_params, config_tag = False, silent = True)
-         setup_config_var("run_revunidirec", 0, trial_params, config_tag = False, silent = True)
+         setup_config_var('traffic_direction', 'bidirectional', trial_params, config_tag = False, silent = True)
 
     if t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['traffic_profile'] = t_global.args.traffic_profile
@@ -1353,7 +1359,7 @@ def main():
          claimed_dev_pair_obj = { 'tx': None,
                                   'rx': None,
                                   'dev_pair': device_pair }
-         if trial_params['run_revunidirec']:
+         if trial_params['traffic_direction'] == 'revunidirectional':
               claimed_dev_pair_obj['tx'] = int(ports[1])
               claimed_dev_pair_obj['rx'] = int(ports[0])
               trial_params['claimed_dev_pairs'].append(claimed_dev_pair_obj)
@@ -1362,7 +1368,7 @@ def main():
               claimed_dev_pair_obj['rx'] = int(ports[1])
               trial_params['claimed_dev_pairs'].append(claimed_dev_pair_obj)
 
-              if trial_params['run_bidirec']:
+              if trial_params['traffic_direction'] == 'bidirectional':
                    claimed_dev_pair_obj = copy.deepcopy(claimed_dev_pair_obj)
                    claimed_dev_pair_obj['tx'] = int(ports[1])
                    claimed_dev_pair_obj['rx'] = int(ports[0])
@@ -1378,7 +1384,7 @@ def main():
                                'path': None,
                                'direction': None,
                                'dev_pair': device_pair }
-         if trial_params['run_revunidirec']:
+         if trial_params['traffic_direction'] == 'revunidirectional':
               test_dev_pair_obj['tx'] = int(ports[1])
               test_dev_pair_obj['rx'] = int(ports[0])
               test_dev_pair_obj['direction'] = "<-"
@@ -1396,7 +1402,7 @@ def main():
               test_dev_pair_obj['direction'] = "->"
               trial_params['test_dev_pairs'].append(test_dev_pair_obj)
 
-              if trial_params['run_bidirec']:
+              if trial_params['traffic_direction'] == 'bidirectional':
                    test_dev_pair_obj = copy.deepcopy(test_dev_pair_obj)
                    test_dev_pair_obj['tx'] = int(ports[1])
                    test_dev_pair_obj['rx'] = int(ports[0])
