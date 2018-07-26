@@ -323,6 +323,108 @@ def create_flow_mod_object (use_src_mac_flows = False,
             'protocol' : use_protocol_flows }
     return obj
 
+def create_profile_stream (flows = 0,
+                           frame_size = 0,
+                           flow_mods = None,
+                           rate = 0,
+                           frame_type = 'generic',
+                           measurement = True,
+                           teaching_warmup = False,
+                           teaching_measurement = False,
+                           latency = True,
+                           latency_only = False,
+                           protocol = 'UDP',
+                           traffic_direction = 'bidirectiona',
+                           stream_id = None ):
+    stream = { 'flows': flows,
+               'frame_size': frame_size,
+               'flow_mods': copy.deepcopy(flow_mods),
+               'rate': rate,
+               'frame_type': frame_type,
+               'stream_types': [],
+               'latency': latency,
+               'latency_only': latency_only,
+               'protocol': protocol,
+               'traffic_direction': traffic_direction }
+
+    if measurement:
+        stream['stream_types'].append('measurement')
+
+    if teaching_warmup:
+        stream['stream_types'].append('teaching_warmup')
+
+    if teaching_measurement:
+        stream['stream_types'].append('teaching_measurement')
+
+    if stream_id:
+        stream['stream_id'] = stream_id
+
+    validate_profile_stream(stream, 100.0)
+
+    return(stream)
+
+def validate_profile_stream(stream, rate_modifier):
+    for key in stream:
+        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id' ]:
+            raise ValueError("Invalid property found (%s)" % (key))
+
+        if isinstance(stream[key], basestring):
+            # convert from unicode to string
+            stream[key] = str(stream[key])
+
+            fields = stream[key].split(':')
+            if len(fields) == 2:
+                if fields[0] == 'function':
+                    stream[key] = eval(fields[1])
+
+    if not 'stream_types' in stream or len(stream['stream_types']) == 0:
+        stream['stream_types'] = [ 'measurement' ]
+    else:
+        for stream_type in stream['stream_types']:
+            if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement' ]:
+                raise ValueError("You must specify a valid stream type (not '%s')" % (stream_type))
+
+    if not 'frame_type' in stream:
+        stream['frame_type'] = 'generic'
+    else:
+        if not stream['frame_type'] in [ 'generic', 'icmp', 'garp' ]:
+            raise ValueError("You must specify a valid frame type (not '%s')" % (stream['frame_type']))
+
+    if not 'latency_only' in stream:
+        stream['latency_only'] = False
+
+    if not 'latency' in stream:
+        stream['latency'] = True
+
+    if not 'protocol' in stream:
+        stream['protocol'] = 'UDP'
+    else:
+        stream['protocol'] = stream['protocol'].upper()
+
+    if not stream['protocol'] in [ 'TCP', 'UDP' ]:
+        raise ValueError("You must specify a valid protocol (not '%s')" % (stream['protocol']))
+
+    if not 'traffic_direction' in stream:
+        stream['traffic_direction'] = "bidirectional"
+    else:
+        stream['traffic_direction'] = stream['traffic_direction'].lower()
+
+    if not stream['traffic_direction'] in [ 'bidirectional', 'unidirectional', 'revunidirectional' ]:
+        raise ValueError("You must specify a valid traffic direction (not '%s')" % (stream['traffic_direction']))
+
+    if not 'stream_id' in stream:
+        stream['stream_id'] = False
+
+    max_flows = 256*256
+    if stream['flows'] > max_flows:
+        raise ValueError("You must specify <= %d flows per stream (not %d)" % (max_flows, stream['flows']))
+
+    stream['rate'] = stream['rate'] * rate_modifier / 100.0
+    if stream['rate'] <= 0:
+        raise ValueError("You must specify a rate that is >= 0 (not %f)" % (stream['rate']))
+
+    return(0)
+
 def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
      try:
           traffic_profile_fp = open(traffic_profile, 'r')
@@ -337,74 +439,24 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           return 1
 
      try:
-          for stream in profile['streams']:
-               for key in stream:
-                    if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id' ]:
-                         raise ValueError("Invalid property found (%s)" % (key))
+         for stream in profile['streams']:
+             validate_profile_stream(stream, rate_modifier)
 
-                    if isinstance(stream[key], basestring):
-                         # convert from unicode to string
-                         stream[key] = str(stream[key])
+             if stream['traffic_direction'] == "bidirectional":
+                 stream['direction'] = "<-->"
+             elif stream['traffic_direction'] == "unidirectional":
+                 stream['direction'] = "->"
+             elif stream['traffic_direction'] == "revunidirectional":
+                 stream['direction'] = "<-"
 
-                         fields = stream[key].split(':')
-                         if len(fields) == 2:
-                              if fields[0] == 'function':
-                                   stream[key] = eval(fields[1])
+             stream['flow_offset'] = 0
 
-               if not 'stream_types' in stream or len(stream['stream_types']) == 0:
-                    stream['stream_types'] = [ 'measurement' ]
-               else:
-                    for stream_type in stream['stream_types']:
-                         if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement' ]:
-                              raise ValueError("You must specify a valid stream type (not '%s')" % (stream_type))
-
-               if not 'frame_type' in stream:
-                    stream['frame_type'] = 'generic'
-               else:
-                    if not stream['frame_type'] in [ 'generic', 'icmp', 'garp' ]:
-                         raise ValueError("You must specify a valid frame type (not '%s')" % (stream['frame_type']))
-
-               if not 'latency_only' in stream:
-                    stream['latency_only'] = False
-
-               if not 'latency' in stream:
-                    stream['latency'] = True
-
-               if not 'protocol' in stream:
-                    stream['protocol'] = 'UDP'
-               else:
-                    stream['protocol'] = stream['protocol'].upper()
-
-                    if not stream['protocol'] in [ 'TCP', 'UDP' ]:
-                         raise ValueError("You must specify a valid protocol (not '%s')" % (stream['protocol']))
-
-               if not 'traffic_direction' in stream:
-                    stream['traffic_direction'] = "bidirectional"
-               else:
-                    stream['traffic_direction'] = stream['traffic_direction'].lower()
-
-                    if not stream['traffic_direction'] in [ 'bidirectional', 'unidirectional', 'revunidirectional' ]:
-                         raise ValueError("You must specify a valid traffic direction (not '%s')" % (stream['traffic_direction']))
-
-               if stream['traffic_direction'] == "bidirectional":
-                    stream['direction'] = "<-->"
-               elif stream['traffic_direction'] == "unidirectional":
-                    stream['direction'] = "->"
-               elif stream['traffic_direction'] == "revunidirectional":
-                    stream['direction'] = "<-"
-
-               if not 'stream_id' in stream:
-                    stream['stream_id'] = False
-
-               max_flows = 256*256
-               if stream['flows'] > max_flows:
-                    raise ValueError("You must specify <= %d flows per stream (not %d)" % (max_flows, stream['flows']))
-
-               stream['rate'] = stream['rate'] * rate_modifier / 100.0
-               if stream['rate'] <= 0:
-                    raise ValueError("You must specify a rate that is >= 0 (not %f)" % (stream['rate']))
-
-               stream['flow_offset'] = 0
+             # flows are "duplicated" across protocols when protocol
+             # flows are enabled so flows need to be cut in half. In
+             # case of an uneven flow count then round up to ensure an
+             # even number of flows for both protocols.
+             if stream['flow_mods']['protocol']:
+                 stream['flows'] = math.ceil(stream['flows'] / 2.0)
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
           print(error("Could not process the traffic profile from %s" % (traffic_profile)))
