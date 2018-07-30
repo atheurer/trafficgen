@@ -1766,6 +1766,13 @@ def main():
                    print("There is no trial which passed")
 
     finally:
+         # prune the profiler data from all trials except the last one
+         # in an effort to save space.  if this data is required it
+         # can be recreated from log files
+         for x in range(0, len(trial_results['trials']) - 1):
+              if trial_results['trials'][x]['profiler-data']:
+                   trial_results['trials'][x]['profiler-data'] = None
+
          trial_json_filename = "%s/binary-search.json" % (trial_params['output_dir'])
          try:
               trial_json_file = open(trial_json_filename, 'w')
