@@ -175,6 +175,12 @@ def process_options ():
                         default = 5,
                         type = float
                         )
+    parser.add_argument('--rate-tolerance-failure',
+                        dest='rate_tolerance_failure',
+                        help='What to do when a rate tolerance failure is encountered',
+                        default = 'quit',
+                        choices = [ 'fail', 'quit' ]
+                        )
     parser.add_argument('--runtime-tolerance',
                         dest='runtime_tolerance',
                         help='percentage that runtime is allowed to vary from requested runtime and still be considered valid',
@@ -1247,11 +1253,12 @@ def main():
 
     trial_params = {} 
 
-    # be verbose, dump all options to binary-search
+    # option handling
     setup_config_var("output_dir", t_global.args.output_dir, trial_params, config_tag = False)
     setup_config_var("traffic_generator", t_global.args.traffic_generator, trial_params)
     setup_config_var("rate", rate, trial_params)
     setup_config_var("runtime_tolerance", t_global.args.runtime_tolerance, trial_params)
+    setup_config_var("rate_tolerance_failure", t_global.args.rate_tolerance_failure, trial_params)
     setup_config_var("rate_tolerance", t_global.args.rate_tolerance, trial_params)
     setup_config_var("one_shot", t_global.args.one_shot, trial_params)
     setup_config_var("min_rate", t_global.args.min_rate, trial_params)
@@ -1574,7 +1581,7 @@ def main():
                              if tx_rate > tolerance_max or tx_rate < tolerance_min:
                                   requirement_msg = "retry"
                                   if trial_result == "pass":
-                                       trial_result = "retry-to-quit"
+                                       trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
                              tolerance_min *= 1000000
                              tolerance_max *= 1000000
                         elif t_global.args.traffic_generator == 'moongen-txrx':
@@ -1583,7 +1590,7 @@ def main():
                              if tx_rate > tolerance_max or tx_rate < tolerance_min:
                                   requirement_msg = "retry"
                                   if trial_result == "pass":
-                                       trial_result = "retry-to-quit"
+                                       trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
                         trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
                         trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
                         print("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %s - %s, achieved: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(tolerance_min/1000000), commify(tolerance_max/1000000), commify(tx_rate)))
