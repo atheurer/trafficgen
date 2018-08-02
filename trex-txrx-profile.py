@@ -729,7 +729,7 @@ def main():
                   myprint("\tThe transmission will timeout with an error at %s" % (timeout_time.strftime("%H:%M:%S on %Y-%m-%d")))
 
                   try:
-                       c.start(ports = warmup_ports, force = True)
+                       c.start(ports = warmup_ports, force = True, core_mask = STLClient.CORE_MASK_PIN)
                        c.wait_on_traffic(ports = warmup_ports, timeout = warmup_timeout)
 
                        stop_time = datetime.datetime.now()
