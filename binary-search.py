@@ -1084,6 +1084,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                                                      stats[device_pair['rx']]['rx_latency_average'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * float(results["latency"][str(pg_id)]["latency"]["average"])
 
+                                                     if int(results["latency"][str(pg_id)]["err_cntrs"]["dup"]):
+                                                          stats_error_append_pg_id(stats[device_pair['rx']], "latency_duplicate", pg_id)
+
                                                      if float(results["latency"][str(pg_id)]["latency"]["total_max"]) > stats[device_pair['rx']]['rx_latency_maximum']:
                                                           stats[device_pair['rx']]['rx_latency_maximum'] = float(results["latency"][str(pg_id)]["latency"]["total_max"])
                                            else:
@@ -1538,6 +1541,10 @@ def main():
                    if pair_abort:
                         test_abort = True
                         continue
+
+                   if 'latency_duplicate_error' in trial_stats[dev_pair['rx']]:
+                        test_abort = True
+                        print("(trial failed requirement, duplicate latency packets detected, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['tx']]['latency_duplicate_error']) )
 
                    if 'tx_missing_error' in trial_stats[dev_pair['tx']]:
                         trial_result = 'fail'
