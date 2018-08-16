@@ -535,7 +535,7 @@ def trex_profiler_process_sample(sample, stats):
                 for port in sorted(data['rx_pps']):
                     stat_sample['rx_pps'][port] = data['tx_pps'][port]
 
-                if pgid in sample['pgid']['latency']:
+                if 'latency' in sample['pgid'] and pgid in sample['pgid']['latency']:
                     data = sample['pgid']['latency'][pgid]['latency']
                     stat_sample['latency'] = { 'average': data['average'],
                                                'total_max': data['total_max'],
