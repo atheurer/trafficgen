@@ -1039,8 +1039,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['tx']]['tx_l2_bps'] = float(stats[device_pair['tx']]['tx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
                                  stats[device_pair['rx']]['rx_l2_bps'] = float(stats[device_pair['rx']]['rx_l2_bps']) / float(results['global']['runtime']) * tmp_stats[device_pair['tx']]['bits_per_byte']
 
-                                 print("Device Pair: %s |   All TX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_packets']), commify(stats[device_pair['tx']]['tx_pps']), commify(stats[device_pair['tx']]['tx_l1_bps'], stats[device_pair['tx']]['tx_l2_bps'])))
-                                 print("Device Pair: %s |   All RX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_packets']), commify(stats[device_pair['rx']]['rx_pps']), commify(stats[device_pair['rx']]['rx_l1_bps'], stats[device_pair['rx']]['rx_l2_bps'])))
+                                 print("Device Pair: %s |   All TX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_packets']), commify(stats[device_pair['tx']]['tx_pps']), commify(stats[device_pair['tx']]['tx_l1_bps']), commify(stats[device_pair['tx']]['tx_l2_bps'])))
+                                 print("Device Pair: %s |   All RX   | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_packets']), commify(stats[device_pair['rx']]['rx_pps']), commify(stats[device_pair['rx']]['rx_l1_bps']), commify(stats[device_pair['rx']]['rx_l2_bps'])))
 
                                  if trial_params['measure_latency']:
                                       stream_types.append('latency')
