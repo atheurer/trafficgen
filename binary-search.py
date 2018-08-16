@@ -1577,7 +1577,7 @@ def main():
 
                    if 'latency_duplicate_error' in trial_stats[dev_pair['rx']]:
                         test_abort = True
-                        bs_logger("(trial failed requirement, duplicate latency packets detected, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['tx']]['latency_duplicate_error']) )
+                        bs_logger("(trial failed requirement, duplicate latency packets detected, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['latency_duplicate_error']) )
 
                    if 'tx_missing_error' in trial_stats[dev_pair['tx']]:
                         trial_result = 'fail'
