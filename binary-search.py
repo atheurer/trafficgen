@@ -208,6 +208,12 @@ def process_options ():
                         default = 5,
                         type = float
                         )
+    parser.add_argument('--negative-packet-loss',
+                        dest='negative_packet_loss_mode',
+                        help='What to do when negative packet loss is encountered',
+                        default = 'quit',
+                        choices = [ 'fail', 'quit', 'retry-to-fail', 'retry-to-quit' ]
+                        )
     parser.add_argument('--search-granularity',
                         dest='search_granularity',
                         help='the binary search will stop once the percent throughput difference between the most recent passing and failing trial is lower than this',
@@ -1296,6 +1302,7 @@ def main():
     setup_config_var("runtime_tolerance", t_global.args.runtime_tolerance, trial_params)
     setup_config_var("rate_tolerance_failure", t_global.args.rate_tolerance_failure, trial_params)
     setup_config_var("rate_tolerance", t_global.args.rate_tolerance, trial_params)
+    setup_config_var("negative_packet_loss_mode", t_global.args.negative_packet_loss_mode, trial_params)
     setup_config_var("one_shot", t_global.args.one_shot, trial_params)
     setup_config_var("min_rate", t_global.args.min_rate, trial_params)
     setup_config_var("max_loss_pct", t_global.args.max_loss_pct, trial_params)
@@ -1587,15 +1594,25 @@ def main():
                         trial_result = 'fail'
                         bs_logger("(trial failed requirement, missing RX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_missing_error']))
 
+                   if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
+                        if trial_params['negative_packet_loss_mode'] == 'quit':
+                             test_abort = True
+                        else:
+                             trial_result = trial_params['negative_packet_loss_mode']
+                        bs_logger("(trial failed requirement, negative individual stream RX packet loss, action: %s, device pair: %d -> %d, pg_ids: %s)" % (trial_params['negative_packet_loss_mode'], dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_negative_loss_error']))
+
                    if trial_params['loss_granularity'] == 'segment' and 'rx_loss_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
                         bs_logger("(trial failed requirement, individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_loss_error']))
 
-                   if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
-                        trial_result = 'fail'
-                        bs_logger("(trial failed requirement, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_negative_loss_error']))
-
                    if trial_params['loss_granularity'] == 'device' and trial_stats[dev_pair['rx']]['rx_active']:
+                        if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] < 0:
+                             if trial_params['negative_packet_loss_mode'] == 'quit':
+                                  test_abort = True
+                             else:
+                                  trial_result = trial_params['negative_packet_loss_mode']
+                             bs_logger("(trial failed requirement, negative device packet loss, action: %s, device pair: %d -> %d)" % (trial_params['negative_packet_loss_mode'], dev_pair['tx'], dev_pair['rx']))
+
                         requirement_msg = "passed"
                         if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                              requirement_msg = "failed"
@@ -1642,6 +1659,13 @@ def main():
               if trial_params['loss_granularity'] == 'direction':
                    for direction in trial_stats['directional']:
                         if trial_stats['directional'][direction]['active']:
+                             if trial_stats['directional'][direction]['rx_lost_packets_pct'] < 0:
+                                  if trial_params['negative_packet_loss_mode'] == 'quit':
+                                       test_abort = True
+                                  else:
+                                       trial_result = trial_params['negative_packet_loss_mode']
+                                  bs_logger("(trial failed requirement, negative direction packet loss, action: %s, direction: %s)" % (trial_params['negative_packet_loss_mode'], direction))
+
                              requirement_msg = "passed"
                              if trial_stats['directional'][direction]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
                                   requirement_msg = "failed"
