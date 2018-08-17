@@ -28,19 +28,22 @@ class t_global(object):
      bs_logger_queue = deque()
 
 def bs_logger(msg):
-     t_global.bs_logger_queue.append({ 'timestamp': datetime.datetime.now(),
+     t_global.bs_logger_queue.append({ 'timestamp': time.time(),
                                        'message':   msg })
      return(0)
 
-def bs_logger_worker(thread_exit):
+def bs_logger_worker(log, thread_exit):
      while not thread_exit.is_set() or len(t_global.bs_logger_queue):
           try:
                bs_log_entry = t_global.bs_logger_queue.popleft()
 
-               bs_log_entry['time'] = bs_log_entry['timestamp'].strftime("%Y-%m-%d %H:%M:%S.%f")
-               for bs_log_entry['line'] in bs_log_entry['message'].split('\n'):
-                    print("[%s] %s" % (bs_log_entry['time'], bs_log_entry['line']))
-          except:
+               bs_log_entry_time = datetime.datetime.fromtimestamp(bs_log_entry['timestamp']).strftime("%Y-%m-%d %H:%M:%S.%f")
+               for bs_log_entry_line in bs_log_entry['message'].split('\n'):
+                    print("[%s] %s" % (bs_log_entry_time, bs_log_entry_line))
+
+               bs_log_entry['timestamp'] = bs_log_entry['timestamp'] * 1000
+               log.append(bs_log_entry)
+          except IndexError:
                if not thread_exit.is_set():
                     time.sleep(1)
 
@@ -1243,15 +1246,16 @@ def setup_config_var(variable, value, trial_params, config_tag = True, silent = 
                bs_logger("%s=%s" % (variable, value))
 
 def main():
+    trial_results = { 'trials': [],
+                      'log':    [] }
+
     bs_logger_exit = threading.Event()
-    bs_logger_thread = threading.Thread(target = bs_logger_worker, args = (bs_logger_exit,))
+    bs_logger_thread = threading.Thread(target = bs_logger_worker, args = (trial_results['log'], bs_logger_exit))
     bs_logger_thread.start()
 
     process_options()
     final_validation = t_global.args.one_shot == 1
     rate = t_global.args.rate
-
-    trial_results = { 'trials': [] }
 
     if t_global.args.traffic_generator == 'null-txrx':
          random.seed()
@@ -1847,6 +1851,11 @@ def main():
          trial_json_filename = "%s/binary-search.json" % (trial_params['output_dir'])
          try:
               trial_json_file = open(trial_json_filename, 'w')
+
+              # drain the log prior to writing out the file
+              bs_logger_exit.set()
+              bs_logger_thread.join()
+
               print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
               trial_json_file.close()
          except IOError:
@@ -1854,8 +1863,8 @@ def main():
               bs_logger("TRIALS:")
               bs_logger(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
 
-         bs_logger_exit.set()
-         bs_logger_thread.join()
+              bs_logger_exit.set()
+              bs_logger_thread.join()
 
 if __name__ == "__main__":
     exit(main())
