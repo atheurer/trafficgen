@@ -442,7 +442,7 @@ def execute_pre_trial_cmd(trial_params):
      the_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
      exit_event = threading.Event()
 
-     io_thread = threading.Thread(target = handle_pre_trial_cmd_io, args = (the_process, exit_event))
+     io_thread = threading.Thread(target = handle_pre_trial_cmd_io, args = (the_process, trial_params, exit_event))
 
      io_thread.start()
 
@@ -456,7 +456,18 @@ def execute_pre_trial_cmd(trial_params):
 
      bs_logger('return code: %d' % (retval))
 
-def handle_pre_trial_cmd_io(process, exit_event):
+def handle_pre_trial_cmd_io(process, trial_params, exit_event):
+     output_file = None
+     close_file = False
+     trial_params['pre_trial_cmd_output_file'] = "binary-search.trial-%03d.pre-trial-cmd.txt" % (trial_params['trial'])
+     filename = "%s/%s" % (trial_params['output_dir'], trial_params['pre_trial_cmd_output_file'])
+     try:
+          output_file = open(filename, 'w')
+          close_file = True
+     except IOError:
+          bs_logger("Could not open %s for writing" % (filename))
+          output_file = sys.stdout
+
      capture_output = True
      do_loop = True
      while do_loop:
@@ -468,7 +479,15 @@ def handle_pre_trial_cmd_io(process, exit_event):
                     do_loop = False
                     continue
                else:
-                    bs_logger('Pre Trial CMD: %s' % (line.rstrip('\n')))
+                    if close_file:
+                         print(line.rstrip('\n'), file=output_file)
+                    else:
+                         bs_logger('Pre Trial CMD: %s' % (line.rstrip('\n')))
+
+     if close_file:
+          output_file.close()
+
+     return(0)
 
 def get_trex_port_info(trial_params, dev_pairs):
      devices = dict()
@@ -1555,6 +1574,7 @@ def main():
 
               bs_logger('running trial %03d, rate %s%s' % (trial_params['trial'], commify(trial_params['rate']), trial_params['rate_unit']))
 
+              trial_params['pre_trial_cmd_output_file'] = None
               if len(trial_params['pre_trial_cmd']):
                    execute_pre_trial_cmd(trial_params)
 
@@ -1711,6 +1731,7 @@ def main():
                                                'logfile': trial_params['trial_primary_output_file'],
                                                'extra-logfile': trial_params['trial_secondary_output_file'],
                                                'profiler-logfile': trial_params['trial_profiler_file'],
+                                               'pre-trial-cmd-logfile': trial_params['pre_trial_cmd_output_file'],
                                                'profiler-data': profiler_data,
                                                'stats': trial_stats,
                                                'trial_params': copy.deepcopy(trial_params),
