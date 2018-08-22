@@ -678,15 +678,9 @@ def main():
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
-        thread_exit = threading.Event()
-        profiler_queue = deque()
-        profiler_worker_thread = threading.Thread(target = trex_profiler, args = (c, claimed_device_pairs, t_global.args.profiler_interval, profiler_queue, thread_exit))
-        profiler_logger_thread = threading.Thread(target = trex_profiler_logger, args = (t_global.args.profiler_logfile, profiler_queue, thread_exit))
-        if t_global.args.enable_profiler:
-             profiler_worker_thread.start()
-             profiler_logger_thread.start()
-
         myprint("Creating Streams from loaded traffic profile [%s]" % (t_global.args.traffic_profile))
+        total_streams = 0
+        pgids = {}
         flow_port_divider = 1.0 / len(device_pairs)
         for device_pair in device_pairs:
             for stream in traffic_profile['streams']:
@@ -700,10 +694,34 @@ def main():
                  stream['flow_offset'] += int(stream['flows'] * flow_port_divider)
 
             for direction in t_global.constants['directions']:
+                total_streams += len(device_pair[direction]['traffic_streams'])
+                total_streams += len(device_pair[direction]['teaching_warmup_traffic_streams'])
+                total_streams += len(device_pair[direction]['teaching_measurement_traffic_streams'])
+
                 if len(device_pair[direction]['traffic_streams']):
+                    for stream_mode in [ 'default', 'latency' ]:
+                         for pgid in device_pair[direction]['traffic_profile'][stream_mode]['pg_ids']:
+                              if pgid in pgids:
+                                   pgids[pgid] += 1
+                              else:
+                                   pgids[pgid] = 1
+
                     myprint("DEVICE PAIR %s | READABLE STREAMS FOR DIRECTION '%s':" % (device_pair['device_pair'], device_pair[direction]['id_string']), stderr_only = True)
                     myprint(dump_json_readable(device_pair[direction]['traffic_profile']), stderr_only = True)
                     myprint("DEVICE PAIR %s | PARSABLE STREAMS FOR DIRECTION '%s': %s" % (device_pair['device_pair'], device_pair[direction]['id_string'], dump_json_parsable(device_pair[direction]['traffic_profile'])), stderr_only = True)
+        myprint("\tStream summary: %d total streams and %d pgids" % (total_streams, len(pgids)))
+
+        profiler_pgids = []
+        for pgid in pgids:
+             profiler_pgids.append(pgid)
+
+        thread_exit = threading.Event()
+        profiler_queue = deque()
+        profiler_worker_thread = threading.Thread(target = trex_profiler, args = (c, claimed_device_pairs, t_global.args.profiler_interval, profiler_pgids, profiler_queue, thread_exit))
+        profiler_logger_thread = threading.Thread(target = trex_profiler_logger, args = (t_global.args.profiler_logfile, profiler_queue, thread_exit))
+        if t_global.args.enable_profiler:
+             profiler_worker_thread.start()
+             profiler_logger_thread.start()
 
         if t_global.args.send_teaching_warmup:
              warmup_ports = []
