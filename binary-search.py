@@ -1002,6 +1002,16 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
          bs_logger(error("Could not open %s for writing" % (filename)))
          secondary_output_file = sys.stdout
 
+    tertiary_output_file = None
+    tertiary_close_file = False
+    filename = "%s/binary-search.trial-%03d.json-port-profiles.txt" % (trial_params['output_dir'], trial_params['trial'])
+    try:
+         tertiary_output_file = open(filename, 'w')
+         tertiary_close_file = True
+    except IOError:
+         bs_logger(error("Could not open %s for writing" % (filename)))
+         tertiary_output_file = sys.stdout
+
     capture_output = True
     do_loop = True
     while do_loop:
@@ -1016,6 +1026,15 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   bs_logger(line.rstrip('\n'))
              if trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
+                  m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE JSON STREAM PROFILE FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
+                  if m:
+                       dev_pair = m.group(1)
+                       path = m.group(2)
+                       json_data = json.loads(m.group(3))
+                       print("Device Pair %s | Direction '%s':" % (dev_pair, path), file=tertiary_output_file)
+                       print("%s\n" % (dump_json_readable(json_data)), file=tertiary_output_file)
+                       continue
+
                   m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE STREAMS FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
                   if m:
                        print(line, file=secondary_output_file)
@@ -1226,6 +1245,11 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
     if secondary_close_file:
          secondary_output_file.close()
+
+    if tertiary_close_file:
+         tertiary_output_file.close()
+
+    return(0)
 
 def print_stats(trial_params, stats):
      if t_global.args.traffic_generator == 'moongen-txrx' or t_global.args.traffic_generator == 'null-txrx':

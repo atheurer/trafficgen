@@ -775,20 +775,23 @@ def main():
         myprint("Measurement")
         for device_pair in device_pairs:
              for direction in t_global.constants['directions']:
-                  port_streams = 0
+                  port_streams = []
 
                   if len(device_pair[direction]['traffic_streams']):
                        myprint("\tAdding measurement stream(s) for '%s'" % (device_pair[direction]['id_string']))
-                       port_streams += len(device_pair[direction]['traffic_streams'])
-                       c.add_streams(streams = device_pair[direction]['traffic_streams'], ports = device_pair[direction]['ports']['tx'])
+                       port_streams.extend(device_pair[direction]['traffic_streams'])
 
                   if t_global.args.send_teaching_measurement and len(device_pair[direction]['teaching_measurement_traffic_streams']):
                        myprint("\tAdding teaching stream(s) for '%s'" % (device_pair[direction]['id_string']))
-                       port_streams += len(device_pair[direction]['teaching_measurement_traffic_streams'])
-                       c.add_streams(streams = device_pair[direction]['teaching_measurement_traffic_streams'], ports = device_pair[direction]['ports']['tx'])
+                       port_streams.extend(device_pair[direction]['teaching_measurement_traffic_streams'])
 
-                  if port_streams:
+                  if len(port_streams):
+                       profile = STLProfile(port_streams)
+
+                       c.add_streams(streams = profile.get_streams(), ports = device_pair[direction]['ports']['tx'])
                        run_ports.append(device_pair[direction]['ports']['tx'])
+
+                       myprint("DEVICE PAIR %s | PARSABLE JSON STREAM PROFILE FOR DIRECTION '%s': %s" % (device_pair['device_pair'], device_pair[direction]['id_string'], dump_json_parsable(profile.to_json())), stderr_only = True)
 
         myprint("DEVICE PAIR INFORMATION:", stderr_only = True)
         myprint(dump_json_readable(device_pairs), stderr_only = True)
