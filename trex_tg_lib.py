@@ -464,7 +464,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
 
      return profile
 
-def trex_profiler (connection, claimed_device_pairs, interval, profiler_queue, thread_exit):
+def trex_profiler (connection, claimed_device_pairs, interval, profiler_pgids, profiler_queue, thread_exit):
      try:
           while not thread_exit.is_set():
                time.sleep(interval)
@@ -476,7 +476,7 @@ def trex_profiler (connection, claimed_device_pairs, interval, profiler_queue, t
                     xstats[device] = connection.get_xstats(device)
 
                stats = connection.get_stats(ports = claimed_device_pairs)
-               pgid = connection.get_pgid_stats()
+               pgid = connection.get_pgid_stats(profiler_pgids)
                util = connection.get_util_stats()
 
                profiler_queue.append({ 'timestamp': ts,
