@@ -807,7 +807,7 @@ def main():
         timeout_seconds = math.ceil(float(t_global.args.runtime) * (1 + (float(t_global.args.runtime_tolerance) / 100)))
         stop_time = datetime.datetime.now()
         start_time = datetime.datetime.now()
-        myprint("\tStarting test at %s" % start_time.strftime("%H:%M:%S on %Y-%m-%d"))
+        myprint("\tStarting test at %s for %s seconds" % (start_time.strftime("%H:%M:%S on %Y-%m-%d"), commify(t_global.args.runtime)))
         expected_end_time = start_time + datetime.timedelta(seconds = t_global.args.runtime)
         expected_timeout_time = start_time + datetime.timedelta(seconds = timeout_seconds)
         myprint("\tThe test should end at %s" % expected_end_time.strftime("%H:%M:%S on %Y-%m-%d"))
