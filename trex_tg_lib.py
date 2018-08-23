@@ -22,6 +22,10 @@ def dump_json_parsable(obj):
 def commify(string):
      return str.format("{:,}", string)
 
+def sec_to_usec(seconds):
+    useconds = seconds * 1e6
+    return(useconds)
+
 def ip_to_int (ip):
     ip_fields = ip.split(".")
     if len(ip_fields) != 4:
@@ -365,7 +369,7 @@ def create_profile_stream (flows = 0,
 
 def validate_profile_stream(stream, rate_modifier):
     for key in stream:
-        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id' ]:
+        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay' ]:
             raise ValueError("Invalid property found (%s)" % (key))
 
         if isinstance(stream[key], basestring):
@@ -412,6 +416,29 @@ def validate_profile_stream(stream, rate_modifier):
     if not stream['traffic_direction'] in [ 'bidirectional', 'unidirectional', 'revunidirectional' ]:
         raise ValueError("You must specify a valid traffic direction (not '%s')" % (stream['traffic_direction']))
 
+    if not 'offset' in stream:
+        stream['offset'] = 0
+    else:
+        if stream['offset'] < 0:
+            raise ValueError("You must specify an offset of >= 0 seconds (not %d)" % (stream['offset']))
+
+    if not 'duration' in stream:
+        stream['duration'] = -1
+    else:
+        if stream['duration'] <= 0:
+            raise ValueError("You must specify a duration of > 0 seconds (not %d)" % (stream['duration']))
+
+    if not 'repeat' in stream:
+        stream['repeat'] = False
+
+    if not 'repeat_delay' in stream:
+        stream['repeat_delay'] = stream['offset']
+    else:
+        if stream['repeat_delay'] < 0:
+            raise ValueError("You must specify a repeat delay of > 0 seconds (not %d)" % (stream['repeat_delay']))
+        elif stream['repeat_delay'] == 0:
+            raise ValueError("You should specify a repeat delay of > 0 seconds.  While 0 would work, it just doesn't make any sense -- there are other ways to achieve that behavior (ie. set offset and leave duration, repeat, and repeat_delay unset).")
+
     if not 'stream_id' in stream:
         stream['stream_id'] = False
 
@@ -439,6 +466,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           return 1
 
      try:
+         stream_counter = 0
          for stream in profile['streams']:
              validate_profile_stream(stream, rate_modifier)
 
@@ -450,6 +478,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
                  stream['direction'] = "<-"
 
              stream['flow_offset'] = 0
+             stream['profile_id'] = stream_counter
 
              # flows are "duplicated" across protocols when protocol
              # flows are enabled so flows need to be cut in half. In
@@ -457,6 +486,8 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
              # even number of flows for both protocols.
              if stream['flow_mods']['protocol']:
                  stream['flows'] = math.ceil(stream['flows'] / 2.0)
+
+             stream_counter += 1
      except:
           print("EXCEPTION: %s" % traceback.format_exc())
           print(error("Could not process the traffic profile from %s" % (traffic_profile)))

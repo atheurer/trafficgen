@@ -28,3 +28,11 @@ by the following parameters:
 10. traffic_direction - optional, what direction is the traffic flowing, defaults to 'bidirectional', options are: ['bidirectional', 'unidirectional', 'revunidirectional']
 
 11. stream_id - optional, an identifier that can be used to identify the stream, if two streams share an identifier they will use the same flow properties (MACs, IPs, etc.), defaults to nothing, is a user defined string
+
+12. offset - optional, a number of seconds to wait before starting the stream, defaults to 0
+
+13. duration - optional, a number of seconds for the stream to run, defaults to the entire measurement period
+
+14. repeat - optional, whether or not the stream should repeat after it finishes, defaults to False, options are: [True, False]
+
+15. repeat_delay - optional, if the stream repeats how long should it wait to start over again, defaults to the offset value
