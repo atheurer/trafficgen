@@ -1,0 +1,88 @@
+{
+    "streams": [
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "offset": 60,
+	    "stream_types": [
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "offset": 60,
+	    "duration": 60,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "offset": 30,
+	    "duration": 60,
+	    "repeat": true,
+	    "repeat_delay": 60,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "duration": 150,
+	    "offset": 0,
+	    "repeat": true,
+	    "repeat_delay": 150,
+	    "stream_types": [
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 1024,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "offset": 150,
+	    "duration": 150,
+	    "repeat": true,
+	    "repeat_delay": 150,
+	    "stream_types": [
+		"measurement",
+		"teaching_measurement"
+	    ]
+	}
+    ]
+}
