@@ -125,7 +125,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                               'frame_sizes': [],
                               'traffic_shares': [],
                               'self_starts': [],
-                              'run_time': [],
+                              'runtime': [],
                               'stream_modes': [] } }
      streams['latency'] = copy.deepcopy(streams['default'])
 
@@ -181,7 +181,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                streams['default']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                streams['default']['self_starts'].extend([True, True, True])
                streams['default']['stream_modes'].extend(["burst", "burst", "burst"])
-               streams['default']['run_time'].extend([float(t_global.args.runtime), float(t_global.args.runtime), float(t_global.args.runtime)])
+               streams['default']['runtime'].extend([float(t_global.args.runtime), float(t_global.args.runtime), float(t_global.args.runtime)])
 
                if t_global.args.measure_latency:
                     small_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
@@ -201,7 +201,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                     streams['latency']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                     streams['latency']['self_starts'].extend([True, True, True])
                     streams['latency']['stream_modes'].extend(["continuous", "continuous", "continuous"])
-                    streams['latency']['run_time'].extend([-1, -1, -1])
+                    streams['latency']['runtime'].extend([-1, -1, -1])
 
           elif t_global.args.frame_size == "imix" and t_global.args.stream_mode == "segmented":
                print("Support for segmented IMIX needs to be coded...")
@@ -222,7 +222,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                streams['default']['traffic_shares'].extend([1.0/len(protocols)])
                streams['default']['self_starts'].extend([True])
                streams['default']['stream_modes'].extend(["burst"])
-               streams['default']['run_time'].extend([float(t_global.args.runtime)])
+               streams['default']['runtime'].extend([float(t_global.args.runtime)])
 
                if t_global.args.measure_latency:
                     latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
@@ -238,7 +238,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                     streams['latency']['traffic_shares'].extend([1.0/len(protocols)])
                     streams['latency']['self_starts'].extend([True])
                     streams['latency']['stream_modes'].extend(["continuous"])
-                    streams['latency']['run_time'].extend([-1])
+                    streams['latency']['runtime'].extend([-1])
           elif t_global.args.stream_mode == "segmented":
                stream_types = [ "default" ]
                if t_global.args.measure_latency:
@@ -280,13 +280,13 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                          streams[streams_type_value]['traffic_shares'].extend([1.0/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
                          streams[streams_type_value]['self_starts'].extend([self_start])
                          streams[streams_type_value]['stream_modes'].extend(["burst"])
-                         streams[streams_type_value]['run_time'].extend([float(t_global.args.runtime)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
+                         streams[streams_type_value]['runtime'].extend([float(t_global.args.runtime)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
 
                          counter += 1
 
      for streams_index, streams_packet_type in enumerate(streams):
-          for stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share, stream_next_stream_name, stream_self_start, stream_mode, stream_run_time in zip(streams[streams_packet_type]['protocol'], streams[streams_packet_type]['pps'], streams[streams_packet_type]['pg_ids'], streams[streams_packet_type]['names'], streams[streams_packet_type]['frame_sizes'], streams[streams_packet_type]['traffic_shares'], streams[streams_packet_type]['next_stream_names'], streams[streams_packet_type]['self_starts'], streams[streams_packet_type]['stream_modes'], streams[streams_packet_type]['run_time']):
-               myprint("Creating stream for device pair '%s' direction '%s' with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], run_time=[%f], and traffic_share=[%f]." %
+          for stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share, stream_next_stream_name, stream_self_start, stream_mode, stream_runtime in zip(streams[streams_packet_type]['protocol'], streams[streams_packet_type]['pps'], streams[streams_packet_type]['pg_ids'], streams[streams_packet_type]['names'], streams[streams_packet_type]['frame_sizes'], streams[streams_packet_type]['traffic_shares'], streams[streams_packet_type]['next_stream_names'], streams[streams_packet_type]['self_starts'], streams[streams_packet_type]['stream_modes'], streams[streams_packet_type]['runtime']):
+               myprint("Creating stream for device pair '%s' direction '%s' with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], runtime=[%f], and traffic_share=[%f]." %
                        (device_pair['device_pair'],
                         direction,
                         streams_packet_type,
@@ -298,7 +298,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                         stream_next_stream_name,
                         stream_self_start,
                         stream_mode,
-                        stream_run_time,
+                        stream_runtime,
                         stream_traffic_share))
 
                stream_flow_stats = None
@@ -310,7 +310,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
 
                stream_loop = False
                if stream_mode == "burst":
-                    stream_total_pkts = int(stream_run_time * stream_pps)
+                    stream_total_pkts = int(stream_runtime * stream_pps)
 
                     # check if the total number of packets to TX is greater than can be held in an uint32 (API limit)
                     max_uint32 = int(4294967295)

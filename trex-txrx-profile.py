@@ -361,7 +361,7 @@ def append_stl_config(stl_stream, device_pair):
           device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['frame_sizes'].append(stl_stream['frame_size'])
           device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['traffic_shares'].append(None)
           device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['self_starts'].append(stl_stream['self_start'])
-          device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['run_time'].append(stl_stream['duration'])
+          device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['runtime'].append(stl_stream['duration'])
           device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['stream_modes'].append(stl_stream['mode'])
           device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['flows'].append(stl_stream['flow_count'])
           device_pair[stl_stream['direction']]['traffic_profile'][stl_stream['flow_stats_type']]['offset'].append(stl_stream['offset'])
@@ -842,7 +842,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
               if not len(warmup_segments):
                    raise ValueError("Hmm, for some reason there are no warmup segments.")
 
-              device_pair[direction]['teaching_warmup_max_run_time'] = max(device_pair[direction]['teaching_warmup_max_run_time'],
+              device_pair[direction]['teaching_warmup_max_runtime'] = max(device_pair[direction]['teaching_warmup_max_runtime'],
                                                                            (stream_flows / stream_rate))
 
               for stream_packet in stream_packets['teaching']:
@@ -1060,7 +1060,7 @@ def main():
                               'frame_sizes': [],
                               'traffic_shares': [],
                               'self_starts': [],
-                              'run_time': [],
+                              'runtime': [],
                               'stream_modes': [],
                               'flows': [],
                               'offset': [],
@@ -1095,7 +1095,7 @@ def main():
                                                                           'traffic_streams': [],
                                                                           'teaching_warmup_traffic_streams': [],
                                                                           'teaching_warmup_standard_traffic_streams': [],
-                                                                          'teaching_warmup_max_run_time': 0,
+                                                                          'teaching_warmup_max_runtime': 0,
                                                                           'teaching_measurement_traffic_streams': [] },
                                t_global.constants['reverse_direction']: { 'ports': { 'tx': port_b,
                                                                                      'rx': port_a },
@@ -1106,7 +1106,7 @@ def main():
                                                                           'traffic_streams': [],
                                                                           'teaching_warmup_traffic_streams': [],
                                                                           'teaching_warmup_standard_traffic_streams': [],
-                                                                          'teaching_warmup_max_run_time': 0,
+                                                                          'teaching_warmup_max_runtime': 0,
                                                                           'teaching_measurement_traffic_streams': [] },
                                'max_default_pg_ids': 0,
                                'max_latency_pg_ids': 0,
@@ -1247,7 +1247,7 @@ def main():
                   warmup_timeout = 30.0
                   for device_pair in device_pairs:
                        for direction in t_global.constants['directions']:
-                            warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_run_time'] * 1.05))
+                            warmup_timeout = int(max(warmup_timeout, device_pair[direction]['teaching_warmup_max_runtime'] * 1.05))
 
                   start_time = datetime.datetime.now()
                   myprint("\tStarting transmission at %s" % (start_time.strftime("%H:%M:%S on %Y-%m-%d")))
