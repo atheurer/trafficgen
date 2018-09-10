@@ -1235,7 +1235,7 @@ def main():
         if t_global.args.send_teaching_warmup:
              warmup_ports = []
 
-             myprint("Teaching Warmup")
+             myprint("Standard Teaching Warmup")
              for device_pair in device_pairs:
                   for direction in t_global.constants['directions']:
                        if len(device_pair[direction]['teaching_warmup_standard_traffic_streams']):
