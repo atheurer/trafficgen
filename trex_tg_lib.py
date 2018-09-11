@@ -549,6 +549,12 @@ def trex_profiler_logger (logfile, profiler_queue, thread_exit):
 
      return(0)
 
+def sanitize_profiler_value(value):
+    if value == "N/A":
+        return(0)
+    else:
+        return(value)
+
 def trex_profiler_process_sample(sample, stats):
     sample = json.loads(sample)
     #print(dump_json_readable(sample))
@@ -561,16 +567,17 @@ def trex_profiler_process_sample(sample, stats):
                             'rx_pps': {} }
 
                 for port in sorted(data['tx_pps']):
-                    stat_sample['tx_pps'][port] = data['tx_pps'][port]
+                    stat_sample['tx_pps'][port] = sanitize_profiler_value(data['tx_pps'][port])
 
                 for port in sorted(data['rx_pps']):
-                    stat_sample['rx_pps'][port] = data['rx_pps'][port]
+                    stat_sample['rx_pps'][port] = sanitize_profiler_value(data['rx_pps'][port])
 
                 if 'latency' in sample['pgid'] and pgid in sample['pgid']['latency']:
-                    data = sample['pgid']['latency'][pgid]['latency']
-                    stat_sample['latency'] = { 'average': data['average'],
-                                               'total_max': data['total_max'],
-                                               'total_min': data['total_min'] }
+                    ldata = sample['pgid']['latency'][pgid]['latency']
+                    edata = sample['pgid']['latency'][pgid]['err_cntrs']
+                    stat_sample['latency'] = { 'average':      sanitize_profiler_value(ldata['average']),
+                                               'total_max':    sanitize_profiler_value(ldata['total_max']),
+                                               'total_min':    sanitize_profiler_value(ldata['total_min']) }
 
                 stats[sample['timestamp']]['pgids'][pgid] = stat_sample
 
@@ -578,24 +585,24 @@ def trex_profiler_process_sample(sample, stats):
         data = sample['stats'][port]
 
         if not port in [ 'latency', 'global', 'flow_stats' ]:
-            stats[sample['timestamp']]['ports'][port] = { 'tx': { 'pps': data['tx_pps'],
-                                                                  'util': data['tx_util'],
-                                                                  'bps': data['tx_bps'],
-                                                                  'bps_l1': data['tx_bps_L1'] },
-                                                          'rx': { 'pps': data['rx_pps'],
-                                                                  'util': data['rx_util'],
-                                                                  'bps': data['rx_bps'],
-                                                                  'bps_l1': data['rx_bps_L1'] } }
+            stats[sample['timestamp']]['ports'][port] = { 'tx': { 'pps':    sanitize_profiler_value(data['tx_pps']),
+                                                                  'util':   sanitize_profiler_value(data['tx_util']),
+                                                                  'bps':    sanitize_profiler_value(data['tx_bps']),
+                                                                  'bps_l1': sanitize_profiler_value(data['tx_bps_L1']) },
+                                                          'rx': { 'pps':    sanitize_profiler_value(data['rx_pps']),
+                                                                  'util':   sanitize_profiler_value(data['rx_util']),
+                                                                  'bps':    sanitize_profiler_value(data['rx_bps']),
+                                                                  'bps_l1': sanitize_profiler_value(data['rx_bps_L1']) } }
         elif port == 'global':
-            stats[sample['timestamp']]['global'] = { 'tx': { 'pps': data['tx_pps'],
-                                                             'bps': data['tx_bps'] },
-                                                     'rx': { 'pps': data['rx_pps'],
-                                                             'bps': data['rx_bps'],
-                                                             'drop_bps': data['rx_drop_bps'],
-                                                             'cpu_util': data['rx_cpu_util'] },
-                                                     'misc': { 'queue_full': data['queue_full'],
-                                                               'cpu_util': data['cpu_util'],
-                                                               'bw_per_core': data['bw_per_core'] } }
+            stats[sample['timestamp']]['global'] = { 'tx': { 'pps':           sanitize_profiler_value(data['tx_pps']),
+                                                             'bps':           sanitize_profiler_value(data['tx_bps']) },
+                                                     'rx': { 'pps':           sanitize_profiler_value(data['rx_pps']),
+                                                             'bps':           sanitize_profiler_value(data['rx_bps']),
+                                                             'drop_bps':      sanitize_profiler_value(data['rx_drop_bps']),
+                                                             'cpu_util':      sanitize_profiler_value(data['rx_cpu_util']) },
+                                                     'misc': { 'queue_full':  sanitize_profiler_value(data['queue_full']),
+                                                               'cpu_util':    sanitize_profiler_value(data['cpu_util']),
+                                                               'bw_per_core': sanitize_profiler_value(data['bw_per_core']) } }
 
     return(0)
 
