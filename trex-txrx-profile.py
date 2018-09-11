@@ -513,7 +513,8 @@ def build_warmup_segments(segments, rate, flows):
 
 def create_stream (stream, device_pair, direction, other_direction, flow_scaler):
     if stream['offset'] >= t_global.args.runtime:
-         myprint("\tSkipping stream %d due to offset >= runtime" % (stream['profile_id']))
+         myprint("")
+         myprint("\tSkipping stream %d for '%s' due to offset >= runtime" % (stream['profile_id'], device_pair[direction]['id_string']))
          return
 
     # assume direction == t_global.constants['forward_direction']
