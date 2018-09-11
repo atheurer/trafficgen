@@ -1410,7 +1410,6 @@ def main():
          setup_config_var('teaching_measurement_interval', t_global.args.teaching_measurement_interval, trial_params)
          setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
          setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
-         setup_config_var("use_device_stats", t_global.args.use_device_stats, trial_params)
 
     if t_global.args.traffic_generator == "moongen-txrx":
          setup_config_var("encap_src_macs", t_global.args.encap_src_macs, trial_params)
@@ -1438,6 +1437,7 @@ def main():
          setup_config_var("enable_segment_monitor", t_global.args.enable_segment_monitor, trial_params)
          setup_config_var('teaching_warmup_packet_type', t_global.args.teaching_warmup_packet_type, trial_params)
          setup_config_var('teaching_measurement_packet_type', t_global.args.teaching_measurement_packet_type, trial_params)
+         setup_config_var("use_device_stats", t_global.args.use_device_stats, trial_params)
 
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('random_seed', t_global.args.random_seed, trial_params)
