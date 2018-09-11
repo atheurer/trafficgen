@@ -27,6 +27,11 @@ class t_global(object):
      args=None;
      bs_logger_queue = deque()
 
+def bs_logger_cleanup(notifier, thread):
+     notifier.set()
+     thread.join()
+     return(0)
+
 def bs_logger(msg):
      t_global.bs_logger_queue.append({ 'timestamp': time.time(),
                                        'message':   msg })
@@ -1311,27 +1316,33 @@ def main():
 
     if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
          bs_logger("The moongen-txrx traffic generator does not support --rate-unit=%")
-         quit(1)
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
 
     if t_global.args.traffic_generator == 'null-txrx' and t_global.args.rate_unit == "mpps":
          bs_logger("The null-txrx traffic generator does not support --rate-unit=mpps")
-         quit(1)
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
 
     if t_global.args.traffic_generator == 'trex-txrx-profile' and t_global.args.rate_unit == "mpps":
          bs_logger("The trex-txrx-profile traffic generator does not support --rate-unit=mpps")
-         quit(1)
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
 
     if t_global.args.traffic_generator == 'null-txrx' and t_global.args.measure_latency:
          bs_logger("The null-txrx traffic generator does not support latency measurements")
-         quit(1)
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
 
     if t_global.args.frame_size == "imix":
          if t_global.args.traffic_generator == 'moongen-txrx':
               bs_logger("The moongen-txrx traffic generator does not support --frame-size=imix")
-              quit(1)
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
          if t_global.args.rate_unit == "mpps":
               bs_logger("When --frame-size=imix then --rate-unit must be set to %")
-              quit(1)
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
     else:
          t_global.args.frame_size = int(t_global.args.frame_size)
 
@@ -1439,9 +1450,11 @@ def main():
     if t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['traffic_profile'] = t_global.args.traffic_profile
          trial_params['loaded_traffic_profile'] = load_traffic_profile(traffic_profile = trial_params['traffic_profile'],
-                                                                       rate_modifier = 100.0)
+                                                                       rate_modifier = 100.0,
+                                                                       log_function = bs_logger)
          if trial_params['loaded_traffic_profile'] == 1:
-              quit(1)
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
 
          bs_logger("Loaded traffic profile from %s:" % (trial_params['traffic_profile']))
          bs_logger(dump_json_readable(trial_params['loaded_traffic_profile']))
@@ -1554,16 +1567,19 @@ def main():
                         trial_params['use_device_stats'] = True
 
     if port_speed_verification_fail:
-         quit(1)
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
 
     if len(trial_params['pre_trial_cmd']):
          if not os.path.isfile(trial_params['pre_trial_cmd']):
               bs_logger(error("The pre-trial-cmd file does not exist [%s]" % (trial_params['pre_trial_cmd'])))
-              quit(1)
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
 
          if not os.access(trial_params['pre_trial_cmd'], os.X_OK):
               bs_logger(error("The pre-trial-cmd file is not executable [%s]" % (trial_params['pre_trial_cmd'])))
-              quit(1)
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
 
     perform_sniffs = False
     do_sniff = False
@@ -1712,7 +1728,7 @@ def main():
 
               if test_abort:
                    bs_logger(error('Binary search aborting due to critical error'))
-                   quit(1)
+                   return(1)
 
               if trial_params['loss_granularity'] == 'direction':
                    for direction in trial_stats['directional']:
@@ -1781,7 +1797,7 @@ def main():
                         if trial_result == "retry-to-quit":
                              bs_logger('---> The retry limit for a trial has been reached.  This is probably due to a rate tolerance failure.  <---')
                              bs_logger('---> You must adjust the --rate-tolerance to a higher value, or use --rate to start with a lower rate. <---')
-                             quit(1)
+                             return(1)
                         elif trial_result == "retry-to-fail":
                              bs_logger('---> The retry limit has been reached.  Failing and continuing. <---')
                              retries = 0
@@ -1908,8 +1924,7 @@ def main():
               trial_json_file = open(trial_json_filename, 'w')
 
               # drain the log prior to writing out the file
-              bs_logger_exit.set()
-              bs_logger_thread.join()
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
               print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
               trial_json_file.close()
@@ -1918,8 +1933,7 @@ def main():
               bs_logger("TRIALS:")
               bs_logger(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
 
-              bs_logger_exit.set()
-              bs_logger_thread.join()
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
 if __name__ == "__main__":
     exit(main())
