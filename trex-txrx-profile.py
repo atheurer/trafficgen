@@ -337,10 +337,13 @@ def create_stl_stream(stl_stream):
           stream_control = STLTXMultiBurst(pkts_per_burst = stl_stream['packets_per_burst'], ibg = sec_to_usec(stl_stream['ibg']), count = int(stl_stream['intervals']), pps = stl_stream['pps'])
 
      flow_stats = None
+     my_pg_id = stl_stream['flow_stats_pg_id']
+     if stl_stream['dummy']:
+          my_pg_id = 0
      if stl_stream['flow_stats_type'] == 'default':
-          flow_stats = STLFlowStats(pg_id = stl_stream['flow_stats_pg_id'])
+          flow_stats = STLFlowStats(pg_id = my_pg_id)
      elif stl_stream['flow_stats_type'] == 'latency':
-          flow_stats = STLFlowLatencyStats(pg_id = stl_stream['flow_stats_pg_id'])
+          flow_stats = STLFlowLatencyStats(pg_id = my_pg_id)
 
      return(STLStream(packet = stl_stream['packet'],
                       flow_stats = flow_stats,
@@ -707,18 +710,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                              if measurement_segments[segment_idx]['type'] == 'tx':
                                   dummy = False
                                   tmp_stream_pg_id = stream_pg_id
-
-                                  if stream_mode == 'default':
-                                       flow_stats = STLFlowStats(pg_id = stream_pg_id)
-                                  elif stream_mode == 'latency':
-                                       flow_stats = STLFlowLatencyStats(pg_id = stream_pg_id)
                              else:
                                   tmp_stream_pg_id = 'null'
-
-                                  if stream_mode == 'default':
-                                       flow_stats = STLFlowStats(pg_id = 0)
-                                  elif stream_mode == 'latency':
-                                       flow_stats = STLFlowLatencyStats(pg_id = 0)
 
                              myprint("\t\t\t%d: name=%s, pg_id=%s, type=%s, duration=%s, offset=%s, and isg=%s" % (segment_idx+1,
                                                                                                                    stream_name,
