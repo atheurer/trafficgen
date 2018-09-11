@@ -452,7 +452,7 @@ def validate_profile_stream(stream, rate_modifier):
 
     return(0)
 
-def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
+def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0, log_function = print):
      try:
           traffic_profile_fp = open(traffic_profile, 'r')
           profile = json.load(traffic_profile_fp)
@@ -461,9 +461,9 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
           if not 'streams' in profile or len(profile['streams']) == 0:
                raise ValueError("There are no streams in the loaded traffic profile")
      except:
-          print("EXCEPTION: %s" % traceback.format_exc())
-          print(error("Could not load a valid traffic profile from %s" % (traffic_profile)))
-          return 1
+          log_function("EXCEPTION: %s" % traceback.format_exc())
+          log_function(error("Could not load a valid traffic profile from %s" % (traffic_profile)))
+          return(1)
 
      try:
          stream_counter = 0
@@ -489,11 +489,11 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0):
 
              stream_counter += 1
      except:
-          print("EXCEPTION: %s" % traceback.format_exc())
-          print(error("Could not process the traffic profile from %s" % (traffic_profile)))
-          return 1
+          log_function("EXCEPTION: %s" % traceback.format_exc())
+          log_function(error("Could not process the traffic profile from %s" % (traffic_profile)))
+          return(1)
 
-     return profile
+     return(profile)
 
 def trex_profiler (connection, claimed_device_pairs, interval, profiler_pgids, profiler_queue, thread_exit):
      try:
