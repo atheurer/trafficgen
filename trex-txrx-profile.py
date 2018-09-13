@@ -386,7 +386,7 @@ def build_stream_segments(stream):
      segments = []
      segments_total_time = 0
      stream_runtime = stream['duration']
-     if stream_runtime == -1:
+     if stream_runtime is None:
           stream_runtime = t_global.args.runtime
      else:
           if stream_runtime > t_global.args.runtime:

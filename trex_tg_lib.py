@@ -423,21 +423,25 @@ def validate_profile_stream(stream, rate_modifier):
             raise ValueError("You must specify an offset of >= 0 seconds (not %d)" % (stream['offset']))
 
     if not 'duration' in stream:
-        stream['duration'] = -1
+        stream['duration'] = None
     else:
-        if stream['duration'] <= 0:
+        if not stream['duration'] is None and stream['duration'] <= 0:
             raise ValueError("You must specify a duration of > 0 seconds (not %d)" % (stream['duration']))
 
     if not 'repeat' in stream:
         stream['repeat'] = False
 
     if not 'repeat_delay' in stream:
-        stream['repeat_delay'] = stream['offset']
+        if stream['repeat']:
+            stream['repeat_delay'] = stream['offset']
+        else:
+            stream['repeat_delay'] = None
     else:
-        if stream['repeat_delay'] < 0:
-            raise ValueError("You must specify a repeat delay of > 0 seconds (not %d)" % (stream['repeat_delay']))
-        elif stream['repeat_delay'] == 0:
-            raise ValueError("You should specify a repeat delay of > 0 seconds.  While 0 would work, it just doesn't make any sense -- there are other ways to achieve that behavior (ie. set offset and leave duration, repeat, and repeat_delay unset).")
+        if not stream['repeat_delay'] is None:
+            if stream['repeat_delay'] < 0:
+                raise ValueError("You must specify a repeat delay of > 0 seconds (not %d)" % (stream['repeat_delay']))
+            elif stream['repeat_delay'] == 0:
+                raise ValueError("You should specify a repeat delay of > 0 seconds.  While 0 would work, it just doesn't make any sense -- there are other ways to achieve that behavior (ie. set offset and leave duration, repeat, and repeat_delay unset).")
 
     if not 'stream_id' in stream:
         stream['stream_id'] = False
