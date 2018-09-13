@@ -577,7 +577,12 @@ def trex_profiler_process_sample(sample, stats):
                     edata = sample['pgid']['latency'][pgid]['err_cntrs']
                     stat_sample['latency'] = { 'average':      sanitize_profiler_value(ldata['average']),
                                                'total_max':    sanitize_profiler_value(ldata['total_max']),
-                                               'total_min':    sanitize_profiler_value(ldata['total_min']) }
+                                               'total_min':    sanitize_profiler_value(ldata['total_min']),
+                                               'duplicate':    sanitize_profiler_value(edata['dup']),
+                                               'dropped':      sanitize_profiler_value(edata['dropped']),
+                                               'out_of_order': sanitize_profiler_value(edata['out_of_order']),
+                                               'seq_too_high': sanitize_profiler_value(edata['seq_too_high']),
+                                               'seq_too_low':  sanitize_profiler_value(edata['seq_too_low']) }
 
                 stats[sample['timestamp']]['pgids'][pgid] = stat_sample
 
