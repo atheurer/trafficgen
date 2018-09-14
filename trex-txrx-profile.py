@@ -332,6 +332,12 @@ def define_stl_stream(direction = '',
 def create_stl_stream(stl_stream):
      stream_control = None
      if stl_stream['mode'] == 'burst':
+          if stl_stream['dummy']:
+               dummy_pps = 1.0
+               dummy_pps_ratio = dummy_pps/stl_stream['pps']
+               stl_stream['packet_count'] = int(stl_stream['packet_count'] * dummy_pps_ratio)
+               stl_stream['pps'] = dummy_pps
+
           stream_control = STLTXSingleBurst(pps = stl_stream['pps'], total_pkts = stl_stream['packet_count'])
      elif stl_stream['mode'] == 'multiburst':
           stream_control = STLTXMultiBurst(pkts_per_burst = stl_stream['packets_per_burst'], ibg = sec_to_usec(stl_stream['ibg']), count = int(stl_stream['intervals']), pps = stl_stream['pps'])
