@@ -1920,10 +1920,6 @@ def main():
                         bs_logger("Received Force Quit")
                         return(1)
 
-              profiler_data = None
-              if trial_params['traffic_generator'] == 'trex-txrx-profile' and trial_params['enable_trex_profiler']:
-                   profiler_data = trex_profiler_postprocess_file("%s/%s" % (trial_params['output_dir'], trial_params['trial_profiler_file']))
-
               trial_results['trials'].append({ 'trial': trial_params['trial'],
                                                'rate': trial_params['rate'],
                                                'rate_unit': trial_params['rate_unit'],
@@ -1932,7 +1928,7 @@ def main():
                                                'extra-logfile': trial_params['trial_secondary_output_file'],
                                                'profiler-logfile': trial_params['trial_profiler_file'],
                                                'pre-trial-cmd-logfile': trial_params['pre_trial_cmd_output_file'],
-                                               'profiler-data': profiler_data,
+                                               'profiler-data': None,
                                                'stats': trial_stats,
                                                'trial_params': copy.deepcopy(trial_params),
                                                'stream_info': copy.deepcopy(stream_info['streams']),
@@ -2062,12 +2058,23 @@ def main():
                    bs_logger("There is no trial which passed")
 
     finally:
-         # prune the profiler data from all trials except the last one
-         # in an effort to save space.  if this data is required it
-         # can be recreated from log files
-         for x in range(0, len(trial_results['trials']) - 1):
-              if trial_results['trials'][x]['profiler-data']:
-                   trial_results['trials'][x]['profiler-data'] = None
+         if trial_params['traffic_generator'] == 'trex-txrx-profile' and trial_params['enable_trex_profiler']:
+              # process the last trial's profiler data (only the last
+              # trial is processed to conserve space, the data for
+              # other trials can be obtained if needed)
+              trial_results['trials'][len(trial_results['trials']) - 1]['profiler-data'] = trex_profiler_postprocess_file("%s/%s" % (trial_params['output_dir'], trial_results['trials'][len(trial_results['trials']) - 1]['profiler-logfile']))
+
+              # compress the profiler data for all trials to save
+              # space (potentially a lot)
+              for trial_result in trial_results['trials']:
+                   output = ""
+                   try:
+                        bs_logger("Compressing %s" % (trial_result['profiler-logfile']))
+                        output = subprocess.check_output(["xz", "-9", "--threads=0", "--verbose", "%s/%s" % (trial_params['output_dir'], trial_result['profiler-logfile'])], stderr=subprocess.STDOUT)
+                        bs_logger("\t%s" % (output))
+                   except subprocess.CalledProcessError as e:
+                        bs_logger("Error compressing %s (return code = %d)" % (trial_result['profiler-logfile'], e.returncode))
+                        bs_logger(e.output)
 
          trial_json_filename = "%s/binary-search.json" % (trial_params['output_dir'])
          try:
