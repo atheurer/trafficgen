@@ -369,7 +369,7 @@ def create_profile_stream (flows = 0,
 
 def validate_profile_stream(stream, rate_modifier):
     for key in stream:
-        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay' ]:
+        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay', 'repeat_flows' ]:
             raise ValueError("Invalid property found (%s)" % (key))
 
         if isinstance(stream[key], basestring):
@@ -440,8 +440,9 @@ def validate_profile_stream(stream, rate_modifier):
         if not stream['repeat_delay'] is None:
             if stream['repeat_delay'] < 0:
                 raise ValueError("You must specify a repeat delay of > 0 seconds (not %d)" % (stream['repeat_delay']))
-            elif stream['repeat_delay'] == 0:
-                raise ValueError("You should specify a repeat delay of > 0 seconds.  While 0 would work, it just doesn't make any sense -- there are other ways to achieve that behavior (ie. set offset and leave duration, repeat, and repeat_delay unset).")
+
+    if not 'repeat_flows' in stream:
+        stream['repeat_flows'] = True
 
     if not 'stream_id' in stream:
         stream['stream_id'] = False

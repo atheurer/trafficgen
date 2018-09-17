@@ -523,6 +523,20 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
          myprint("\tSkipping stream %d for '%s' due to offset >= runtime" % (stream['profile_id'], device_pair[direction]['id_string']))
          return
 
+    segments = build_stream_segments(stream)
+    if not stream['repeat_flows'] and stream['repeat']:
+         for segment in segments:
+              if segment['type'] == 'tx':
+                   new_stream = copy.deepcopy(stream)
+                   new_stream['repeat'] = False
+                   new_stream['duration'] = segment['duration']
+                   new_stream['offset'] = segment['offset'] + segment['isg']
+                   new_stream['isg'] = 0
+                   new_stream['repeat_delay'] = None
+                   new_stream['repeat_flows'] = True
+                   create_stream(new_stream, device_pair, direction, other_direction, flow_scaler)
+         return
+
     # assume direction == t_global.constants['forward_direction']
     src_port = 'A'
     dst_port = 'B'
@@ -647,7 +661,6 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
 
     stream_rate = stream['rate']
 
-    segments = build_stream_segments(stream)
     measurement_segments = build_measurement_segments(segments)
     if not len(measurement_segments):
          raise ValueError("Hmm, for some reason there are no measurement segments.")

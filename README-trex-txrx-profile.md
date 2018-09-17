@@ -36,3 +36,5 @@ by the following parameters:
 14. repeat - optional, whether or not the stream should repeat after it finishes, defaults to False, options are: [True, False]
 
 15. repeat_delay - optional, if the stream repeats how long should it wait to start over again, defaults to the offset value
+
+16. repeat_flows - optional, if the stream repeats should it use the same flows, defaults to True, options are [True, False]
