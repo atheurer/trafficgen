@@ -2058,23 +2058,34 @@ def main():
                    bs_logger("There is no trial which passed")
 
     finally:
-         if trial_params['traffic_generator'] == 'trex-txrx-profile' and trial_params['enable_trex_profiler']:
+         if trial_params['traffic_generator'] == 'trex-txrx-profile' and trial_params['enable_trex_profiler'] and len(trial_results['trials']):
               # process the last trial's profiler data (only the last
               # trial is processed to conserve space, the data for
               # other trials can be obtained if needed)
-              trial_results['trials'][len(trial_results['trials']) - 1]['profiler-data'] = trex_profiler_postprocess_file("%s/%s" % (trial_params['output_dir'], trial_results['trials'][len(trial_results['trials']) - 1]['profiler-logfile']))
+              bs_logger("Processing last trial's profiler data")
+              profile_file = "%s/%s" % (trial_params['output_dir'], trial_results['trials'][len(trial_results['trials']) - 1]['profiler-logfile'])
+              if os.path.isfile(profile_file):
+                   trial_results['trials'][len(trial_results['trials']) - 1]['profiler-data'] = trex_profiler_postprocess_file(profile_file)
+                   bs_logger("\tProfiler data processing complete")
+              else:
+                   bs_logger("\t%s" % (error("Could not open profiler data file %s for processing because it does not exist" % (profiler_file))))
 
               # compress the profiler data for all trials to save
               # space (potentially a lot)
+              bs_logger("Compressing profiler data for all trials")
               for trial_result in trial_results['trials']:
                    output = ""
-                   try:
-                        bs_logger("Compressing %s" % (trial_result['profiler-logfile']))
-                        output = subprocess.check_output(["xz", "-9", "--threads=0", "--verbose", "%s/%s" % (trial_params['output_dir'], trial_result['profiler-logfile'])], stderr=subprocess.STDOUT)
-                        bs_logger("\t%s" % (output))
-                   except subprocess.CalledProcessError as e:
-                        bs_logger("Error compressing %s (return code = %d)" % (trial_result['profiler-logfile'], e.returncode))
-                        bs_logger(e.output)
+                   profile_file = "%s/%s" % (trial_params['output_dir'], trial_result['profiler-logfile'])
+                   if os.path.isfile(profile_file):
+                        try:
+                             bs_logger("\tCompressing %s" % (trial_result['profiler-logfile']))
+                             output = subprocess.check_output(["xz", "-9", "--threads=0", "--verbose", profile_file], stderr=subprocess.STDOUT)
+                             bs_logger("\t\t%s" % (output))
+                        except subprocess.CalledProcessError as e:
+                             bs_logger("\tError compressing %s (return code = %d)" % (trial_result['profiler-logfile'], e.returncode))
+                             bs_logger(e.output)
+                   else:
+                        bs_logger(error("Could not compress profiler data file %s because it does not exist" % (profiler_file)))
 
          trial_json_filename = "%s/binary-search.json" % (trial_params['output_dir'])
          try:
