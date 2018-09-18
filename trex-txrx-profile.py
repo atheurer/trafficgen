@@ -139,16 +139,6 @@ def process_options ():
                         help='Force disablement of the flow cache',
                         action = 'store_false',
                         )
-    parser.add_argument('--send-teaching-warmup',
-                        dest='send_teaching_warmup',
-                        help='Send teaching packets from the receiving port during a warmup phase',
-                        action = 'store_true',
-                        )
-    parser.add_argument('--send-teaching-measurement',
-                        dest='send_teaching_measurement',
-                        help='Send teaching packetsfrom the receiving port during the measurement phase',
-                        action = 'store_true',
-                        )
     parser.add_argument('--teaching-measurement-interval',
                         dest='teaching_measurement_interval',
                         help='Interval to send teaching packets on from the receiving port during the measurement phase in seconds',
@@ -845,7 +835,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                           standard = measurement_segments[segment_idx]['standard']))
 
                              segment_part_counter += 1
-         elif stream_type == 'teaching_warmup' and t_global.args.send_teaching_warmup:
+         elif stream_type == 'teaching_warmup':
               # if teaching_warmup is the only type for this stream, use the stream's configured rate
               # otherwise use the global default for teaching warmup rate
               if len(stream['stream_types']) != 1:
@@ -969,7 +959,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                                 teaching = True))
 
                         segment_part_counter += 1
-         elif stream_type == 'teaching_measurement' and t_global.args.send_teaching_measurement:
+         elif stream_type == 'teaching_measurement':
               # if teaching_measurement is the only type for this stream, use the stream's configured rate
               # otherwise use the global default for teaching measurement rate
               if len(stream['stream_types']) != 1:
@@ -1207,6 +1197,7 @@ def main():
         total_streams = 0
         pgids = {}
         flow_port_divider = 1.0 / len(device_pairs)
+        enable_standard_warmup = False
         for device_pair in device_pairs:
             for stream in traffic_profile['streams']:
                  if stream['direction'] == t_global.constants['forward_direction'] or stream['direction'] == t_global.constants['both_directions']:
@@ -1221,7 +1212,10 @@ def main():
             for direction in t_global.constants['directions']:
                 total_streams += len(device_pair[direction]['traffic_streams'])
                 total_streams += len(device_pair[direction]['teaching_warmup_traffic_streams'])
-                total_streams += len(device_pair[direction]['teaching_warmup_standard_traffic_streams'])
+                tmp_streams = len(device_pair[direction]['teaching_warmup_standard_traffic_streams'])
+                if tmp_streams:
+                     total_streams += tmp_streams
+                     enable_standard_warmup = True
                 total_streams += len(device_pair[direction]['teaching_measurement_traffic_streams'])
 
                 if len(device_pair[direction]['traffic_streams']):
@@ -1249,7 +1243,7 @@ def main():
              profiler_logger_thread.start()
              profiler_threads_started = True
 
-        if t_global.args.send_teaching_warmup:
+        if enable_standard_warmup:
              warmup_ports = []
 
              myprint("Standard Teaching Warmup")
@@ -1305,7 +1299,7 @@ def main():
 
                   myprint("\tAdding streams for '%s'" % (device_pair[direction]['id_string']))
 
-                  if t_global.args.send_teaching_measurement and len(device_pair[direction]['teaching_warmup_traffic_streams']):
+                  if len(device_pair[direction]['teaching_warmup_traffic_streams']):
                        myprint("\t\t- teaching warmup")
                        port_streams.extend(device_pair[direction]['teaching_warmup_traffic_streams'])
 
@@ -1313,7 +1307,7 @@ def main():
                        myprint("\t\t- measurement")
                        port_streams.extend(device_pair[direction]['traffic_streams'])
 
-                  if t_global.args.send_teaching_measurement and len(device_pair[direction]['teaching_measurement_traffic_streams']):
+                  if len(device_pair[direction]['teaching_measurement_traffic_streams']):
                        myprint("\t\t- teaching measurement")
                        port_streams.extend(device_pair[direction]['teaching_measurement_traffic_streams'])
 

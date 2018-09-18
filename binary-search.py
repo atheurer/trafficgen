@@ -807,10 +807,6 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --profiler-logfile=' + trial_params['output_dir'] + '/' + trial_params['trial_profiler_file']
         if not trial_params['enable_flow_cache']:
              cmd = cmd + ' --disable-flow-cache'
-        if trial_params['send_teaching_warmup']:
-             cmd = cmd + ' --send-teaching-warmup'
-        if trial_params['send_teaching_measurement']:
-             cmd = cmd + ' --send-teaching-measurement'
         if trial_params['teaching_measurement_interval']:
              cmd = cmd + ' --teaching-measurement-interval=' + str(trial_params['teaching_measurement_interval'])
         if trial_params['teaching_warmup_packet_rate']:
@@ -1561,8 +1557,6 @@ def main():
          setup_config_var("measure_latency", t_global.args.measure_latency, trial_params)
          setup_config_var("latency_rate", t_global.args.latency_rate, trial_params)
          setup_config_var('enable_flow_cache', t_global.args.enable_flow_cache, trial_params)
-         setup_config_var('send_teaching_warmup', t_global.args.send_teaching_warmup, trial_params)
-         setup_config_var('send_teaching_measurement', t_global.args.send_teaching_measurement, trial_params)
          setup_config_var('teaching_measurement_interval', t_global.args.teaching_measurement_interval, trial_params)
          setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
          setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
@@ -1594,6 +1588,8 @@ def main():
          setup_config_var('teaching_warmup_packet_type', t_global.args.teaching_warmup_packet_type, trial_params)
          setup_config_var('teaching_measurement_packet_type', t_global.args.teaching_measurement_packet_type, trial_params)
          setup_config_var("use_device_stats", t_global.args.use_device_stats, trial_params)
+         setup_config_var('send_teaching_warmup', t_global.args.send_teaching_warmup, trial_params)
+         setup_config_var('send_teaching_measurement', t_global.args.send_teaching_measurement, trial_params)
 
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('random_seed', t_global.args.random_seed, trial_params)
