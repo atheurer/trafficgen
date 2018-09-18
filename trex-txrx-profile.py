@@ -1016,6 +1016,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                         if segment_idx > 0:
                              segment_auto_start = False
 
+                        stream_total_pkts = int(stream_rate * measurement_segments[segment_idx]['duration'])
+
                         stl_streams['teaching_measurement_traffic_streams'].append(define_stl_stream(direction = other_direction,
                                                                                                      uuid = stream_uuid,
                                                                                                      segment_id = segment_idx,
