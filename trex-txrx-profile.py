@@ -1145,6 +1145,9 @@ def main():
     c = STLClient()
 
     try:
+        thread_exit = threading.Event()
+        profiler_threads_started = False
+
         if t_global.args.debug:
              # turn this on for some information
              c.set_verbose("high")
@@ -1238,14 +1241,13 @@ def main():
         for pgid in pgids:
              profiler_pgids.append(pgid)
 
-
-        thread_exit = threading.Event()
         profiler_queue = deque()
         profiler_worker_thread = threading.Thread(target = trex_profiler, args = (c, claimed_device_pairs, t_global.args.profiler_interval, profiler_pgids, profiler_queue, thread_exit))
         profiler_logger_thread = threading.Thread(target = trex_profiler_logger, args = (t_global.args.profiler_logfile, profiler_queue, thread_exit))
         if t_global.args.enable_profiler:
              profiler_worker_thread.start()
              profiler_logger_thread.start()
+             profiler_threads_started = True
 
         if t_global.args.send_teaching_warmup:
              warmup_ports = []
@@ -1446,7 +1448,11 @@ def main():
         myprint("EXCEPTION: %s" % traceback.format_exc())
 
     finally:
-        thread_exit.set()
+        if t_global.args.enable_profiler and profiler_threads_started:
+             thread_exit.set()
+             profiler_worker_thread.join()
+             profiler_logger_thread.join()
+
         myprint("Disconnecting from TRex server...")
         c.disconnect()
         myprint("Connection severed")

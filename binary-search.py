@@ -466,6 +466,7 @@ def execute_pre_trial_cmd(trial_params):
      signal.signal(signal.SIGINT, previous_sig_handler)
 
      bs_logger('return code: %d' % (retval))
+     return(retval)
 
 def handle_pre_trial_cmd_io(process, trial_params, exit_event):
      output_file = None
@@ -546,7 +547,10 @@ def get_trex_port_info(trial_params, dev_pairs):
      signal.signal(signal.SIGINT, previous_sig_handler)
 
      bs_logger('return code: %d' % (retval))
-     return port_info['json']
+     if retval:
+          return { 'retval': retval }
+     else:
+          return port_info['json']
 
 def handle_query_process_stdout(process, exit_event):
      capture_output = True
@@ -910,6 +914,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     signal.signal(signal.SIGINT, previous_sig_handler)
 
     bs_logger('return code: %s' % (retval))
+    stats['retval'] = retval
+
     stream_info['streams'] = streams
     return stats
 
@@ -1705,6 +1711,12 @@ def main():
     port_info = None
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == 'trex-txrx-profile':
          port_info = get_trex_port_info(trial_params, trial_params['claimed_dev_pairs'])
+
+         if not isinstance(port_info, list) and 'retval' in port_info:
+              bs_logger(error("Acquiring trex port info exited with a non-zero return value"))
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
+
          trial_results['port_info'] = port_info
 
          for port in port_info:
@@ -1773,9 +1785,16 @@ def main():
 
               trial_params['pre_trial_cmd_output_file'] = None
               if len(trial_params['pre_trial_cmd']):
-                   execute_pre_trial_cmd(trial_params)
+                   if execute_pre_trial_cmd(trial_params):
+                        bs_logger(error("pre trial command exited with a non-zero return value"))
+                        bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+                        return(1)
 
               trial_stats = run_trial(trial_params, port_info, stream_info, detailed_stats)
+              if trial_stats['retval']:
+                   bs_logger(error("run trial command exited with a non-zero return value"))
+                   bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+                   return(1)
 
               trial_result = 'pass'
               test_abort = False
