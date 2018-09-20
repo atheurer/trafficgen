@@ -503,9 +503,7 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0, log_funct
 def trex_profiler (connection, claimed_device_pairs, interval, profiler_pgids, profiler_queue, thread_exit):
      try:
           while not thread_exit.is_set():
-               time.sleep(interval)
-
-               ts = time.time() * 1000
+               ts1 = time.time()
 
                xstats = {}
                for device in claimed_device_pairs:
@@ -515,11 +513,16 @@ def trex_profiler (connection, claimed_device_pairs, interval, profiler_pgids, p
                pgid = connection.get_pgid_stats(profiler_pgids)
                util = connection.get_util_stats()
 
-               profiler_queue.append({ 'timestamp': ts,
+               ts2 = time.time()
+
+               profiler_queue.append({ 'timestamp': (ts2 + ts1)/2 * 1000,
+                                       'timestamp_delta': (ts2 - ts1) * 1000,
                                        'stats':     stats,
                                        'pgid':      pgid,
                                        'util':      util,
                                        'xstats':    xstats })
+
+               time.sleep(interval)
 
      except STLError as e:
           print("TRex Profiler: STLERROR: %s" % e)
@@ -560,22 +563,32 @@ def sanitize_profiler_value(value):
     else:
         return(value)
 
-def trex_profiler_process_sample(sample, stats):
+def trex_profiler_process_sample(sample, stats, prev_sample):
     sample = json.loads(sample)
+    prev_sample = json.loads(prev_sample)
     #print(dump_json_readable(sample))
+    #print(dump_json_readable(prev_sample))
 
-    if 'flow_stats' in sample['pgid']:
+    stats[sample['timestamp']]['tsdelta'] = sample['timestamp_delta']
+
+    sample_delta_seconds = (sample['timestamp']/1000) - (prev_sample['timestamp']/1000)
+
+    if 'flow_stats' in sample['pgid'] and 'flow_stats' in prev_sample['pgid']:
         for pgid in sorted(sample['pgid']['flow_stats']):
+            if not pgid in prev_sample['pgid']['flow_stats']:
+                continue
+
             if not pgid == 'global':
                 data = sample['pgid']['flow_stats'][pgid]
+                prev_data = prev_sample['pgid']['flow_stats'][pgid]
                 stat_sample = { 'tx_pps': {},
                             'rx_pps': {} }
 
                 for port in sorted(data['tx_pps']):
-                    stat_sample['tx_pps'][port] = sanitize_profiler_value(data['tx_pps'][port])
+                    stat_sample['tx_pps'][port] = (sanitize_profiler_value(data['tx_pkts'][port]) - sanitize_profiler_value(prev_data['tx_pkts'][port])) / sample_delta_seconds
 
                 for port in sorted(data['rx_pps']):
-                    stat_sample['rx_pps'][port] = sanitize_profiler_value(data['rx_pps'][port])
+                    stat_sample['rx_pps'][port] = (sanitize_profiler_value(data['rx_pkts'][port]) - sanitize_profiler_value(prev_data['rx_pkts'][port])) / sample_delta_seconds
 
                 if 'latency' in sample['pgid'] and pgid in sample['pgid']['latency']:
                     ldata = sample['pgid']['latency'][pgid]['latency']
@@ -593,13 +606,14 @@ def trex_profiler_process_sample(sample, stats):
 
     for port in sorted(sample['stats']):
         data = sample['stats'][port]
+        prev_data = prev_sample['stats'][port]
 
         if not port in [ 'latency', 'global', 'flow_stats' ]:
-            stats[sample['timestamp']]['ports'][port] = { 'tx': { 'pps':    sanitize_profiler_value(data['tx_pps']),
+            stats[sample['timestamp']]['ports'][port] = { 'tx': { 'pps':    (sanitize_profiler_value(data['opackets']) - sanitize_profiler_value(prev_data['opackets'])) / sample_delta_seconds,
                                                                   'util':   sanitize_profiler_value(data['tx_util']),
                                                                   'bps':    sanitize_profiler_value(data['tx_bps']),
                                                                   'bps_l1': sanitize_profiler_value(data['tx_bps_L1']) },
-                                                          'rx': { 'pps':    sanitize_profiler_value(data['rx_pps']),
+                                                          'rx': { 'pps':    (sanitize_profiler_value(data['ipackets']) - sanitize_profiler_value(prev_data['ipackets'])) / sample_delta_seconds,
                                                                   'util':   sanitize_profiler_value(data['rx_util']),
                                                                   'bps':    sanitize_profiler_value(data['rx_bps']),
                                                                   'bps_l1': sanitize_profiler_value(data['rx_bps_L1']) } }
@@ -646,7 +660,8 @@ def trex_profiler_build_stats_object (lists):
 
         stat = { 'pgids': pgids,
                  'ports': ports,
-                 'global': None }
+                 'global': None,
+                 'tsdelta': None }
 
         stats[timestamp] = stat
 
@@ -660,11 +675,14 @@ def trex_profiler_postprocess_file (input_file):
                   'timestamps': [],
                   'ports': []
               }
+        last_line = None
         for line in fp:
             line = line.rstrip('\n')
 
             if len(line):
-               trex_profiler_populate_lists(line, lists)
+               if last_line is not None:
+                   trex_profiler_populate_lists(line, lists)
+               last_line = line
 
         for key in lists:
             lists[key].sort()
@@ -672,11 +690,14 @@ def trex_profiler_postprocess_file (input_file):
         stats = trex_profiler_build_stats_object(lists)
 
         fp.seek(0)
+        last_line = None
         for line in fp:
             line = line.rstrip('\n')
 
             if len(line):
-                 trex_profiler_process_sample(line, stats)
+                 if last_line is not None:
+                     trex_profiler_process_sample(line, stats, last_line)
+                 last_line = line
 
         fp.close()
 
