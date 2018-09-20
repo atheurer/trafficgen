@@ -1,16 +1,14 @@
 from __future__ import print_function
 
 import sys, getopt
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
+sys.path.append('/opt/trex/current/automation/trex_control_plane/interactive')
 import argparse
-import stl_path
 import json
 import string
 import datetime
 import math
 from decimal import *
-from trex_stl_lib.api import *
+from trex.stl.api import *
 from trex_tg_lib import *
 
 class t_global(object):
@@ -65,7 +63,7 @@ def main():
 
     try:
         # turn this on for some information
-        #c.set_verbose("high")
+        #c.set_verbose("debug")
 
         # connect to server
         myprint("Establishing connection to TRex server...")
@@ -83,7 +81,7 @@ def main():
 
         return_value = 0
 
-    except STLError as e:
+    except TRexError as e:
         myprint(e)
 
     finally:

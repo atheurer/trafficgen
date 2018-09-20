@@ -1,10 +1,9 @@
 from __future__ import print_function
 
 import sys
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
+sys.path.append('/opt/trex/current/automation/trex_control_plane/interactive')
 import json
-from trex_stl_lib.api import *
+from trex.stl.api import *
 from collections import deque
 
 def error (string):

@@ -7,7 +7,6 @@ import sys, getopt
 import argparse
 import subprocess
 import re
-# import stl_path
 import time
 import json
 import string
@@ -21,7 +20,6 @@ import os
 import os.path
 import datetime
 # from decimal import *
-# from trex_stl_lib.api import *
 
 class t_global(object):
      args=None;

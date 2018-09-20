@@ -1,10 +1,8 @@
 from __future__ import print_function
 
 import sys, getopt
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
+sys.path.append('/opt/trex/current/automation/trex_control_plane/interactive')
 import argparse
-import stl_path
 import string
 import datetime
 import math
@@ -12,7 +10,7 @@ import threading
 import thread
 import uuid
 from decimal import *
-from trex_stl_lib.api import *
+from trex.stl.api import *
 from trex_tg_lib import *
 
 class t_global(object):
@@ -1140,7 +1138,7 @@ def main():
 
         if t_global.args.debug:
              # turn this on for some information
-             c.set_verbose("high")
+             c.set_verbose("debug")
 
         # connect to server
         myprint("Establishing connection to TRex server...")
@@ -1274,15 +1272,15 @@ def main():
                        total_time = stop_time - start_time
                        myprint("\tFinished transmission at %s" % (stop_time.strftime("%H:%M:%S on %Y-%m-%d")))
                        myprint("\tWarmup ran for %s second(s) (%s)" % (commify(total_time.total_seconds()), total_time))
-                  except STLTimeoutError as e:
+                  except TRexTimeoutError as e:
                        c.stop(ports = warmup_ports)
                        stop_time = datetime.datetime.now()
                        total_time = stop_time - start_time
                        myprint("TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%s seconds) -- %s total second(s) elapsed" % (commify(warmup_timeout), commify(total_time.total_seconds())))
                        return return_value
-                  except STLError as e:
+                  except TRexError as e:
                        c.stop(ports = warmup_ports)
-                       myprint(error("wait_on_traffic: STLError: %s" % (e)))
+                       myprint(error("wait_on_traffic: TRexError: %s" % (e)))
                        return return_value
 
                   c.reset(ports = warmup_ports)
@@ -1349,15 +1347,15 @@ def main():
         try:
              c.wait_on_traffic(ports = run_ports, timeout = timeout_seconds)
              stop_time = datetime.datetime.now()
-        except STLTimeoutError as e:
+        except TRexTimeoutError as e:
              c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
              myprint("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
              timeout = True
-        except STLError as e:
+        except TRexError as e:
              c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
-             myprint(error("wait_on_traffic: STLError: %s" % (e)))
+             myprint(error("wait_on_traffic: TRexError: %s" % (e)))
              force_quit = True
 
         if t_global.args.enable_profiler:
@@ -1432,8 +1430,8 @@ def main():
 
         return_value = 0
 
-    except STLError as e:
-        myprint("STLERROR: %s" % e)
+    except TRexError as e:
+        myprint("TRexERROR: %s" % e)
 
     except (ValueError, RuntimeError) as e:
         myprint(error("%s" % (e)))
