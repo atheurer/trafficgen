@@ -10,7 +10,10 @@ def error (string):
     return("ERROR: %s" % (string))
 
 def not_json_serializable(obj):
-     return "not JSON serializable"
+    try:
+        return obj.to_dictionary()
+    except AttributeError:
+        return(repr(obj))
 
 def dump_json_readable(obj):
      return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True, default = not_json_serializable)
