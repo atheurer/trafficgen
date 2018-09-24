@@ -560,7 +560,7 @@ def trex_profiler_logger (logfile, profiler_queue, thread_exit):
      return(0)
 
 def sanitize_profiler_value(value):
-    if value == "N/A":
+    if value == "N/A" or value < 0:
         return(0)
     else:
         return(value)
