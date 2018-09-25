@@ -515,7 +515,7 @@ def get_trex_port_info(trial_params, dev_pairs):
                else:
                     devices[dev_pair[direction]] += 1
 
-     cmd = 'python trex-query.py'
+     cmd = 'python -u trex-query.py'
      cmd = cmd + ' --mirrored-log'
      cmd = cmd + device_string
 
@@ -779,14 +779,14 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'null-txrx':
-         cmd = 'python null-txrx.py'
+         cmd = 'python -u null-txrx.py'
          cmd = cmd + ' --mirrored-log'
          cmd = cmd + ' --rate=' + str(trial_params['rate'])
     elif trial_params['traffic_generator'] == 'trex-txrx-profile':
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
-        cmd = 'python trex-txrx-profile.py'
+        cmd = 'python -u trex-txrx-profile.py'
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --random-seed=' + str(trial_params['random_seed'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
@@ -817,7 +817,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
-        cmd = 'python trex-txrx.py'
+        cmd = 'python -u trex-txrx.py'
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
         cmd = cmd + ' --mirrored-log'
