@@ -397,15 +397,31 @@ class stl_stream:
 
           return
 
-def build_segment_object(stage, segment_type, duration, offset):
-     return({
-          'stage': stage,
-          'type': segment_type,
-          'duration': duration,
-          'offset': offset,
-          'isg': 0.0,
-          'skip': False,
-          'standard': False })
+class segment_object:
+     def __init__(self,
+                  stage,
+                  segment_type,
+                  duration,
+                  offset,
+                  isg = 0.0,
+                  skip = False,
+                  standard = False):
+          self.stage = stage
+          self.type = segment_type
+          self.duration = duration
+          self.offset = offset
+          self.isg = isg
+          self.skip = skip
+          self.standard = standard
+
+     def to_dictionary(self):
+          return({ 'stage': self.stage,
+                   'type': self.type,
+                   'duration': self.duration,
+                   'offset': self.offset,
+                   'isg': self.isg,
+                   'skip': self.skip,
+                   'standard': self.standard })
 
 def build_stream_segments(stream):
      segments = []
@@ -419,7 +435,7 @@ def build_stream_segments(stream):
 
      # build the initial list of segments, this is a very verbose list
      if stream['offset']:
-          segments.append(build_segment_object(0, 'null', stream['offset'], segments_total_time))
+          segments.append(segment_object(0, 'null', stream['offset'], segments_total_time))
           segments_total_time += stream['offset']
           if (stream_runtime + stream['offset']) > t_global.args.runtime:
                stream_runtime = t_global.args.runtime - stream['offset']
@@ -427,32 +443,32 @@ def build_stream_segments(stream):
           remaining_time = t_global.args.runtime - segments_total_time
           while segments_total_time < t_global.args.runtime:
                if remaining_time >= stream_runtime:
-                    segments.append(build_segment_object(1, 'tx', stream_runtime, segments_total_time))
+                    segments.append(segment_object(1, 'tx', stream_runtime, segments_total_time))
                     segments_total_time += stream_runtime
                     remaining_time -= stream_runtime
 
                     if remaining_time >= stream['repeat_delay']:
-                         segments.append(build_segment_object(2, 'null', stream['repeat_delay'], segments_total_time))
+                         segments.append(segment_object(2, 'null', stream['repeat_delay'], segments_total_time))
                          segments_total_time += stream['repeat_delay']
                          remaining_time -= stream['repeat_delay']
                     else:
                          if remaining_time:
-                              segments.append(build_segment_object(3, 'null', remaining_time, segments_total_time))
+                              segments.append(segment_object(3, 'null', remaining_time, segments_total_time))
                               segments_total_time += remaining_time
                else:
                     if remaining_time:
-                         segments.append(build_segment_object(4, 'tx', remaining_time, segments_total_time))
+                         segments.append(segment_object(4, 'tx', remaining_time, segments_total_time))
                          segments_total_time += remaining_time
      else:
-          segments.append(build_segment_object(5, 'tx', stream_runtime, segments_total_time))
+          segments.append(segment_object(5, 'tx', stream_runtime, segments_total_time))
           segments_total_time += stream_runtime
 
           if segments_total_time < t_global.args.runtime:
                remaining_time = t_global.args.runtime - segments_total_time
-               segments.append(build_segment_object(6, 'null', remaining_time, segments_total_time))
+               segments.append(segment_object(6, 'null', remaining_time, segments_total_time))
 
-     #myprint("stream segments")
-     #myprint(dump_json_readable(segments))
+     myprint("stream segments")
+     myprint(dump_json_readable(segments))
 
      return(segments)
 
@@ -466,24 +482,23 @@ def build_measurement_segments(segments):
           for segment_idx in range(0, len(measurement_segments)-1):
                # we can eliminate a dummy stream by replacing it with ISG on the following real stream
                # this should produce fewer streams and use fewer pg_id resources
-               if measurement_segments[segment_idx]['type'] == 'null' and measurement_segments[segment_idx+1]['type'] == 'tx':
-                    measurement_segments[segment_idx+1]['isg'] += (measurement_segments[segment_idx]['isg'] + measurement_segments[segment_idx]['duration'])
-                    measurement_segments[segment_idx+1]['offset'] -= (measurement_segments[segment_idx]['isg'] + measurement_segments[segment_idx]['duration'])
-                    #measurement_segments[segment_idx+1]['duration'] += measurement_segments[segment_idx]['duration']
-                    measurement_segments[segment_idx]['stage'] = 7
-                    measurement_segments[segment_idx+1]['stage'] = 7
-                    measurement_segments[segment_idx]['skip'] = True
+               if measurement_segments[segment_idx].type == 'null' and measurement_segments[segment_idx+1].type == 'tx':
+                    measurement_segments[segment_idx+1].isg += (measurement_segments[segment_idx].isg + measurement_segments[segment_idx].duration)
+                    measurement_segments[segment_idx+1].offset -= (measurement_segments[segment_idx].isg + measurement_segments[segment_idx].duration)
+                    measurement_segments[segment_idx].stage = 7
+                    measurement_segments[segment_idx+1].stage = 7
+                    measurement_segments[segment_idx].skip = True
                     trim_segments = True
 
           if trim_segments:
                # get rid of all segments marked to be skipped
                tmp_segments = []
                for segment in measurement_segments:
-                    if not segment['skip']:
+                    if not segment.skip:
                          # merge the isg and duration if the segment is null
-                         if segment['type'] == 'null' and segment['isg']:
-                              segment['duration'] += segment['isg']
-                              segment['isg'] = 0
+                         if segment.type == 'null' and segment.isg:
+                              segment.duration += segment.isg
+                              segment.isg = 0
 
                          tmp_segments.append(segment)
                measurement_segments = tmp_segments
@@ -492,11 +507,11 @@ def build_measurement_segments(segments):
      # first segment and has no ISG and no offset
      if len(measurement_segments) == 1:
           for segment in measurement_segments:
-               if segment['isg'] == segment['offset'] == 0:
-                    segment['standard'] = True
+               if segment.isg == segment.offset == 0:
+                    segment.standard = True
 
-     #myprint("measurement segments")
-     #myprint(dump_json_readable(measurement_segments))
+     myprint("measurement segments")
+     myprint(dump_json_readable(measurement_segments))
 
      return(measurement_segments)
 
@@ -511,28 +526,28 @@ def build_warmup_segments(segments, rate, flows):
           trim_segments = False
 
           for segment_idx in range(0, len(warmup_segments)-1):
-               if segment_idx == 0 and warmup_segments[segment_idx]['type'] == 'tx' and warmup_segments[segment_idx]['isg'] == 0 and warmup_segments[segment_idx]['offset'] == 0:
-                    warmup_segments[segment_idx]['standard'] = True
-               elif warmup_segments[segment_idx]['type'] == 'null' and warmup_segments[segment_idx+1]['type'] == 'tx':
-                    warmup_segments[segment_idx]['type'] = 'tx'
-                    warmup_segments[segment_idx+1]['type'] = 'null'
+               if segment_idx == 0 and warmup_segments[segment_idx].type == 'tx' and warmup_segments[segment_idx].isg == 0 and warmup_segments[segment_idx].offset == 0:
+                    warmup_segments[segment_idx].standard = True
+               elif warmup_segments[segment_idx].type == 'null' and warmup_segments[segment_idx+1].type == 'tx':
+                    warmup_segments[segment_idx].type = 'tx'
+                    warmup_segments[segment_idx+1].type = 'null'
 
-                    warmup_segments[segment_idx]['isg'] = warmup_segments[segment_idx]['duration'] - warmup_duration - warmup_gap
-                    warmup_segments[segment_idx]['duration'] = warmup_duration
+                    warmup_segments[segment_idx].isg = warmup_segments[segment_idx].duration - warmup_duration - warmup_gap
+                    warmup_segments[segment_idx].duration = warmup_duration
 
-                    warmup_segments[segment_idx+1]['duration'] += warmup_gap
-                    warmup_segments[segment_idx+1]['isg'] = 0
-                    warmup_segments[segment_idx+1]['offset'] -= (warmup_duration + warmup_gap)
+                    warmup_segments[segment_idx+1].duration += warmup_gap
+                    warmup_segments[segment_idx+1].isg = 0
+                    warmup_segments[segment_idx+1].offset -= (warmup_duration + warmup_gap)
 
      # determine if this is a 'standard' stream -- meaning it is the
      # first segment and has no ISG and no offset
      if len(warmup_segments) == 1:
           for segment in warmup_segments:
-               if segment['isg'] == segment['offset'] == 0:
-                    segment['standard'] = True
+               if segment.isg == segment.offset == 0:
+                    segment.standard = True
 
-     #myprint("warmup segments")
-     #myprint(dump_json_readable(warmup_segments))
+     myprint("warmup segments")
+     myprint(dump_json_readable(warmup_segments))
 
      return(warmup_segments)
 
@@ -545,11 +560,11 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
     segments = build_stream_segments(stream)
     if not stream['repeat_flows'] and stream['repeat']:
          for segment in segments:
-              if segment['type'] == 'tx':
+              if segment.type == 'tx':
                    new_stream = copy.deepcopy(stream)
                    new_stream['repeat'] = False
-                   new_stream['duration'] = segment['duration']
-                   new_stream['offset'] = segment['offset'] + segment['isg']
+                   new_stream['duration'] = segment.duration
+                   new_stream['offset'] = segment.offset + segment.isg
                    new_stream['isg'] = 0
                    new_stream['repeat_delay'] = None
                    new_stream['repeat_flows'] = True
@@ -729,7 +744,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                         base_stream_name = ""
                         segment_part_counter = 1
                         for segment_idx in range(0, len(measurement_segments)):
-                             if measurement_segments[segment_idx]['type'] == 'tx' and (stream_pg_id is None or stream_mode == 'latency'):
+                             if measurement_segments[segment_idx].type == 'tx' and (stream_pg_id is None or stream_mode == 'latency'):
                                   if device_pair[direction]['pg_ids'][stream_mode]['available']:
                                        stream_pg_id = device_pair[direction]['pg_ids'][stream_mode]['start_index'] + (device_pair[direction]['pg_ids'][stream_mode]['total'] - device_pair[direction]['pg_ids'][stream_mode]['available'])
                                        device_pair[direction]['pg_ids'][stream_mode]['available'] -= 1
@@ -746,7 +761,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                              dummy = True
                              flow_stats = None
                              tmp_stream_pg_id = None
-                             if measurement_segments[segment_idx]['type'] == 'tx':
+                             if measurement_segments[segment_idx].type == 'tx':
                                   dummy = False
                                   tmp_stream_pg_id = stream_pg_id
                              else:
@@ -755,10 +770,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                              myprint("\t\t\t%d: name=%s, pg_id=%s, type=%s, duration=%s, offset=%s, and isg=%s" % (segment_idx+1,
                                                                                                                    stream_name,
                                                                                                                    tmp_stream_pg_id,
-                                                                                                                   measurement_segments[segment_idx]['type'],
-                                                                                                                   commify(measurement_segments[segment_idx]['duration']),
-                                                                                                                   commify(measurement_segments[segment_idx]['offset']),
-                                                                                                                   commify(measurement_segments[segment_idx]['isg'])))
+                                                                                                                   measurement_segments[segment_idx].type,
+                                                                                                                   commify(measurement_segments[segment_idx].duration),
+                                                                                                                   commify(measurement_segments[segment_idx].offset),
+                                                                                                                   commify(measurement_segments[segment_idx].isg)))
 
                              if (len(measurement_segments) == 1) or (segment_idx == (len(measurement_segments) - 1)):
                                   next_stream_name = None
@@ -766,7 +781,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                              if segment_idx > 0:
                                   segment_auto_start = False
 
-                             stream_total_pkts = int(stream_rate * measurement_segments[segment_idx]['duration'])
+                             stream_total_pkts = int(stream_rate * measurement_segments[segment_idx].duration)
 
                              # check if the total number of packets to TX is greater than can be held in an uint32 (API limit)
                              max_uint32 = int(4294967295)
@@ -779,7 +794,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                        stream_loops_remainder = max_uint32
 
                                   substream_self_start = segment_auto_start
-                                  substream_isg = measurement_segments[segment_idx]['isg']
+                                  substream_isg = measurement_segments[segment_idx].isg
                                   for loop_idx in range(1, stream_loops+1):
                                        substream_name = "%s_part-%d" % (base_stream_name, segment_part_counter)
                                        substream_next_name = "%s_part-%d" % (base_stream_name, segment_part_counter+1)
@@ -852,16 +867,16 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                    name = stream_name,
                                                                                    next_name = next_stream_name,
                                                                                    dummy = dummy,
-                                                                                   isg = measurement_segments[segment_idx]['isg'],
+                                                                                   isg = measurement_segments[segment_idx].isg,
                                                                                    self_start = segment_auto_start,
                                                                                    packet_protocol = stream_packet['protocol'],
                                                                                    pps = stream_rate,
-                                                                                   duration = measurement_segments[segment_idx]['duration'],
-                                                                                   offset = measurement_segments[segment_idx]['offset'],
+                                                                                   duration = measurement_segments[segment_idx].duration,
+                                                                                   offset = measurement_segments[segment_idx].offset,
                                                                                    flow_count = stream_flows,
                                                                                    frame_size = stream['frame_size'],
                                                                                    packet_count = stream_total_pkts,
-                                                                                   standard = measurement_segments[segment_idx]['standard']))
+                                                                                   standard = measurement_segments[segment_idx].standard))
 
                              segment_part_counter += 1
          elif stream_type == 'teaching_warmup':
@@ -891,7 +906,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                    segment_part_counter = 1
                    for segment_idx in range(0, len(warmup_segments)):
 
-                        if warmup_segments[segment_idx]['standard']:
+                        if warmup_segments[segment_idx].standard:
                              base_stream_name = "stream-%s_mode-NA_teaching-warmup_%s_standard" % (stream_uuid, stream_packet['protocol'])
 
                              if stream['stream_id']:
@@ -901,10 +916,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
 
                              myprint("\t\t\t%d: name=%s, type=%s, duration=%s, offset=%s, isg=%s, and standard=%s" % (segment_idx+1,
                                                                                                                       stream_name,
-                                                                                                                      warmup_segments[segment_idx]['type'],
-                                                                                                                      commify(warmup_segments[segment_idx]['duration']),
-                                                                                                                      commify(warmup_segments[segment_idx]['offset']),
-                                                                                                                      commify(warmup_segments[segment_idx]['isg']),
+                                                                                                                      warmup_segments[segment_idx].type,
+                                                                                                                      commify(warmup_segments[segment_idx].duration),
+                                                                                                                      commify(warmup_segments[segment_idx].offset),
+                                                                                                                      commify(warmup_segments[segment_idx].isg),
                                                                                                                       True))
 
                              stl_streams['teaching_warmup_standard_traffic_streams'].append(stl_stream(direction = other_direction,
@@ -915,12 +930,12 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                                        name = stream_name,
                                                                                                        next_name = None,
                                                                                                        dummy = False,
-                                                                                                       isg = warmup_segments[segment_idx]['isg'],
+                                                                                                       isg = warmup_segments[segment_idx].isg,
                                                                                                        self_start = True,
                                                                                                        packet_protocol = stream_packet['protocol'],
                                                                                                        pps = stream_rate,
-                                                                                                       duration = warmup_segments[segment_idx]['duration'],
-                                                                                                       offset = warmup_segments[segment_idx]['offset'],
+                                                                                                       duration = warmup_segments[segment_idx].duration,
+                                                                                                       offset = warmup_segments[segment_idx].offset,
                                                                                                        flow_count = stream_flows,
                                                                                                        frame_size = stream['frame_size'],
                                                                                                        packet_count = stream_flows,
@@ -930,9 +945,9 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                              # since this segment is 'standard', it
                              # also needs to be treated as 'null' to
                              # properly fill the timeline
-                             warmup_segments[segment_idx]['type'] = 'null'
+                             warmup_segments[segment_idx].type = 'null'
 
-                        if len(warmup_segments) == 1 and warmup_segments[segment_idx]['type'] == 'null':
+                        if len(warmup_segments) == 1 and warmup_segments[segment_idx].type == 'null':
                              continue
 
                         base_stream_name = "stream-%s_mode-NA_teaching-warmup" % (stream_uuid)
@@ -948,9 +963,9 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
 
                         dummy = False
                         total_packets = stream_flows
-                        if warmup_segments[segment_idx]['type'] == 'null':
+                        if warmup_segments[segment_idx].type == 'null':
                              dummy = True
-                             total_packets = int(math.ceil(stream_flows * warmup_segments[segment_idx]['duration']))
+                             total_packets = int(math.ceil(stream_flows * warmup_segments[segment_idx].duration))
                              if stream_flows < stream_rate:
                                   total_packets = int(float(total_packets) / (float(stream_flows) / float(stream_rate)))
 
@@ -961,10 +976,10 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
 
                         myprint("\t\t\t%d: name=%s, type=%s, duration=%s, offset=%s, isg=%s, and standard=%s" % (segment_idx+1,
                                                                                                                  stream_name,
-                                                                                                                 warmup_segments[segment_idx]['type'],
-                                                                                                                 commify(warmup_segments[segment_idx]['duration']),
-                                                                                                                 commify(warmup_segments[segment_idx]['offset']),
-                                                                                                                 commify(warmup_segments[segment_idx]['isg']),
+                                                                                                                 warmup_segments[segment_idx].type,
+                                                                                                                 commify(warmup_segments[segment_idx].duration),
+                                                                                                                 commify(warmup_segments[segment_idx].offset),
+                                                                                                                 commify(warmup_segments[segment_idx].isg),
                                                                                                                  False))
 
                         stl_streams['teaching_warmup_traffic_streams'].append(stl_stream(direction = other_direction,
@@ -975,12 +990,12 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                          name = stream_name,
                                                                                          next_name = next_stream_name,
                                                                                          dummy = dummy,
-                                                                                         isg = warmup_segments[segment_idx]['isg'],
+                                                                                         isg = warmup_segments[segment_idx].isg,
                                                                                          self_start = segment_auto_start,
                                                                                          packet_protocol = stream_packet['protocol'],
                                                                                          pps = stream_rate,
-                                                                                         duration = warmup_segments[segment_idx]['duration'],
-                                                                                         offset = warmup_segments[segment_idx]['offset'],
+                                                                                         duration = warmup_segments[segment_idx].duration,
+                                                                                         offset = warmup_segments[segment_idx].offset,
                                                                                          flow_count = stream_flows,
                                                                                          frame_size = stream['frame_size'],
                                                                                          packet_count = total_packets,
@@ -1019,15 +1034,15 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                         next_stream_name = "%s_part-%d" % (base_stream_name, segment_part_counter+1)
 
                         dummy = True
-                        if measurement_segments[segment_idx]['type'] == 'tx':
+                        if measurement_segments[segment_idx].type == 'tx':
                              dummy = False
 
                         myprint("\t\t\t%d: name=%s, type=%s, duration=%s, offset=%s, and isg=%s" % (segment_idx+1,
                                                                                                     stream_name,
-                                                                                                    measurement_segments[segment_idx]['type'],
-                                                                                                    commify(measurement_segments[segment_idx]['duration']),
-                                                                                                    commify(measurement_segments[segment_idx]['offset']),
-                                                                                                    commify(measurement_segments[segment_idx]['isg'])))
+                                                                                                    measurement_segments[segment_idx].type,
+                                                                                                    commify(measurement_segments[segment_idx].duration),
+                                                                                                    commify(measurement_segments[segment_idx].offset),
+                                                                                                    commify(measurement_segments[segment_idx].isg)))
 
                         if (len(measurement_segments) == 1) or (segment_idx == (len(measurement_segments) - 1)):
                              next_stream_name = None
@@ -1035,7 +1050,7 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                         if segment_idx > 0:
                              segment_auto_start = False
 
-                        stream_total_pkts = int(stream_rate * measurement_segments[segment_idx]['duration'])
+                        stream_total_pkts = int(stream_rate * measurement_segments[segment_idx].duration)
 
                         stl_streams['teaching_measurement_traffic_streams'].append(stl_stream(direction = other_direction,
                                                                                               uuid = stream_uuid,
@@ -1046,19 +1061,19 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                               name = stream_name,
                                                                                               next_name = next_stream_name,
                                                                                               dummy = dummy,
-                                                                                              isg = measurement_segments[segment_idx]['isg'],
+                                                                                              isg = measurement_segments[segment_idx].isg,
                                                                                               self_start = segment_auto_start,
                                                                                               packet_protocol = stream_packet['protocol'],
                                                                                               pps = stream_rate,
-                                                                                              duration = measurement_segments[segment_idx]['duration'],
-                                                                                              offset = measurement_segments[segment_idx]['offset'],
+                                                                                              duration = measurement_segments[segment_idx].duration,
+                                                                                              offset = measurement_segments[segment_idx].offset,
                                                                                               flow_count = stream_flows,
                                                                                               frame_size = stream['frame_size'],
                                                                                               packet_count = stream_total_pkts,
                                                                                               packets_per_burst = stream_flows,
                                                                                               ibg = t_global.args.teaching_measurement_interval,
-                                                                                              intervals = (measurement_segments[segment_idx]['duration'] / (t_global.args.teaching_measurement_interval + burst_length)),
-                                                                                              standard = measurement_segments[segment_idx]['standard'],
+                                                                                              intervals = (measurement_segments[segment_idx].duration / (t_global.args.teaching_measurement_interval + burst_length)),
+                                                                                              standard = measurement_segments[segment_idx].standard,
                                                                                               teaching = True))
 
                         segment_part_counter += 1
