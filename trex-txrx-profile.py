@@ -467,8 +467,8 @@ def build_stream_segments(stream):
                remaining_time = t_global.args.runtime - segments_total_time
                segments.append(segment_object(6, 'null', remaining_time, segments_total_time))
 
-     myprint("stream segments")
-     myprint(dump_json_readable(segments))
+     #myprint("stream segments")
+     #myprint(dump_json_readable(segments))
 
      return(segments)
 
@@ -510,8 +510,8 @@ def build_measurement_segments(segments):
                if segment.isg == segment.offset == 0:
                     segment.standard = True
 
-     myprint("measurement segments")
-     myprint(dump_json_readable(measurement_segments))
+     #myprint("measurement segments")
+     #myprint(dump_json_readable(measurement_segments))
 
      return(measurement_segments)
 
@@ -546,8 +546,8 @@ def build_warmup_segments(segments, rate, flows):
                if segment.isg == segment.offset == 0:
                     segment.standard = True
 
-     myprint("warmup segments")
-     myprint(dump_json_readable(warmup_segments))
+     #myprint("warmup segments")
+     #myprint(dump_json_readable(warmup_segments))
 
      return(warmup_segments)
 
