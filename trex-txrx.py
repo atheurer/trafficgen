@@ -1,17 +1,15 @@
 from __future__ import print_function
 
 import sys, getopt
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl/examples')
-sys.path.append('/opt/trex/current/automation/trex_control_plane/stl')
+sys.path.append('/opt/trex/current/automation/trex_control_plane/interactive')
 import argparse
-import stl_path
 import string
 import datetime
 import math
 import threading
 import thread
 from decimal import *
-from trex_stl_lib.api import *
+from trex.stl.api import *
 from trex_tg_lib import *
 
 class t_global(object):
@@ -125,7 +123,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                               'frame_sizes': [],
                               'traffic_shares': [],
                               'self_starts': [],
-                              'run_time': [],
+                              'runtime': [],
                               'stream_modes': [] } }
      streams['latency'] = copy.deepcopy(streams['default'])
 
@@ -181,7 +179,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                streams['default']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                streams['default']['self_starts'].extend([True, True, True])
                streams['default']['stream_modes'].extend(["burst", "burst", "burst"])
-               streams['default']['run_time'].extend([float(t_global.args.runtime), float(t_global.args.runtime), float(t_global.args.runtime)])
+               streams['default']['runtime'].extend([float(t_global.args.runtime), float(t_global.args.runtime), float(t_global.args.runtime)])
 
                if t_global.args.measure_latency:
                     small_latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
@@ -201,7 +199,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                     streams['latency']['traffic_shares'].extend([(small_traffic_share/len(protocols)), (medium_traffic_share/len(protocols)), (large_traffic_share/len(protocols))])
                     streams['latency']['self_starts'].extend([True, True, True])
                     streams['latency']['stream_modes'].extend(["continuous", "continuous", "continuous"])
-                    streams['latency']['run_time'].extend([-1, -1, -1])
+                    streams['latency']['runtime'].extend([-1, -1, -1])
 
           elif t_global.args.frame_size == "imix" and t_global.args.stream_mode == "segmented":
                print("Support for segmented IMIX needs to be coded...")
@@ -222,7 +220,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                streams['default']['traffic_shares'].extend([1.0/len(protocols)])
                streams['default']['self_starts'].extend([True])
                streams['default']['stream_modes'].extend(["burst"])
-               streams['default']['run_time'].extend([float(t_global.args.runtime)])
+               streams['default']['runtime'].extend([float(t_global.args.runtime)])
 
                if t_global.args.measure_latency:
                     latency_stream_pg_id = device_pair[direction]['pg_ids']['latency']['start_index'] + protocols_index
@@ -238,7 +236,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                     streams['latency']['traffic_shares'].extend([1.0/len(protocols)])
                     streams['latency']['self_starts'].extend([True])
                     streams['latency']['stream_modes'].extend(["continuous"])
-                    streams['latency']['run_time'].extend([-1])
+                    streams['latency']['runtime'].extend([-1])
           elif t_global.args.stream_mode == "segmented":
                stream_types = [ "default" ]
                if t_global.args.measure_latency:
@@ -280,13 +278,13 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                          streams[streams_type_value]['traffic_shares'].extend([1.0/device_pair[direction]['pg_ids'][streams_type_value]["available"]])
                          streams[streams_type_value]['self_starts'].extend([self_start])
                          streams[streams_type_value]['stream_modes'].extend(["burst"])
-                         streams[streams_type_value]['run_time'].extend([float(t_global.args.runtime)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
+                         streams[streams_type_value]['runtime'].extend([float(t_global.args.runtime)/(device_pair[direction]['pg_ids'][streams_type_value]["available"]/len(protocols))])
 
                          counter += 1
 
      for streams_index, streams_packet_type in enumerate(streams):
-          for stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share, stream_next_stream_name, stream_self_start, stream_mode, stream_run_time in zip(streams[streams_packet_type]['protocol'], streams[streams_packet_type]['pps'], streams[streams_packet_type]['pg_ids'], streams[streams_packet_type]['names'], streams[streams_packet_type]['frame_sizes'], streams[streams_packet_type]['traffic_shares'], streams[streams_packet_type]['next_stream_names'], streams[streams_packet_type]['self_starts'], streams[streams_packet_type]['stream_modes'], streams[streams_packet_type]['run_time']):
-               myprint("Creating stream for device pair '%s' direction '%s' with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], run_time=[%f], and traffic_share=[%f]." %
+          for stream_packet_protocol, stream_pps, stream_pg_id, stream_name, stream_frame_size, stream_traffic_share, stream_next_stream_name, stream_self_start, stream_mode, stream_runtime in zip(streams[streams_packet_type]['protocol'], streams[streams_packet_type]['pps'], streams[streams_packet_type]['pg_ids'], streams[streams_packet_type]['names'], streams[streams_packet_type]['frame_sizes'], streams[streams_packet_type]['traffic_shares'], streams[streams_packet_type]['next_stream_names'], streams[streams_packet_type]['self_starts'], streams[streams_packet_type]['stream_modes'], streams[streams_packet_type]['runtime']):
+               myprint("Creating stream for device pair '%s' direction '%s' with packet_type=[%s], protocol=[%s], pps=[%f], pg_id=[%d], name=[%s], frame_size=[%d], next_stream_name=[%s], self_start=[%s], stream_mode=[%s], runtime=[%f], and traffic_share=[%f]." %
                        (device_pair['device_pair'],
                         direction,
                         streams_packet_type,
@@ -298,7 +296,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                         stream_next_stream_name,
                         stream_self_start,
                         stream_mode,
-                        stream_run_time,
+                        stream_runtime,
                         stream_traffic_share))
 
                stream_flow_stats = None
@@ -310,7 +308,7 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
 
                stream_loop = False
                if stream_mode == "burst":
-                    stream_total_pkts = int(stream_run_time * stream_pps)
+                    stream_total_pkts = int(stream_runtime * stream_pps)
 
                     # check if the total number of packets to TX is greater than can be held in an uint32 (API limit)
                     max_uint32 = int(4294967295)
@@ -742,8 +740,8 @@ def segment_monitor(connection, device_pairs, run_ports, max_loss_pct, normal_ex
                                                )
                                           )
 
-    except STLError as e:
-         myprint("Segment Monitor: STLERROR: %s" % e)
+    except TRexError as e:
+         myprint("Segment Monitor: TREXERROR: %s" % e)
 
     except StandardError as e:
          myprint("Segment Monitor: STANDARDERROR: %s" % e)
@@ -861,7 +859,7 @@ def main():
     try:
         if t_global.args.debug:
              # turn this on for some information
-             c.set_verbose("high")
+             c.set_verbose("debug")
 
         # connect to server
         myprint("Establishing connection to TRex server...")
@@ -1097,15 +1095,15 @@ def main():
                   stop_time = datetime.datetime.now()
                   total_time = stop_time - start_time
                   myprint("...teaching warmup transmission complete -- %d total second(s) elapsed" % total_time.total_seconds())
-             except STLTimeoutError as e:
+             except TRexTimeoutError as e:
                   c.stop(ports = warmup_ports)
                   stop_time = datetime.datetime.now()
                   total_time = stop_time - start_time
                   myprint("...TIMEOUT ERROR: The teaching warmup did not end on it's own correctly within the allotted time (%d seconds) -- %d total second(s) elapsed" % (warmup_timeout, total_time.total_seconds()))
                   return return_value
-             except STLError as e:
+             except TRexError as e:
                   c.stop(ports = warmup_ports)
-                  myprint("...ERROR: wait_on_traffic: STLError: %s" % e)
+                  myprint("...ERROR: wait_on_traffic: TRexError: %s" % e)
                   return return_value
 
              c.reset(ports = warmup_ports)
@@ -1173,15 +1171,15 @@ def main():
              myprint("Waiting...")
              c.wait_on_traffic(ports = run_ports, timeout = timeout_seconds)
              stop_time = datetime.datetime.now()
-        except STLTimeoutError as e:
+        except TRexTimeoutError as e:
              c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
              myprint("TIMEOUT ERROR: The test did not end on it's own correctly within the allotted time.")
              timeout = True
-        except STLError as e:
+        except TRexError as e:
              c.stop(ports = run_ports)
              stop_time = datetime.datetime.now()
-             myprint(error("wait_on_traffic: STLError: %s" % (e)))
+             myprint(error("wait_on_traffic: TRexError: %s" % (e)))
              force_quit = True
 
         # log end of test
@@ -1256,8 +1254,8 @@ def main():
 
         return_value = 0
 
-    except STLError as e:
-        myprint("STLERROR: %s" % e)
+    except TRexError as e:
+        myprint("TRexERROR: %s" % e)
 
     except (ValueError, RuntimeError) as e:
         myprint(error("%s" % (e)))

@@ -1,0 +1,20 @@
+{
+    "streams": [
+	{
+	    "flows": 1024,
+	    "frame_size": 74,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_port_flows=True, use_dst_port_flows=True, use_protocol_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "offset": 0,
+	    "duration": 20,
+	    "repeat": true,
+	    "repeat_delay": 0,
+	    "repeat_flows": false,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement"
+	    ]
+	}
+    ]
+}

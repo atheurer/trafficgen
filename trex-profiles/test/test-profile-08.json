@@ -1,0 +1,78 @@
+{
+    "streams": [
+	{
+	    "flows": 256,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"measurement"
+	    ]
+	},
+	{
+	    "flows": 256,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1500000,
+	    "frame_type": "generic",
+	    "offset": 10,
+	    "duration": 10,
+	    "repeat": true,
+	    "repeat_delay": 30,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 256,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1500000,
+	    "frame_type": "generic",
+	    "offset": 20,
+	    "duration": 10,
+	    "repeat": true,
+	    "repeat_delay": 30,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 256,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1500000,
+	    "frame_type": "generic",
+	    "offset": 30,
+	    "duration": 10,
+	    "repeat": true,
+	    "repeat_delay": 30,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	},
+	{
+	    "flows": 256,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=True, use_src_mac_flows=True, use_dst_mac_flows=True)",
+	    "rate": 1500000,
+	    "frame_type": "generic",
+	    "offset": 40,
+	    "duration": 10,
+	    "repeat": true,
+	    "repeat_delay": 30,
+	    "stream_types": [
+		"teaching_warmup",
+		"measurement",
+		"teaching_measurement"
+	    ]
+	}
+    ]
+}
