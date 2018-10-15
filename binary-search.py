@@ -1503,7 +1503,7 @@ def main():
              rate = 100.0
         else:
              rate = 9999 / ((t_global.args.frame_size) * 8 + 64 + 96.0)
-    initial_rate = rate
+    initial_rate = True
     prev_rate = 0
     prev_pass_rate = [0]
     prev_fail_rate = rate
@@ -1748,7 +1748,7 @@ def main():
 
     trial_params['trial'] = 0
 
-    minimum_rate = initial_rate * trial_params['search_granularity'] / 100
+    minimum_rate = rate * trial_params['search_granularity'] / 100
     if trial_params['min_rate'] != 0:
          minimum_rate = trial_params['min_rate']
 
@@ -1993,11 +1993,12 @@ def main():
                    prev_fail_rate = rate
                    prev_rate = rate
                    rate = next_rate
+                   initial_rate = False
                    retries = 0
               elif trial_result == "pass":
                    passed_stats = trial_stats
                    if final_validation: # no longer necessary to continue searching
-                        if initial_rate == rate:
+                        if initial_rate:
                              bs_logger("Detected requested rate is too low, doubling rate and restarting search")
 
                              final_validation = False
@@ -2009,8 +2010,7 @@ def main():
                                   do_sniff = False
                                   do_search = True
 
-                             rate = 2 * initial_rate
-                             initial_rate = rate
+                             rate = 2 * rate
                              prev_rate = 0
                              prev_pass_rate = [0]
                              prev_fail_rate = rate
@@ -2023,8 +2023,8 @@ def main():
                              do_search = True
                              next_rate = rate # since this was only the sniff test, keep the current rate
                         else:
-                             prev_pass_rate.append(rate) # add the newly passed rate to the stack of passed rates; this will become the new reference for passed rates
-                             next_rate = (prev_fail_rate + rate) / 2
+                             prev_pass_rate.append(tx_rate) # add the newly passed rate to the stack of passed rates; this will become the new reference for passed rates
+                             next_rate = (prev_fail_rate + tx_rate) / 2
                              if abs(rate - next_rate)/rate * 100 < trial_params['search_granularity']: # trigger final validation
                                   final_validation = True
                                   do_search = False
