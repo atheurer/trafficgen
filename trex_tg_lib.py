@@ -201,6 +201,8 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
               num_flows_divisor = 1000
          elif (num_flows % 1024 == 0):
               num_flows_divisor = 1024
+         else:
+             raise ValueError("When source and/or destination port flows are enabled then the per stream flow count must be less than 1000, divisible by 1000, or divisible by 1024 (not %d)." % (num_flows))
 
          if (port_src + num_flows_divisor) > port_range["end"]:
               port_start = port_range["end"] - num_flows_divisor + 1
