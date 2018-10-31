@@ -100,6 +100,12 @@ def launch_trex ():
 
     return(run_process(cmd))
 
+def kill_trex ():
+    print("launching kill-trex.sh")
+    cmd = t_global.launch_trex_args.trafficgen_dir + '/kill-trex.sh'
+
+    return(run_process(cmd))
+
 # use the device mapping to convert PCI addresses into TRex indices
 def fixup_device_notation(pci_notation):
     fields = pci_notation.split('=')
@@ -148,6 +154,8 @@ def main():
     if m:
         t_global.is_trex = True
 
+        kill_trex()
+
         if t_global.launch_trex_args.debug:
             print("launch_trex_args=[%s]" % (t_global.launch_trex_args))
             print("trex_device_mapping=[%s]\n" % (t_global.trex_device_mapping))
@@ -160,6 +168,12 @@ def main():
         print("\nbinary_search_args=[%s]\n" % (t_global.binary_search_args))
 
     ret_val = launch_binary_search()
+    if ret_val:
+        return(ret_val)
+
+    if t_global.is_trex:
+        ret_val = kill_trex()
+
     return(ret_val)
 
 
