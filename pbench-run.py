@@ -5,6 +5,7 @@ import getopt
 import argparse
 import subprocess
 import re
+import os
 
 class t_global(object):
     launch_trex_args = None
@@ -64,7 +65,7 @@ def process_options ():
     parser.add_argument('--trafficgen-dir',
                         dest = 'trafficgen_dir',
                         help = 'Directory where trafficgen is installed.',
-                        default = '/opt/trafficgen'
+                        default = os.path.dirname(__file__)
                     )
     parser.add_argument('--debug',
                         dest = 'debug',
