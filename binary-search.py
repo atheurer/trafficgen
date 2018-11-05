@@ -897,6 +897,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
     stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, stderr_exit_event))
 
+    stats['trial_start'] = time.time()
     stdout_thread.start()
     stderr_thread.start()
 
@@ -906,6 +907,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     stdout_thread.join()
     stderr_thread.join()
+    stats['trial_stop'] = time.time()
 
     signal.signal(signal.SIGINT, previous_sig_handler)
 
