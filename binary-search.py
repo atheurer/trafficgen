@@ -2093,7 +2093,15 @@ def main():
                    profile_file = "%s/%s" % (trial_params['output_dir'], trial_results['trials'][trial_result_idx]['profiler-logfile'])
                    if os.path.isfile(profile_file):
                         bs_logger("\tProcessing profiler data for trial %d from %s" % (trial_results['trials'][trial_result_idx]['trial'], profile_file))
+
                         trial_results['trials'][trial_result_idx]['profiler-data'] = trex_profiler_postprocess_file(profile_file)
+
+                        # since we have profiler data for this trial, update the trial start/stop timestamps
+                        # with the first and last values from the profiler which should be more accurate
+                        timestamps = sorted(trial_results['trials'][trial_result_idx]['profiler-data'])
+                        trial_results['trials'][trial_result_idx]['trial_start'] = timestamps[0]
+                        trial_results['trials'][trial_result_idx]['trial_stop']  = timestamps[len(timestamps) - 1]
+
                         bs_logger("\t\tProfiler data processing complete")
                    else:
                         bs_logger("\t%s" % (error("Could not open trial %d's profiler data file (%s) for processing because it does not exist" % (trial_results['trials'][trial_result_idx]['trial'], profiler_file))))
