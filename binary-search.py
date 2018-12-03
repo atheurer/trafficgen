@@ -24,6 +24,7 @@ import datetime
 class t_global(object):
      args=None;
      bs_logger_queue = deque()
+     trafficgen_dir = os.path.dirname(__file__)
 
 def bs_logger_cleanup(notifier, thread):
      notifier.set()
@@ -434,6 +435,11 @@ def process_options ():
                         default = 3.0,
                         type = float
                         )
+    parser.add_argument('--process-all-profiler-data',
+                        dest = 'process_all_profiler_data',
+                        help = 'Force processing of profiler data for all trials instead of just the last one',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -516,7 +522,7 @@ def get_trex_port_info(trial_params, dev_pairs):
                else:
                     devices[dev_pair[direction]] += 1
 
-     cmd = 'python -u trex-query.py'
+     cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-query.py'
      cmd = cmd + ' --mirrored-log'
      cmd = cmd + device_string
 
@@ -728,7 +734,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     trial_params['trial_profiler_file'] = "N/A"
 
     if trial_params['traffic_generator'] == 'moongen-txrx':
-        cmd = './MoonGen/build/MoonGen txrx.lua'
+        cmd = t_global.trafficgen_dir + '/MoonGen/build/MoonGen txrx.lua'
         cmd = cmd + ' --devices=0,1' # fix to allow different devices
         cmd = cmd + ' --measureLatency=0' # fix to allow latency measurment (whern txrx supports)
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
@@ -780,14 +786,14 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'null-txrx':
-         cmd = 'python -u null-txrx.py'
+         cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
          cmd = cmd + ' --mirrored-log'
          cmd = cmd + ' --rate=' + str(trial_params['rate'])
     elif trial_params['traffic_generator'] == 'trex-txrx-profile':
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
-        cmd = 'python -u trex-txrx-profile.py'
+        cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx-profile.py'
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --random-seed=' + str(trial_params['random_seed'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
@@ -818,7 +824,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
-        cmd = 'python -u trex-txrx.py'
+        cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx.py'
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
         cmd = cmd + ' --mirrored-log'
@@ -896,6 +902,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
     stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, stderr_exit_event))
 
+    stats['trial_start'] = time.time() * 1000
     stdout_thread.start()
     stderr_thread.start()
 
@@ -905,6 +912,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     stdout_thread.join()
     stderr_thread.join()
+    stats['trial_stop'] = time.time() * 1000
 
     signal.signal(signal.SIGINT, previous_sig_handler)
 
@@ -1595,6 +1603,7 @@ def main():
          setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
          setup_config_var("enable_trex_profiler", t_global.args.enable_trex_profiler, trial_params)
          setup_config_var("trex_profiler_interval", t_global.args.trex_profiler_interval, trial_params)
+         setup_config_var('process_all_profiler_data', t_global.args.process_all_profiler_data, trial_params)
 
          setup_config_var('traffic_direction', 'bidirectional', trial_params, config_tag = False, silent = True)
 
@@ -2073,16 +2082,29 @@ def main():
 
     finally:
          if trial_params['traffic_generator'] == 'trex-txrx-profile' and trial_params['enable_trex_profiler'] and len(trial_results['trials']):
-              # process the last trial's profiler data (only the last
-              # trial is processed to conserve space, the data for
-              # other trials can be obtained if needed)
-              bs_logger("Processing last trial's profiler data")
-              profile_file = "%s/%s" % (trial_params['output_dir'], trial_results['trials'][len(trial_results['trials']) - 1]['profiler-logfile'])
-              if os.path.isfile(profile_file):
-                   trial_results['trials'][len(trial_results['trials']) - 1]['profiler-data'] = trex_profiler_postprocess_file(profile_file)
-                   bs_logger("\tProfiler data processing complete")
-              else:
-                   bs_logger("\t%s" % (error("Could not open profiler data file %s for processing because it does not exist" % (profiler_file))))
+              bs_logger("Processing profiler data")
+              for trial_result_idx in range(0, len(trial_results['trials'])):
+                   # unless told otherwise, only the last trial's profiler data will be processed
+                   # this serves to conserve processing time and storage space in frameworks where the data will not be used
+                   if (not trial_params['process_all_profiler_data']) and (trial_result_idx != (len(trial_results['trials']) - 1)):
+                        bs_logger("\tSkipping processing of profiler data for trial %d" % (trial_results['trials'][trial_result_idx]['trial']))
+                        continue
+
+                   profile_file = "%s/%s" % (trial_params['output_dir'], trial_results['trials'][trial_result_idx]['profiler-logfile'])
+                   if os.path.isfile(profile_file):
+                        bs_logger("\tProcessing profiler data for trial %d from %s" % (trial_results['trials'][trial_result_idx]['trial'], profile_file))
+
+                        trial_results['trials'][trial_result_idx]['profiler-data'] = trex_profiler_postprocess_file(profile_file)
+
+                        # since we have profiler data for this trial, update the trial start/stop timestamps
+                        # with the first and last values from the profiler which should be more accurate
+                        timestamps = sorted(trial_results['trials'][trial_result_idx]['profiler-data'])
+                        trial_results['trials'][trial_result_idx]['trial_start'] = timestamps[0]
+                        trial_results['trials'][trial_result_idx]['trial_stop']  = timestamps[len(timestamps) - 1]
+
+                        bs_logger("\t\tProfiler data processing complete")
+                   else:
+                        bs_logger("\t%s" % (error("Could not open trial %d's profiler data file (%s) for processing because it does not exist" % (trial_results['trials'][trial_result_idx]['trial'], profiler_file))))
 
               # compress the profiler data for all trials to save
               # space (potentially a lot)
