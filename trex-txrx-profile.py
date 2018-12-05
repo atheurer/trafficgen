@@ -231,8 +231,8 @@ def generate_random_mac ():
                break
 
      return "%s:%02x:%02x" % (mac_prefix,
-                            random.randint(0, 255),
-                            random.randint(0, 255))
+                              random.randint(0, 255),
+                              random.randint(0, 255))
 
 def setup_stream_packet_values (stream):
      if stream['stream_id'] and stream['stream_id'] in t_global.variables['packet_resources']['stream_ids']:
