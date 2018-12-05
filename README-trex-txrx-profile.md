@@ -38,3 +38,5 @@ by the following parameters:
 15. repeat_delay - optional, if the stream repeats how long should it wait to start over again, defaults to the offset value
 
 16. repeat_flows - optional, if the stream repeats should it use the same flows, defaults to True, options are [True, False]
+
+17. the_packet - optional, a packet definition to use as the base packet for this stream, ie. "scapy:Ether()/IP()/TCP()/'payload'", when this option is used it overrides 'frame_type', 'protocol', and 'stream_id'.
