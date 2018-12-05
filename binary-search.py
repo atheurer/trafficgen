@@ -1426,9 +1426,9 @@ def print_stats(trial_params, stats):
           string = ""
 
           string += '[\n'
-          string += json.dumps(stats[0], indent = 4, separators=(',', ': '), sort_keys = True)
+          string += dump_json_readable(stats[0])
           string += '\n,\n'
-          string += json.dumps(stats[1], indent = 4, separators=(',', ': '), sort_keys = True)
+          string += dump_json_readable(stats[1])
           string += '\n]\n'
 
           bs_logger(string)
@@ -1439,9 +1439,9 @@ def print_stats(trial_params, stats):
           port = 0
           while port <= trial_params['max_port']:
                if port in stats:
-                    string += json.dumps(stats[port], indent = 4, separators=(',', ': '), sort_keys = True)
+                    string += dump_json_readable(stats[port])
                else:
-                    string += json.dumps(trial_params['null_stats'], indent = 4, separators=(',', ': '), sort_keys = True)
+                    string += dump_json_readable(trial_params['null_stats'])
                if port < trial_params['max_port']:
                     string += '\n,\n'
                port += 1
@@ -2130,12 +2130,12 @@ def main():
               # drain the log prior to writing out the file
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
-              print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
+              print(dump_json_readable(trial_results), file=trial_json_file)
               trial_json_file.close()
          except IOError:
               bs_logger(error("Could not open %s for writing" % (trial_json_filename)))
               bs_logger("TRIALS:")
-              bs_logger(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
+              bs_logger(dump_json_readable(trial_results))
 
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
