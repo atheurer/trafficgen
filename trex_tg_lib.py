@@ -13,7 +13,10 @@ def not_json_serializable(obj):
     try:
         return obj.to_dictionary()
     except AttributeError:
-        return(repr(obj))
+        try:
+            return "scapy:%s" % (obj.command())
+        except AttributeError:
+            return(repr(obj))
 
 def dump_json_readable(obj):
      return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True, default = not_json_serializable)
