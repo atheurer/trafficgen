@@ -11,10 +11,10 @@ def error (string):
 
 def not_json_serializable(obj):
     try:
-        return obj.to_dictionary()
+        return(obj.to_dictionary())
     except AttributeError:
         try:
-            return "scapy:%s" % (obj.command())
+            return("scapy:%s" % (obj.command()))
         except AttributeError:
             return(repr(obj))
 
