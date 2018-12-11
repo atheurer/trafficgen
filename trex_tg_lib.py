@@ -338,9 +338,9 @@ def load_user_pkt (the_packet, size, mac_src, mac_dst, ip_src, ip_dst, port_src,
                 layer.sport = port_src
                 layer.dport = port_dst
             elif layer.name == "IP":
-                layer.src = ip_src
-                layer.dst = ip_dst
-            elif layer.name == "Ether":
+                layer.src = str(ip_to_int(ip_src))
+                layer.dst = str(ip_to_int(ip_dst))
+            elif layer.name == "Ethernet":
                 layer.src = mac_src
                 layer.dst = mac_dst
 
@@ -523,14 +523,19 @@ def validate_profile_stream(stream, rate_modifier):
             # convert from unicode to string
             stream[key] = str(stream[key])
 
-            fields = stream[key].split(':')
+            fields = stream[key].split(':', 1)
             if len(fields) == 2:
                 if fields[0] == 'function':
-                    stream[key] = eval(fields[1])
+                    try:
+                        stream[key] = eval(fields[1])
+                    except:
+                        raise ValueError("Failed to eval '%s' for '%s'" % (fields[1], key))
                 elif (key == 'the_packet') and (fields[0] == 'scapy'):
-                    stream[key] = eval(fields[1])
-                    #stream[key].show2()
-                    #print("")
+                    try:
+                        stream[key] = eval(fields[1])
+                        #print("validate_profile_stream:the_packet: scapy:%s\n" % (stream[key].command()))
+                    except:
+                        raise ValueError("Failed to eval '%s' for '%s'" % (fields[1], key))
 
     if not 'stream_types' in stream or len(stream['stream_types']) == 0:
         stream['stream_types'] = [ 'measurement' ]
