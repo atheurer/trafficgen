@@ -485,7 +485,7 @@ def create_profile_stream (flows = 0,
                            latency = True,
                            latency_only = False,
                            protocol = 'UDP',
-                           traffic_direction = 'bidirectiona',
+                           traffic_direction = 'bidirectional',
                            stream_id = None ):
     stream = { 'flows': flows,
                'frame_size': frame_size,
