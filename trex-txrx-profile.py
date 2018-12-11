@@ -237,38 +237,37 @@ def generate_random_mac ():
 def setup_stream_packet_values (stream):
      if not stream['the_packet'] is None:
           if not 'packet_values' in stream:
-               stream['packet_values'] = { 'macs': { 'A': stream['the_packet'][Ether].src,
-                                                     'B': stream['the_packet'][Ether].dst } }
+               stream['packet_values'] = { 'vlan': { 'A': t_global.variables['packet_resources']['vlan'],
+                                                     'B': t_global.variables['packet_resources']['vlan'] },
+                                           'ports': { 'A': { 'src': t_global.variables['packet_resources']['ports']['src'],
+                                                             'dst': t_global.variables['packet_resources']['ports']['dst'] },
+                                                      'B': { 'src': t_global.variables['packet_resources']['ports']['src'],
+                                                             'dst': t_global.variables['packet_resources']['ports']['dst'] } } }
 
-               if 'Dot1Q' in stream['the_packet'][Ether]:
-                    tmp_packet = stream['the_packet'][Ether][Dot1Q]
+               layer_counter=0
+               while True:
+                    layer = stream['the_packet'].getlayer(layer_counter)
+                    if not layer is None:
+                         #myprint("Layer %d is '%s'" % (layer_counter, layer.name))
 
-                    stream['packet_values']['vlan'] = { 'A': tmp_packet.vlan,
-                                                        'B': tmp_packet.vlan }
-               else:
-                    tmp_packet = stream['the_packet'][Ether]
+                         if layer.name == 'Ethernet':
+                              stream['packet_values']['macs'] = { 'A': layer.src,
+                                                                  'B': layer.dst }
+                         elif layer.name == 'Dot1Q':
+                              stream['packet_values']['vlan'] = { 'A': layer.vlan,
+                                                                  'B': layer.vlan }
+                         elif layer.name == 'IP':
+                              stream['packet_values']['ips'] = { 'A': layer.src,
+                                                                 'B': layer.dst }
+                         elif layer.name == 'TCP' or layer.name == 'UDP':
+                              stream['packet_values']['ports'] = { 'A': { 'src': layer.sport,
+                                                                          'dst': layer.dport },
+                                                                   'B': { 'src': layer.sport,
+                                                                          'dst': layer.dport } }
+                    else:
+                         break
+                    layer_counter += 1
 
-                    stream['packet_values']['vlan'] = { 'A': t_global.variables['packet_resources']['vlan'],
-                                                        'B': t_global.variables['packet_resources']['vlan'] }
-
-               stream['packet_values']['ips'] = { 'A': tmp_packet['IP'].src,
-                                                  'B': tmp_packet['IP'].dst }
-
-               if 'TCP' in tmp_packet['IP']:
-                    stream['packet_values']['ports'] = { 'A': { 'src': tmp_packet['IP']['TCP'].sport,
-                                                                'dst': tmp_packet['IP']['TCP'].dport },
-                                                         'B': { 'src': tmp_packet['IP']['TCP'].dport,
-                                                                'dst': tmp_packet['IP']['TCP'].sport } }
-               elif 'UDP' in tmp_packet['IP']:
-                    stream['packet_values']['ports'] = { 'A': { 'src': tmp_packet['IP']['UDP'].sport,
-                                                                'dst': tmp_packet['IP']['UDP'].dport },
-                                                         'B': { 'src': tmp_packet['IP']['UDP'].dport,
-                                                                'dst': tmp_packet['IP']['UDP'].sport } }
-               else:
-                    stream['packet_values']['ports'] = { 'A': { 'src': t_global.variables['packet_resources']['ports']['src'],
-                                                                'dst': t_global.variables['packet_resources']['ports']['dst'] },
-                                                         'B': { 'src': t_global.variables['packet_resources']['ports']['src'],
-                                                                'dst': t_global.variables['packet_resources']['ports']['dst'] } }
           if stream['stream_id']:
                t_global.variables['packet_resources']['stream_ids'][stream['stream_id']] = stream['packet_values']
      else:
