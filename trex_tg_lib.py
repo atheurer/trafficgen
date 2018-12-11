@@ -118,7 +118,7 @@ def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods,
     pad = max(0, size - len(the_packet)) * 'x'
     the_packet = the_packet/pad
 
-    #the_packet.show2()
+    #print("create_icmp_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst']):
          vm = vm + [STLVmFixIpv4(offset = "IP")]
@@ -178,7 +178,7 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
 
     the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_src, psrc = str(ip_src['start']), hwdst = arp_mac_target, pdst = str(ip_src['start']))
 
-    #the_packet.show2()
+    #print("create_garp_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['mac']['src']):
          if enable_flow_cache:
@@ -300,8 +300,7 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
     pad = max(0, size-len(base)) * 'x'
 
     the_packet = base/pad
-    #the_packet.show2()
-    #print("")
+    #print("create_generic_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
          if packet_protocol == "UDP":
@@ -442,8 +441,7 @@ def load_user_pkt (the_packet, size, mac_src, mac_dst, ip_src, ip_dst, port_src,
         pad = max(0, size-len(the_packet)) * 'x'
         the_packet = the_packet/pad
 
-    #the_packet.show2()
-    #print("")
+    #print("load_user_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
         if packet_protocol == "UDP":
