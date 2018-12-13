@@ -17,7 +17,7 @@ by the following parameters:
 
 5. frame_type - optional, type of frames to send, defaults to 'generic', options are: ['generic', 'icmp', 'garp']
 
-6. stream_types - optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement']
+6. stream_types - optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement', 'dos' ]
 
 7. latency - optional, should latency frames be sent for this stream (latency frames only apply to measurement streams), defaults to True, options are: [True, False]
 

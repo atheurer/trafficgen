@@ -541,7 +541,7 @@ def validate_profile_stream(stream, rate_modifier):
         stream['stream_types'] = [ 'measurement' ]
     else:
         for stream_type in stream['stream_types']:
-            if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement' ]:
+            if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement', 'dos' ]:
                 raise ValueError("You must specify a valid stream type (not '%s')" % (stream_type))
 
     if not 'frame_type' in stream:

@@ -326,7 +326,8 @@ class stl_stream:
                   ibg = 0.0,
                   intervals = 0,
                   standard = False,
-                  teaching = False):
+                  teaching = False,
+                  stream_type = ''):
           self.direction = direction
           self.uuid = uuid
           self.mode_uuid = mode_uuid
@@ -354,6 +355,7 @@ class stl_stream:
           self.intervals = intervals
           self.standard = standard
           self.teaching = teaching
+          self.stream_type = stream_type
 
      def to_dictionary(self):
           return({ 'direction': self.direction,
@@ -382,7 +384,8 @@ class stl_stream:
                    'ibg': self.ibg,
                    'intervals': self.intervals,
                    'standard': self.standard,
-                   'teaching': self.teaching })
+                   'teaching': self.teaching,
+                   'stream_type': self.stream_type })
 
      def create_stream(self):
           stream_control = None
@@ -430,6 +433,7 @@ class stl_stream:
                device_pair[self.direction]['traffic_profile'][self.flow_stats_type]['flows'].append(self.flow_count)
                device_pair[self.direction]['traffic_profile'][self.flow_stats_type]['offset'].append(self.offset)
                device_pair[self.direction]['traffic_profile'][self.flow_stats_type]['isg'].append(self.isg)
+               device_pair[self.direction]['traffic_profile'][self.flow_stats_type]['traffic_type'].append(self.stream_type)
 
           return
 
@@ -774,10 +778,13 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
     stream_uuid = get_uuid()
 
     for stream_type in stream['stream_types']:
-         if stream_type != 'measurement' and stream_type != 'teaching_warmup' and stream_type != 'teaching_measurement':
+         if stream_type != 'measurement' and stream_type != 'teaching_warmup' and stream_type != 'teaching_measurement' and stream_type != 'dos':
               raise ValueError("Invalid stream_type: %s" % (stream_type))
 
-         if stream_type == 'measurement':
+         # 'measurement' and 'dos' (Denial-of-Service) packets are
+         # exactly the same -- except we don't expect to get any 'dos'
+         # packets back because they should be filtered by the DUT
+         if stream_type == 'measurement' or stream_type == 'dos':
               for stream_mode in stream_modes:
                    # generate a uuid to represent this measurement stream's mode
                    stream_mode_uuid = get_uuid()
@@ -797,13 +804,14 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                         stream_pg_id = None
 
                         myprint("")
-                        myprint("\tMeasurement stream for '%s' with uuid=%s, mode_uuid=%s, flows=%s, frame size=%s, rate=%s, and mode=%s" % (device_pair[direction]['id_string'],
-                                                                                                                                             stream_uuid,
-                                                                                                                                             stream_mode_uuid,
-                                                                                                                                             commify(stream_flows),
-                                                                                                                                             commify(stream['frame_size']),
-                                                                                                                                             commify(stream_rate),
-                                                                                                                                             stream_mode))
+                        myprint("\t'%s' stream for '%s' with uuid=%s, mode_uuid=%s, flows=%s, frame size=%s, rate=%s, and mode=%s" % (stream_type,
+                                                                                                                                      device_pair[direction]['id_string'],
+                                                                                                                                      stream_uuid,
+                                                                                                                                      stream_mode_uuid,
+                                                                                                                                      commify(stream_flows),
+                                                                                                                                      commify(stream['frame_size']),
+                                                                                                                                      commify(stream_rate),
+                        stream_mode))
                         myprint("\t\tSegments:")
 
                         segment_auto_start = True
@@ -887,7 +895,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                         frame_size = stream['frame_size'],
                                                                                         packet_count = max_uint32,
                                                                                         substream = True,
-                                                                                        standard = False))
+                                                                                        standard = False,
+                                                                                        stream_type = stream_type))
 
                                        substream_self_start = False
                                        substream_isg = 0.0
@@ -919,7 +928,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                    frame_size = stream['frame_size'],
                                                                                    packet_count = stream_loop_remainder,
                                                                                    substream = True,
-                                                                                   standard = False))
+                                                                                   standard = False,
+                                                                                   stream_type = stream_type))
                              else:
                                   stl_streams['traffic_streams'].append(stl_stream(direction = direction,
                                                                                    uuid = stream_uuid,
@@ -942,7 +952,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                    flow_count = stream_flows,
                                                                                    frame_size = stream['frame_size'],
                                                                                    packet_count = stream_total_pkts,
-                                                                                   standard = measurement_segments[segment_idx].standard))
+                                                                                   standard = measurement_segments[segment_idx].standard,
+                                                                                   stream_type = stream_type))
 
                              segment_part_counter += 1
          elif stream_type == 'teaching_warmup':
@@ -1006,7 +1017,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                                        frame_size = stream['frame_size'],
                                                                                                        packet_count = stream_flows,
                                                                                                        standard = True,
-                                                                                                       teaching = True))
+                                                                                                       teaching = True,
+                                                                                                       stream_type = stream_type))
 
                              # since this segment is 'standard', it
                              # also needs to be treated as 'null' to
@@ -1066,7 +1078,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                          frame_size = stream['frame_size'],
                                                                                          packet_count = total_packets,
                                                                                          standard = False,
-                                                                                         teaching = True))
+                                                                                         teaching = True,
+                                                                                         stream_type = stream_type))
 
                         segment_part_counter += 1
          elif stream_type == 'teaching_measurement':
@@ -1140,7 +1153,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                                                                                               ibg = t_global.args.teaching_measurement_interval,
                                                                                               intervals = (measurement_segments[segment_idx].duration / (t_global.args.teaching_measurement_interval + burst_length)),
                                                                                               standard = measurement_segments[segment_idx].standard,
-                                                                                              teaching = True))
+                                                                                              teaching = True,
+                                                                                              stream_type = stream_type))
 
                         segment_part_counter += 1
 
@@ -1179,7 +1193,8 @@ def main():
                               'stream_modes': [],
                               'flows': [],
                               'offset': [],
-                              'isg': [] }
+                              'isg': [],
+                              'traffic_type': [] }
 
     claimed_device_pairs = []
     for device_pair in t_global.args.device_pairs.split(','):
