@@ -1884,7 +1884,7 @@ def main():
 
                    if 'dos_rx_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
-                        bs_logger("(trial failed requirement, individual DoS stream RX packets received, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[device_pair['rx']]['dos_rx_error']))
+                        bs_logger("(trial failed requirement, individual DoS stream RX packets received, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['dos_rx_error']))
 
                    if t_global.args.traffic_generator != 'null-txrx' and trial_stats[dev_pair['tx']]['tx_active']:
                         requirement_msg = "passed"
