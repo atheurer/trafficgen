@@ -1356,9 +1356,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                                      if traffic_type == 'measurement':
                                                           if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
                                                                stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
-                                                     elif traffic_type == 'dos':
+                                                     elif traffic_type == 'ddos':
                                                           if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) != 100.0:
-                                                               stats_error_append_pg_id(stats[device_pair['rx']], 'dos_rx', pg_id)
+                                                               stats_error_append_pg_id(stats[device_pair['rx']], 'ddos_rx', pg_id)
 
                             if 'bits_per_byte' in tmp_stats[device_pair['tx']]:
                                  stats[device_pair['tx']]['tx_active'] = True
@@ -1882,9 +1882,9 @@ def main():
                                   trial_result = 'fail'
                              bs_logger("(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(t_global.args.max_loss_pct), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct']), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets'])))
 
-                   if 'dos_rx_error' in trial_stats[dev_pair['rx']]:
+                   if 'ddos_rx_error' in trial_stats[dev_pair['rx']]:
                         trial_result = 'fail'
-                        bs_logger("(trial failed requirement, individual DoS stream RX packets received, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['dos_rx_error']))
+                        bs_logger("(trial failed requirement, individual DDoS stream RX packets received, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['ddos_rx_error']))
 
                    if t_global.args.traffic_generator != 'null-txrx' and trial_stats[dev_pair['tx']]['tx_active']:
                         requirement_msg = "passed"

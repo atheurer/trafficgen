@@ -19,7 +19,7 @@
 	    "rate": 9000000,
 	    "frame_type": "generic",
 	    "stream_types": [
-		"dos"
+		"ddos"
 	    ],
 	    "stream_id": "bad",
 	    "the_packet": "scapy:Ether(src='00:16:3e:4b:23:8d', dst='00:16:3e:c4:b5:e2')/IP(src='10.4.0.0', dst='10.5.0.0')/TCP(sport=32768, dport=49152)/'payload-payload-payload-payload-payload-payload-payload-payload-payloa'"

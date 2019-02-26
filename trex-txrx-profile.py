@@ -778,13 +778,14 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
     stream_uuid = get_uuid()
 
     for stream_type in stream['stream_types']:
-         if stream_type != 'measurement' and stream_type != 'teaching_warmup' and stream_type != 'teaching_measurement' and stream_type != 'dos':
+         if stream_type != 'measurement' and stream_type != 'teaching_warmup' and stream_type != 'teaching_measurement' and stream_type != 'ddos':
               raise ValueError("Invalid stream_type: %s" % (stream_type))
 
-         # 'measurement' and 'dos' (Denial-of-Service) packets are
-         # exactly the same -- except we don't expect to get any 'dos'
-         # packets back because they should be filtered by the DUT
-         if stream_type == 'measurement' or stream_type == 'dos':
+         # 'measurement' and 'ddos' (Distributed Denial-of-Service)
+         # packets are exactly the same -- except we don't expect to
+         # get any 'ddos' packets back because they should be filtered
+         # by the DUT
+         if stream_type == 'measurement' or stream_type == 'ddos':
               for stream_mode in stream_modes:
                    # generate a uuid to represent this measurement stream's mode
                    stream_mode_uuid = get_uuid()
