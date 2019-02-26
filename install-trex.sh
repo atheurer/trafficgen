@@ -2,7 +2,7 @@
 
 base_dir="/opt/trex"
 tmp_dir="/tmp"
-trex_ver="v2.46"
+trex_ver="v2.53"
 
 opts=$(getopt -q -o c: --longoptions "tmp-dir:,base-dir:,version:" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then

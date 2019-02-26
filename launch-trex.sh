@@ -173,6 +173,23 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 
 	yaml_file="${tmp_dir}/trex_cfg.yaml"
 
+	interface_state_cmd="./dpdk_setup_ports.py -t"
+	echo "interface status: ${interface_state_cmd}"
+	${interface_state_cmd}
+
+	if [ "${use_l2}" == "y" ]; then
+	    # newer versions of trex require the interface to be bound
+	    # to a Linux driver in order to determine it's MAC address
+	    # which is required for L2 mode
+
+	    driver_reset_cmd="./dpdk_setup_ports.py -L"
+	    echo "resetting interface driver state with: ${driver_reset_cmd}"
+	    ${driver_reset_cmd}
+
+	    echo "interface status: ${interface_state_cmd}"
+	    ${interface_state_cmd}
+	fi
+
 	trex_config_cmd="./dpdk_setup_ports.py -c `echo ${devices} | sed -e s/,/" "/g` --cores-include ${cpu_list} -o ${yaml_file} ${trex_config_args}"
 	echo "configuring trex with: ${trex_config_cmd}"
 	${trex_config_cmd}
