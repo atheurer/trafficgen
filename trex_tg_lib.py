@@ -11,9 +11,12 @@ def error (string):
 
 def not_json_serializable(obj):
     try:
-        return obj.to_dictionary()
+        return(obj.to_dictionary())
     except AttributeError:
-        return(repr(obj))
+        try:
+            return("scapy:%s" % (obj.command()))
+        except AttributeError:
+            return(repr(obj))
 
 def dump_json_readable(obj):
      return json.dumps(obj, indent = 4, separators=(',', ': '), sort_keys = True, default = not_json_serializable)
@@ -115,7 +118,7 @@ def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods,
     pad = max(0, size - len(the_packet)) * 'x'
     the_packet = the_packet/pad
 
-    #the_packet.show2()
+    #print("create_icmp_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst']):
          vm = vm + [STLVmFixIpv4(offset = "IP")]
@@ -175,7 +178,7 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
 
     the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_src, psrc = str(ip_src['start']), hwdst = arp_mac_target, pdst = str(ip_src['start']))
 
-    #the_packet.show2()
+    #print("create_garp_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['mac']['src']):
          if enable_flow_cache:
@@ -297,8 +300,7 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
     pad = max(0, size-len(base)) * 'x'
 
     the_packet = base/pad
-    #the_packet.show2()
-    #print("")
+    #print("create_generic_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
          if packet_protocol == "UDP":
@@ -312,6 +314,147 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
 
          return STLPktBuilder(pkt = the_packet,
                               vm  = vm)
+    else:
+         return STLPktBuilder(pkt = the_packet)
+
+# load a user defined packet
+def load_user_pkt (the_packet, size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_dst, flow_mods, num_flows, enable_flow_cache, flow_offset = 0, old_mac_flow = True):
+    # adjust packet size due to CRC
+    size = int(size)
+    size -= 4
+
+    packet_protocol = "UDP"
+
+    layer_counter = 0
+    while True:
+        layer = the_packet.getlayer(layer_counter)
+        if not layer is None:
+            #print("Layer %d is '%s'" % (layer_counter, layer.name))
+            #print(dump_json_readable(layer))
+
+            if layer.name == "TCP" or layer.name == "UDP":
+                packet_protocol = layer.name
+
+                layer.sport = port_src
+                layer.dport = port_dst
+            elif layer.name == "IP":
+                layer.src = str(ip_to_int(ip_src))
+                layer.dst = str(ip_to_int(ip_dst))
+            elif layer.name == "Ethernet":
+                layer.src = mac_src
+                layer.dst = mac_dst
+
+            #print(dump_json_readable(layer))
+        else:
+            break
+        layer_counter += 1
+
+    port_range = { "start": 0, "end": 65535 }
+    if num_flows > 1 and (flow_mods['port']['src'] or flow_mods['port']['dst']):
+         if num_flows < 1000:
+              num_flows_divisor = num_flows
+         elif (num_flows % 1000) == 0:
+              num_flows_divisor = 1000
+         elif (num_flows % 1024 == 0):
+              num_flows_divisor = 1024
+         else:
+             raise ValueError("When source and/or destination port flows are enabled then the per stream flow count must be less than 1000, divisible by 1000, or divisible by 1024 (not %d)." % (num_flows))
+
+         if (port_src + num_flows_divisor) > port_range["end"]:
+              port_start = port_range["end"] - num_flows_divisor + 1
+              port_end = port_range["end"]
+         else:
+              port_start = port_src
+              port_end = port_src + num_flows_divisor - 1
+
+         port_src = { "start": port_start, "end": port_end, "init": port_src }
+
+         if (port_dst + num_flows_divisor) > port_range["end"]:
+              port_start = port_range["end"] - num_flows_divisor + 1
+              port_end = port_range["end"]
+         else:
+              port_start = port_dst
+              port_end = port_dst + num_flows_divisor - 1
+
+         port_dst = { "start": port_start, "end": port_end, "init": port_dst }
+    else:
+         port_src = { "init": port_src }
+         port_dst = { "init": port_dst }
+
+    tmp_num_flows = num_flows - 1
+
+    ip_src = { "start": ip_to_int(ip_src) + flow_offset, "end": ip_to_int(ip_src) + tmp_num_flows + flow_offset }
+    ip_dst = { "start": ip_to_int(ip_dst) + flow_offset, "end": ip_to_int(ip_dst) + tmp_num_flows + flow_offset }
+
+    vm = []
+    if flow_mods['ip']['src'] and tmp_num_flows:
+        vm = vm + [
+            STLVmFlowVar(name="ip_src",min_value=ip_src['start'],max_value=ip_src['end'],size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="ip_src",pkt_offset= "IP.src")
+        ]
+
+    if flow_mods['ip']['dst'] and tmp_num_flows:
+        vm = vm + [
+            STLVmFlowVar(name="ip_dst",min_value=ip_dst['start'],max_value=ip_dst['end'],size=4,op="inc"),
+            STLVmWrFlowVar(fv_name="ip_dst",pkt_offset= "IP.dst")
+        ]
+
+    if flow_mods['mac']['src'] and tmp_num_flows:
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op="inc"),
+                   STLVmWrFlowVar(fv_name = "mac_src", pkt_offset = 7)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_src", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op="inc"),
+                   STLVmWrMaskFlowVar(fv_name = "mac_src", pkt_offset = "Ether.src", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
+
+    if flow_mods['mac']['dst'] and tmp_num_flows:
+         if old_mac_flow:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_dst", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 4, op = "inc"),
+                   STLVmWrFlowVar(fv_name = "mac_dst", pkt_offset = 1)
+              ]
+         else:
+              vm = vm + [
+                   STLVmFlowVar(name = "mac_dst", min_value = 0 + flow_offset, max_value = tmp_num_flows + flow_offset, size = 2, op = "inc"),
+                   STLVmWrMaskFlowVar(fv_name = "mac_dst", pkt_offset = "Ether.dst", offset_fixup = 4, mask = 0xFFFF, pkt_cast_size = 2)
+              ]
+
+    if flow_mods['port']['src'] and tmp_num_flows:
+        offset = "%s.sport" % (packet_protocol)
+        vm = vm + [
+            STLVmFlowVar(name = "port_src", init_value = port_src['init'], min_value = port_src['start'], max_value = port_src['end'], size = 2, op = "inc"),
+            STLVmWrFlowVar(fv_name = "port_src", pkt_offset = offset)
+        ]
+
+    if flow_mods['port']['dst'] and tmp_num_flows:
+        offset = "%s.dport" % (packet_protocol)
+        vm = vm + [
+            STLVmFlowVar(name = "port_dst", init_value = port_dst['init'], min_value = port_dst['start'], max_value = port_dst['end'], size = 2, op = "inc"),
+            STLVmWrFlowVar(fv_name = "port_dst", pkt_offset = offset)
+        ]
+
+    if len(the_packet) < size:
+        pad = max(0, size-len(the_packet)) * 'x'
+        the_packet = the_packet/pad
+
+    #print("load_user_pkt: scapy:%s\n" % (the_packet.command()))
+
+    if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
+        if packet_protocol == "UDP":
+            vm = vm + [ STLVmFixChecksumHw(l3_offset = "IP", l4_offset = "UDP", l4_type = CTRexVmInsFixHwCs.L4_TYPE_UDP) ]
+        elif packet_protocol == "TCP":
+            vm = vm + [ STLVmFixChecksumHw(l3_offset = "IP", l4_offset = "TCP", l4_type = CTRexVmInsFixHwCs.L4_TYPE_TCP) ]
+
+        if enable_flow_cache:
+            vm = STLScVmRaw(list_of_commands = vm,
+                            cache_size = num_flows)
+
+        return STLPktBuilder(pkt = the_packet,
+                             vm  = vm)
     else:
          return STLPktBuilder(pkt = the_packet)
 
@@ -342,7 +485,7 @@ def create_profile_stream (flows = 0,
                            latency = True,
                            latency_only = False,
                            protocol = 'UDP',
-                           traffic_direction = 'bidirectiona',
+                           traffic_direction = 'bidirectional',
                            stream_id = None ):
     stream = { 'flows': flows,
                'frame_size': frame_size,
@@ -373,23 +516,32 @@ def create_profile_stream (flows = 0,
 
 def validate_profile_stream(stream, rate_modifier):
     for key in stream:
-        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay', 'repeat_flows' ]:
+        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay', 'repeat_flows', 'the_packet' ]:
             raise ValueError("Invalid property found (%s)" % (key))
 
         if isinstance(stream[key], basestring):
             # convert from unicode to string
             stream[key] = str(stream[key])
 
-            fields = stream[key].split(':')
+            fields = stream[key].split(':', 1)
             if len(fields) == 2:
                 if fields[0] == 'function':
-                    stream[key] = eval(fields[1])
+                    try:
+                        stream[key] = eval(fields[1])
+                    except:
+                        raise ValueError("Failed to eval '%s' for '%s'" % (fields[1], key))
+                elif (key == 'the_packet') and (fields[0] == 'scapy'):
+                    try:
+                        stream[key] = eval(fields[1])
+                        #print("validate_profile_stream:the_packet: scapy:%s\n" % (stream[key].command()))
+                    except:
+                        raise ValueError("Failed to eval '%s' for '%s'" % (fields[1], key))
 
     if not 'stream_types' in stream or len(stream['stream_types']) == 0:
         stream['stream_types'] = [ 'measurement' ]
     else:
         for stream_type in stream['stream_types']:
-            if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement' ]:
+            if not stream_type in [ 'measurement', 'teaching_warmup', 'teaching_measurement', 'ddos' ]:
                 raise ValueError("You must specify a valid stream type (not '%s')" % (stream_type))
 
     if not 'frame_type' in stream:
@@ -451,6 +603,9 @@ def validate_profile_stream(stream, rate_modifier):
     if not 'stream_id' in stream:
         stream['stream_id'] = False
 
+    if not 'the_packet' in stream:
+        stream['the_packet'] = None
+
     max_flows = 256*256
     if stream['flows'] > max_flows:
         raise ValueError("You must specify <= %d flows per stream (not %d)" % (max_flows, stream['flows']))
@@ -490,10 +645,11 @@ def load_traffic_profile (traffic_profile = "", rate_modifier = 100.0, log_funct
              stream['profile_id'] = stream_counter
 
              # flows are "duplicated" across protocols when protocol
-             # flows are enabled so flows need to be cut in half. In
+             # flows are enabled so flows need to be cut in half --
+             # except when 'the_packet' invalidates 'protocol'. In
              # case of an uneven flow count then round up to ensure an
              # even number of flows for both protocols.
-             if stream['flow_mods']['protocol']:
+             if stream['flow_mods']['protocol'] and stream['the_packet'] is None:
                  stream['flows'] = math.ceil(stream['flows'] / 2.0)
 
              stream_counter += 1

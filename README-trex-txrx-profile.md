@@ -17,7 +17,7 @@ by the following parameters:
 
 5. frame_type - optional, type of frames to send, defaults to 'generic', options are: ['generic', 'icmp', 'garp']
 
-6. stream_types - optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement']
+6. stream_types - optional, array of stream types, defaults to ['measurement'], options are: ['measurement', 'teaching_warmup', 'teaching_measurement', 'ddos' ]
 
 7. latency - optional, should latency frames be sent for this stream (latency frames only apply to measurement streams), defaults to True, options are: [True, False]
 
@@ -38,3 +38,5 @@ by the following parameters:
 15. repeat_delay - optional, if the stream repeats how long should it wait to start over again, defaults to the offset value
 
 16. repeat_flows - optional, if the stream repeats should it use the same flows, defaults to True, options are [True, False]
+
+17. the_packet - optional, a packet definition to use as the base packet for this stream, ie. "scapy:Ether()/IP()/TCP()/'payload'", when this option is used it overrides 'frame_type', 'protocol', and 'stream_id'.

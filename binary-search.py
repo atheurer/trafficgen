@@ -1287,7 +1287,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                             for stream_type in stream_types:
                                  if device_pair['tx'] in streams and stream_type in streams[device_pair['tx']]:
-                                      for pg_id, frame_size in zip(streams[device_pair['tx']][stream_type]['pg_ids'], streams[device_pair['tx']][stream_type]['frame_sizes']):
+                                      for pg_id, frame_size, traffic_type in zip(streams[device_pair['tx']][stream_type]['pg_ids'], streams[device_pair['tx']][stream_type]['frame_sizes'], streams[device_pair['tx']][stream_type]['traffic_type']):
                                            if pg_id in examined_pg_ids:
                                                 continue
                                            else:
@@ -1301,25 +1301,29 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                                            if str(device_pair['tx']) in results['flow_stats'][str(pg_id)]['tx_pkts']:
                                                 stats[device_pair['tx']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                                stats['directional'][device_pair['direction']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                                stats['directional'][device_pair['direction']]['active'] = True
+                                                if traffic_type == 'measurement':
+                                                     stats['directional'][device_pair['direction']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
+                                                     stats['directional'][device_pair['direction']]['active'] = True
 
                                                 if stream_type == "latency":
                                                      stats[device_pair['tx']]['tx_latency_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                                     stats['directional'][device_pair['direction']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                                     stats['directional'][device_pair['direction']]['active'] = True
+                                                     if traffic_type == 'measurement':
+                                                          stats['directional'][device_pair['direction']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
+                                                          stats['directional'][device_pair['direction']]['active'] = True
                                            else:
                                                 stats_error_append_pg_id(stats[device_pair['tx']], 'tx_missing', pg_id)
 
                                            if str(device_pair['rx']) in results["flow_stats"][str(pg_id)]["rx_pkts"]:
                                                 stats[device_pair['rx']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                                stats['directional'][device_pair['direction']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                                stats['directional'][device_pair['direction']]['active'] = True
+                                                if traffic_type == 'measurement':
+                                                     stats['directional'][device_pair['direction']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
+                                                     stats['directional'][device_pair['direction']]['active'] = True
 
                                                 if stream_type == "latency":
                                                      stats[device_pair['rx']]['rx_latency_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                                     stats['directional'][device_pair['direction']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                                     stats['directional'][device_pair['direction']]['active'] = True
+                                                     if traffic_type == 'measurement':
+                                                          stats['directional'][device_pair['direction']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
+                                                          stats['directional'][device_pair['direction']]['active'] = True
 
                                                      stats[device_pair['rx']]['rx_latency_average'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * float(results["latency"][str(pg_id)]["latency"]["average"])
 
@@ -1348,8 +1352,13 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                            if results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']] != "N/A":
                                                 if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) < 0:
                                                      stats_error_append_pg_id(stats[device_pair['rx']], 'rx_negative_loss', pg_id)
-                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
-                                                     stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
+                                                else:
+                                                     if traffic_type == 'measurement':
+                                                          if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
+                                                               stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
+                                                     elif traffic_type == 'ddos':
+                                                          if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) != 100.0:
+                                                               stats_error_append_pg_id(stats[device_pair['rx']], 'ddos_rx', pg_id)
 
                             if 'bits_per_byte' in tmp_stats[device_pair['tx']]:
                                  stats[device_pair['tx']]['tx_active'] = True
@@ -1426,9 +1435,9 @@ def print_stats(trial_params, stats):
           string = ""
 
           string += '[\n'
-          string += json.dumps(stats[0], indent = 4, separators=(',', ': '), sort_keys = True)
+          string += dump_json_readable(stats[0])
           string += '\n,\n'
-          string += json.dumps(stats[1], indent = 4, separators=(',', ': '), sort_keys = True)
+          string += dump_json_readable(stats[1])
           string += '\n]\n'
 
           bs_logger(string)
@@ -1439,9 +1448,9 @@ def print_stats(trial_params, stats):
           port = 0
           while port <= trial_params['max_port']:
                if port in stats:
-                    string += json.dumps(stats[port], indent = 4, separators=(',', ': '), sort_keys = True)
+                    string += dump_json_readable(stats[port])
                else:
-                    string += json.dumps(trial_params['null_stats'], indent = 4, separators=(',', ': '), sort_keys = True)
+                    string += dump_json_readable(trial_params['null_stats'])
                if port < trial_params['max_port']:
                     string += '\n,\n'
                port += 1
@@ -1873,6 +1882,9 @@ def main():
                                   trial_result = 'fail'
                              bs_logger("(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(t_global.args.max_loss_pct), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct']), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets'])))
 
+                   if 'ddos_rx_error' in trial_stats[dev_pair['rx']]:
+                        trial_result = 'fail'
+                        bs_logger("(trial failed requirement, individual DDoS stream RX packets received, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['ddos_rx_error']))
 
                    if t_global.args.traffic_generator != 'null-txrx' and trial_stats[dev_pair['tx']]['tx_active']:
                         requirement_msg = "passed"
@@ -2130,12 +2142,12 @@ def main():
               # drain the log prior to writing out the file
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
-              print(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True), file=trial_json_file)
+              print(dump_json_readable(trial_results), file=trial_json_file)
               trial_json_file.close()
          except IOError:
               bs_logger(error("Could not open %s for writing" % (trial_json_filename)))
               bs_logger("TRIALS:")
-              bs_logger(json.dumps(trial_results, indent = 4, separators=(',', ': '), sort_keys = True))
+              bs_logger(dump_json_readable(trial_results))
 
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
