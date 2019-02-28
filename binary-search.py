@@ -440,6 +440,11 @@ def process_options ():
                         help = 'Force processing of profiler data for all trials instead of just the last one',
                         action = 'store_true',
                         )
+    parser.add_argument('--repeat-final-validation',
+                        dest = 'repeat_final_validation',
+                        help = 'Repeat the final validation trial (if passed) to allow more invasive performance tools to be used',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -1547,6 +1552,7 @@ def main():
     setup_config_var("max_retries", t_global.args.max_retries, trial_params)
     setup_config_var("loss_granularity", t_global.args.loss_granularity, trial_params)
     setup_config_var("pre_trial_cmd", t_global.args.pre_trial_cmd, trial_params)
+    setup_config_var("repeat_final_validation", t_global.args.repeat_final_validation, trial_params)
 
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
@@ -1756,6 +1762,7 @@ def main():
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
               return(1)
 
+    in_repeat_validation = False
     perform_sniffs = False
     do_sniff = False
     do_search = True
@@ -1770,6 +1777,7 @@ def main():
     if trial_params['min_rate'] != 0:
          minimum_rate = trial_params['min_rate']
 
+    bs_logger("Starting binary-search") # this message triggers pbench to start default tools
     try:
          retries = 0
          # the actual binary search to find the maximum packet rate
@@ -1778,7 +1786,10 @@ def main():
               if final_validation:
                    trial_params['runtime'] = t_global.args.validation_runtime
                    trial_params['trial_mode'] = 'validation'
-                   bs_logger('\nTrial Mode: Final Validation')
+		   if in_repeat_validation:
+                        bs_logger('\nTrial Mode: Repeat Final Validation')
+		   else:
+                        bs_logger('\nTrial Mode: Final Validation')
               elif do_search:
                    trial_params['runtime'] = t_global.args.search_runtime
                    trial_params['trial_mode'] = 'search'
@@ -1954,20 +1965,23 @@ def main():
                    if trial_stats['global']['force_quit']:
                         bs_logger("Received Force Quit")
                         return(1)
-
-              trial_results['trials'].append({ 'trial': trial_params['trial'],
-                                               'rate': trial_params['rate'],
-                                               'rate_unit': trial_params['rate_unit'],
-                                               'result': trial_result,
-                                               'logfile': trial_params['trial_primary_output_file'],
-                                               'extra-logfile': trial_params['trial_secondary_output_file'],
-                                               'profiler-logfile': trial_params['trial_profiler_file'],
-                                               'pre-trial-cmd-logfile': trial_params['pre_trial_cmd_output_file'],
-                                               'profiler-data': None,
-                                               'stats': trial_stats,
-                                               'trial_params': copy.deepcopy(trial_params),
-                                               'stream_info': copy.deepcopy(stream_info['streams']),
-                                               'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
+	
+	      if not in_repeat_validation:
+                   trial_results['trials'].append({ 'trial': trial_params['trial'],
+                                                    'rate': trial_params['rate'],
+                                                    'rate_unit': trial_params['rate_unit'],
+                                                    'result': trial_result,
+                                                    'logfile': trial_params['trial_primary_output_file'],
+                                                    'extra-logfile': trial_params['trial_secondary_output_file'],
+                                                    'profiler-logfile': trial_params['trial_profiler_file'],
+                                                    'pre-trial-cmd-logfile': trial_params['pre_trial_cmd_output_file'],
+                                                    'profiler-data': None,
+                                                    'stats': trial_stats,
+                                                    'trial_params': copy.deepcopy(trial_params),
+                                                    'stream_info': copy.deepcopy(stream_info['streams']),
+                                                    'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
+	      else:
+                   bs_logger("Not appending stats because this is a repeat of the final validation")
 
               if trial_result == "pass":
                    bs_logger('(trial passed all requirements)')
@@ -1990,11 +2004,16 @@ def main():
                    bs_logger('(trial failed one or more requirements)')
 
               if t_global.args.one_shot == 1:
+                   bs_logger("Finished binary-search") # this message triggers pbench to stop default tools
                    break
               if trial_result == "fail":
                    if final_validation:
-                        final_validation = False
-                        next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
+                        if in_repeat_validation:
+                             bs_logger("Finished repeat final validation for debug collection") # this message triggers pbench to stop debug tools
+                             break
+			else:
+                             final_validation = False
+                             next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
                    else:
                         if len(prev_pass_rate) > 1 and rate < prev_pass_rate[len(prev_pass_rate)-1]:
                              # if the attempted rate drops below the most recent passing rate then that
@@ -2016,7 +2035,10 @@ def main():
                    rate = next_rate
                    retries = 0
               elif trial_result == "pass":
-                   passed_stats = trial_stats
+                   if in_repeat_validation:
+			debug_stats = trial_stats
+                   else:
+                        passed_stats = trial_stats
                    if final_validation: # no longer necessary to continue searching
                         if initial_rate == rate:
                              bs_logger("Detected requested rate is too low, doubling rate and restarting search")
@@ -2037,7 +2059,20 @@ def main():
                              prev_fail_rate = rate
                              retries = 0
                         else:
-                             break
+			     if trial_params['repeat_final_validation']:
+                                  if in_repeat_validation:     
+                                       # the repeat of the final validation is done, so stop running trials
+                                       bs_logger("Finished repeat final validation for debug collection") # this message triggers pbench to stop debug tools
+                                       break
+                                  else:    
+                                       # normally we would be done, but user wants to rerun final validation trial to collect invasive tool or debug information
+                                       # when running in this mode, ignore pass/fail logic after the trial by setting in_repeat_validation = True
+                                       in_repeat_validation = True      
+                                       bs_logger("Finished binary-search") # this message triggers pbench to stop default tools
+                                       bs_logger("Starting repeat final validation for debug collection") # this message triggers pbench to stop debug tools
+                             else:
+                                  bs_logger("Finished binary-search") # this message triggers pbench to stop default tools
+                                  break
                    else:
                         if do_sniff:
                              do_sniff = False
