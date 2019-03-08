@@ -451,7 +451,6 @@ def process_options ():
          t_global.args.frame_size = "imix"
     if t_global.args.active_device_pairs == '--':
          t_global.args.active_device_pairs = t_global.args.device_pairs
-    bs_logger(str(t_global.args))
 
 def execute_pre_trial_cmd(trial_params):
      cmd = trial_params['pre_trial_cmd']
@@ -1624,11 +1623,13 @@ def main():
     trial_results = { 'trials': [],
                       'log':    [] }
 
+    process_options()
+
     bs_logger_exit = threading.Event()
     bs_logger_thread = threading.Thread(target = bs_logger_worker, args = (trial_results['log'], bs_logger_exit))
     bs_logger_thread.start()
+    bs_logger(str(t_global.args))
 
-    process_options()
     final_validation = t_global.args.one_shot == 1
     rate = t_global.args.rate
 
