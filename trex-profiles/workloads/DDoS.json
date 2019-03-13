@@ -1,0 +1,29 @@
+{
+    "streams": [
+	{
+	    "flows": 10240,
+	    "frame_size": 64,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=False, use_src_mac_flows=False, use_dst_mac_flows=False, use_src_port_flows=True, use_dst_port_flows=False)",
+	    "rate": 1000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"measurement",
+		"teaching_warmup"
+	    ],
+	    "stream_id": "good",
+	    "the_packet": "scapy:Ether()/IP(src='10.2.0.0', dst='10.10.0.15')/UDP(sport=32768, dport=53)"
+	},
+	{
+	    "flows": 10240,
+	    "frame_size": 74,
+	    "flow_mods": "function:create_flow_mod_object(use_src_ip_flows=True, use_dst_ip_flows=False, use_src_mac_flows=False, use_dst_mac_flows=False, use_src_port_flows=True, use_dst_port_flows=False)",
+	    "rate": 9000000,
+	    "frame_type": "generic",
+	    "stream_types": [
+		"ddos"
+	    ],
+	    "stream_id": "bad",
+	    "the_packet": "scapy:Ether()/IP(src='10.3.0.0', dst='10.10.0.15')/TCP(sport=42768, dport=80, flags='S')"
+	}
+    ]
+}
