@@ -144,7 +144,9 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     pushd ${trex_dir} 2>/dev/null
 
     if [ -z "${yaml_file}" ]; then
-	/bin/rm -f ${tmp_dir}/trex_cfg.yaml
+	yaml_file="${tmp_dir}/trex_cfg.yaml"
+	tmp_yaml_file="${yaml_file}.tmp"
+	/bin/rm -fv ${yaml_file}
 
 	isolated_cpus=$(cat /sys/devices/system/cpu/nohz_full)
 	cpu_list=$(convert_number_range "${isolated_cpus}" | sed -e "s/,/ /g")
@@ -152,26 +154,17 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 	if [ "${use_ht}" == "n" ]; then
             trex_config_args+="--no-ht "
 	fi
-	if [ "${use_l2}" == "y" ]; then
-            trex_config_args+="--force-macs "
 
-            if [ -e /etc/trex_cfg.yaml -a ! -e /etc/trex_cfg.yaml.launch-trex-backup ]; then
-		mv -v /etc/trex_cfg.yaml /etc/trex_cfg.yaml.launch-trex-backup
-            fi
+	l2_args=""
+	if [ "${use_l2}" == "y" ]; then
+            trex_config_args+="--force-macs --cfg ${tmp_yaml_file}"
 
             # generate a temporary yaml which is required for MAC discovery
-            echo "- version       : 2" >/etc/trex_cfg.yaml
+            echo "- version       : 2" >${tmp_yaml_file}
             yaml_devices=$(echo ${devices} | sed -e "s/^/\"/" -e "s/,/\",\"/g" -e "s/$/\"/")
-            echo "  interfaces    : [${yaml_devices}]" >>/etc/trex_cfg.yaml
-            echo "  port_limit    : 2" >>/etc/trex_cfg.yaml
-	else
-            # in case we didn't clean up after ourselves previously...
-            if [ -e /etc/trex_cfg.yaml.launch-trx-backup ]; then
-		mv -v /etc/trex_cfg.yaml.launch-trex-backup /etc/trex_cfg.yaml
-            fi
+            echo "  interfaces    : [${yaml_devices}]" >>${tmp_yaml_file}
+            echo "  port_limit    : 2" >>${tmp_yaml_file}
 	fi
-
-	yaml_file="${tmp_dir}/trex_cfg.yaml"
 
 	interface_state_cmd="./dpdk_setup_ports.py -t"
 	echo "interface status: ${interface_state_cmd}"
@@ -184,7 +177,13 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 
 	    driver_reset_cmd="./dpdk_setup_ports.py -L"
 	    echo "resetting interface driver state with: ${driver_reset_cmd}"
-	    ${driver_reset_cmd}
+	    # use a loop that keeps trying until there are no more vfio-pci references
+	    # the script claims to reset all devices but it really only does 2 at a time
+	    vfio_in_use="vfio-pci"
+	    while echo -e "${vfio_in_use}" | grep -q "vfio-pci"; do
+		${driver_reset_cmd}
+		vfio_in_use=$(${interface_state_cmd})
+	    done
 
 	    echo "interface status: ${interface_state_cmd}"
 	    ${interface_state_cmd}
@@ -193,6 +192,10 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 	trex_config_cmd="./dpdk_setup_ports.py -c `echo ${devices} | sed -e s/,/" "/g` --cores-include ${cpu_list} -o ${yaml_file} ${trex_config_args}"
 	echo "configuring trex with: ${trex_config_cmd}"
 	${trex_config_cmd}
+
+	if [ "${use_l2}" == "y" ]; then
+	    /bin/rm -fv ${tmp_yaml_file}
+	fi
     fi
 
     trex_cpus=14
