@@ -1391,7 +1391,10 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                  stats[device_pair['rx']]['rx_active'] = True
 
                                  stats[device_pair['rx']]['rx_latency_lost_packets'] = stats[device_pair['tx']]['tx_latency_packets'] - stats[device_pair['rx']]['rx_latency_packets']
-                                 stats[device_pair['rx']]['rx_latency_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_latency_lost_packets'] / stats[device_pair['tx']]['tx_latency_packets']
+                                 if stats[device_pair['tx']]['tx_latency_packets']:
+                                      stats[device_pair['rx']]['rx_latency_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_latency_lost_packets'] / stats[device_pair['tx']]['tx_latency_packets']
+                                 else:
+                                      stats[device_pair['rx']]['rx_latency_lost_packets_pct'] = 0.0
 
                                  stats[device_pair['tx']]['tx_latency_pps'] = float(stats[device_pair['tx']]['tx_latency_packets']) / float(results['global']['runtime'])
                                  stats[device_pair['rx']]['rx_latency_pps'] = float(stats[device_pair['rx']]['rx_latency_packets']) / float(results['global']['runtime'])
