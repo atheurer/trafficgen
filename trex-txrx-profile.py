@@ -592,6 +592,11 @@ def build_warmup_segments(segments, rate, flows):
      return(warmup_segments)
 
 def create_stream (stream, device_pair, direction, other_direction, flow_scaler):
+    if not stream['enabled']:
+         myprint("")
+         myprint("\tSkipping stream %d for '%s' due to explicit disablement in the profile" % (stream['profile_id'], device_pair[direction]['id_string']))
+         return
+
     if stream['offset'] >= t_global.args.runtime:
          myprint("")
          myprint("\tSkipping stream %d for '%s' due to offset >= runtime" % (stream['profile_id'], device_pair[direction]['id_string']))

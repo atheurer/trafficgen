@@ -486,13 +486,15 @@ def create_profile_stream (flows = 0,
                            latency_only = False,
                            protocol = 'UDP',
                            traffic_direction = 'bidirectional',
-                           stream_id = None ):
+                           stream_id = None,
+                           enabled = True ):
     stream = { 'flows': flows,
                'frame_size': frame_size,
                'flow_mods': copy.deepcopy(flow_mods),
                'rate': rate,
                'frame_type': frame_type,
                'stream_types': [],
+               'enabled': enabled,
                'latency': latency,
                'latency_only': latency_only,
                'protocol': protocol,
@@ -516,7 +518,7 @@ def create_profile_stream (flows = 0,
 
 def validate_profile_stream(stream, rate_modifier):
     for key in stream:
-        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay', 'repeat_flows', 'the_packet' ]:
+        if not key in [ 'flows', 'frame_size', 'flow_mods', 'rate', 'frame_type', 'stream_types', 'latency', 'latency_only', 'protocol', 'traffic_direction', 'stream_id', 'offset', 'duration', 'repeat', 'repeat_delay', 'repeat_flows', 'the_packet', 'enabled' ]:
             raise ValueError("Invalid property found (%s)" % (key))
 
         if isinstance(stream[key], basestring):
@@ -555,6 +557,9 @@ def validate_profile_stream(stream, rate_modifier):
 
     if not 'latency' in stream:
         stream['latency'] = True
+
+    if not 'enabled' in stream:
+        stream['enabled'] = True
 
     if not 'protocol' in stream:
         stream['protocol'] = 'UDP'
