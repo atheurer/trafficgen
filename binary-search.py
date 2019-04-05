@@ -3,6 +3,7 @@
 from __future__ import print_function
 
 from trex_tg_lib import *
+from tg_lib import *
 import sys, getopt
 import argparse
 import subprocess
@@ -18,7 +19,6 @@ import copy
 import random
 import os
 import os.path
-import datetime
 # from decimal import *
 
 class t_global(object):
@@ -41,7 +41,7 @@ def bs_logger_worker(log, thread_exit):
           try:
                bs_log_entry = t_global.bs_logger_queue.popleft()
 
-               bs_log_entry_time = datetime.datetime.fromtimestamp(bs_log_entry['timestamp']).strftime("%Y-%m-%d %H:%M:%S.%f")
+               bs_log_entry_time = format_timestamp(bs_log_entry['timestamp'])
                for bs_log_entry_line in bs_log_entry['message'].split('\n'):
                     print("[%s] %s" % (bs_log_entry_time, bs_log_entry_line))
 
