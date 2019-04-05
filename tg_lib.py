@@ -1,11 +1,14 @@
-from __future__ import print_function
-
 import sys
 import json
 import datetime
 
+
 def format_timestamp(ts):
-    return (datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S.%f"))
+    return (format_datetime(datetime.datetime.fromtimestamp(ts)))
+
+
+def format_datetime(dt):
+    return (dt.strftime("%Y-%m-%d %H:%M:%S.%f"))
 
 
 def error (string):
