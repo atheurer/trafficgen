@@ -225,7 +225,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     screen -x trex -p server -X log on
 
     # wait for trex server to be ready                                                                                                                                                                                                    
-    count=30
+    count=60
     num_ports=0
     while [ ${count} -gt 0 -a ${num_ports} -lt 2 ]; do
         sleep 1
