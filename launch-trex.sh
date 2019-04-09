@@ -235,7 +235,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     if [ ${num_ports} -eq 2 ]; then
         echo "trex-server is ready"
     else
-        echo "ERROR: trex-server could not start properly.  Check \'screen -x trex\'"
+        echo "ERROR: trex-server could not start properly.  Check \'screen -x trex\' and/or \'cat /tmp/trex.server.out\'"
         exit 1
     fi
 else
