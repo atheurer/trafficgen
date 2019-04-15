@@ -391,9 +391,12 @@ class stl_stream:
           stream_control = None
           if self.mode == 'burst':
                if self.dummy:
+                    # there is no reason to fake traffic at a high
+                    # rate because that just adds overhead, so fake it
+                    # slowly while adjusting accordingly
                     dummy_pps = 1.0
                     dummy_pps_ratio = dummy_pps/self.pps
-                    self.packet_count = int(self.packet_count * dummy_pps_ratio)
+                    self.packet_count = int(math.ceil(self.packet_count * dummy_pps_ratio))
                     self.pps = dummy_pps
 
                stream_control = STLTXSingleBurst(pps = self.pps, total_pkts = self.packet_count)
