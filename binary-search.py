@@ -445,6 +445,23 @@ def process_options ():
                         help = 'Repeat the final validation trial (if passed) to allow more invasive performance tools to be used',
                         action = 'store_true',
                         )
+    parser.add_argument('--warmup-trial',
+                        dest = 'warmup_trial',
+                        help = 'Perform a warmup trial prior to performing the binary search.  The warmup trial results are ignored.',
+                        action = 'store_true',
+                        )
+    parser.add_argument('--warmup-trial-runtime',
+                        dest='warmup_trial_runtime',
+                        help='trial period in seconds during warmup',
+                        default=30,
+                        type = int,
+                        )
+    parser.add_argument('--warmup-traffic-profile',
+                        dest='warmup_traffic_profile',
+                        help='Name of the file containing traffic profiles to load for the warmup trial',
+                        default = '',
+                        type = str
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -822,7 +839,10 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --teaching-warmup-packet-rate=' + str(trial_params['teaching_warmup_packet_rate'])
         if trial_params['teaching_measurement_packet_rate']:
              cmd = cmd + ' --teaching-measurement-packet-rate=' + str(trial_params['teaching_measurement_packet_rate'])
-        cmd = cmd + ' --traffic-profile=' + trial_params['traffic_profile']
+        if trial_params['trial_mode'] == 'warmup' and len(trial_params['warmup_traffic_profile']):
+             cmd = cmd + ' --traffic-profile=' + trial_params['warmup_traffic_profile']
+        else:
+             cmd = cmd + ' --traffic-profile=' + trial_params['traffic_profile']
 
     elif trial_params['traffic_generator'] == 'trex-txrx':
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
@@ -1620,7 +1640,14 @@ def evaluate_trial(trial_params, trial_stats):
             bs_logger("Received Force Quit")
             return('quit')
 
-    return(trial_result)
+    if trial_params['trial_mode'] == 'warmup':
+         # when in warmup we want to ignore the results of the
+         # validations, but it is potentially helpful to see the test
+         # output so rather than short circuit we do all the tests but
+         # then just report a passing result
+         return('pass')
+    else:
+         return(trial_result)
 
 def main():
     trial_results = { 'trials': [],
@@ -1705,6 +1732,8 @@ def main():
     setup_config_var("loss_granularity", t_global.args.loss_granularity, trial_params)
     setup_config_var("pre_trial_cmd", t_global.args.pre_trial_cmd, trial_params)
     setup_config_var("repeat_final_validation", t_global.args.repeat_final_validation, trial_params)
+    setup_config_var('warmup_trial', t_global.args.warmup_trial, trial_params)
+    setup_config_var('warmup_trial_runtime', t_global.args.warmup_trial_runtime, trial_params)
 
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
@@ -1768,6 +1797,7 @@ def main():
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('random_seed', t_global.args.random_seed, trial_params)
          setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
+         setup_config_var('warmup_traffic_profile', t_global.args.warmup_traffic_profile, trial_params)
          setup_config_var("enable_trex_profiler", t_global.args.enable_trex_profiler, trial_params)
          setup_config_var("trex_profiler_interval", t_global.args.trex_profiler_interval, trial_params)
          setup_config_var('process_all_profiler_data', t_global.args.process_all_profiler_data, trial_params)
@@ -1775,13 +1805,24 @@ def main():
          setup_config_var('traffic_direction', 'bidirectional', trial_params, config_tag = False, silent = True)
 
     if t_global.args.traffic_generator == 'trex-txrx-profile':
-         trial_params['traffic_profile'] = t_global.args.traffic_profile
          trial_params['loaded_traffic_profile'] = load_traffic_profile(traffic_profile = trial_params['traffic_profile'],
                                                                        rate_modifier = 100.0,
                                                                        log_function = bs_logger)
          if trial_params['loaded_traffic_profile'] == 1:
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
               return(1)
+
+         trial_params['loaded_warmup_traffic_profile'] = None
+         if t_global.args.warmup_trial and len(t_global.args.warmup_traffic_profile):
+              trial_params['loaded_warmup_traffic_profile'] = load_traffic_profile(traffic_profile = trial_params['warmup_traffic_profile'],
+                                                                                   rate_modifier = 100.0,
+                                                                                   log_function = bs_logger)
+              if trial_params['loaded_warmup_traffic_profile'] == 1:
+                   bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+                   return(1)
+
+              bs_logger("Loaded warmup traffic profile from %s:" % (trial_params['warmup_traffic_profile']))
+              bs_logger(dump_json_readable(trial_params['loaded_warmup_traffic_profile']))
 
          bs_logger("Loaded traffic profile from %s:" % (trial_params['traffic_profile']))
          bs_logger(dump_json_readable(trial_params['loaded_traffic_profile']))
@@ -1918,9 +1959,15 @@ def main():
     perform_sniffs = False
     do_sniff = False
     do_search = True
+    do_warmup = False
     if t_global.args.sniff_runtime:
          perform_sniffs = True
          do_sniff = True
+         do_search = False
+    if t_global.args.warmup_trial:
+         do_warmup = True
+         final_validation = False
+         do_sniff = False
          do_search = False
 
     trial_params['trial'] = 0
@@ -1933,7 +1980,7 @@ def main():
     try:
          retries = 0
          # the actual binary search to find the maximum packet rate
-         while final_validation or do_sniff or do_search:
+         while final_validation or do_sniff or do_search or do_warmup:
               # support a longer measurement for the last trial, AKA "final validation"
               if final_validation:
                    trial_params['runtime'] = t_global.args.validation_runtime
@@ -1946,10 +1993,14 @@ def main():
                    trial_params['runtime'] = t_global.args.search_runtime
                    trial_params['trial_mode'] = 'search'
                    bs_logger('\nTrial Mode: Search')
-              else:
+              elif do_sniff:
                    trial_params['runtime'] = t_global.args.sniff_runtime
                    trial_params['trial_mode'] = 'sniff'
                    bs_logger('\nTrial Mode: Sniff')
+              elif do_warmup:
+                   trial_params['runtime'] = t_global.args.warmup_trial_runtime
+                   trial_params['trial_mode'] = 'warmup'
+                   bs_logger('\nTrial Mode: Warmup')
 
               trial_params['rate'] = rate
               # run the actual trial
@@ -1994,7 +2045,10 @@ def main():
                    bs_logger("Not appending stats because this is a repeat of the final validation")
 
               if trial_result == "pass":
-                   bs_logger('(trial passed all requirements)')
+                   if not do_warmup:
+                        bs_logger('(trial passed all requirements)')
+                   else:
+                        bs_logger('(trial results are ignored since this is a warmup run)')
               elif trial_result == "retry-to-fail" or trial_result == "retry-to-quit":
                    bs_logger('(trial must be repeated because one or more requirements did not pass, but allow a retry)')
 
@@ -2013,7 +2067,7 @@ def main():
               else:
                    bs_logger('(trial failed one or more requirements)')
 
-              if t_global.args.one_shot == 1:
+              if t_global.args.one_shot == 1 and not do_warmup:
                    bs_logger("Finished binary-search") # this message triggers pbench to stop default tools
                    break
               if trial_result == "fail":
@@ -2045,7 +2099,7 @@ def main():
                    rate = next_rate
                    retries = 0
               elif trial_result == "pass":
-                   if in_repeat_validation:
+                   if in_repeat_validation or do_warmup:
 			debug_stats = trial_stats
                    else:
                         passed_stats = trial_stats
@@ -2084,7 +2138,17 @@ def main():
                                   bs_logger("Finished binary-search") # this message triggers pbench to stop default tools
                                   break
                    else:
-                        if do_sniff:
+                        if do_warmup:
+                             do_warmup = False
+                             if t_global.args.one_shot == 1:
+                                  final_validation = True
+                             else:
+                                  if perform_sniffs:
+                                       do_sniff = True
+                                  else:
+                                       do_search = True
+                             next_rate = rate # since this was only the warmup, keep the current rate
+                        elif do_sniff:
                              do_sniff = False
                              do_search = True
                              next_rate = rate # since this was only the sniff test, keep the current rate
