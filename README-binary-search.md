@@ -7,7 +7,7 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
     First, download this git repository
     ```
     [root@LinuxServer ~]#cd /opt
-    [root@LinuxServer opt]#git clone https://github.com/atheurer/lua-trafficgen
+    [root@LinuxServer opt]#git clone https://github.com/atheurer/trafficgen
     ```
     Next, if you intend on using TRex with binary-search.py, also download the TRex package, here: http://trex-tgn.cisco.com/trex/release/v2.22.tar.gz
     
@@ -30,8 +30,8 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
     If intend to use MoonGen, then it can be build from this repo.  This repo includes a git submodule of a specific version of MoonGen repo, so that the txrx.lua script is synced with the proper version of MoonGen.  To build everything:
 
     ```
-    [root@LinuxServer opt]#cd lua-trafficgen
-    [root@LinuxServer lua-trafficgen]#./setup.sh 
+    [root@LinuxServer opt]#cd trafficgen
+    [root@LinuxServer trafficgen]#./setup-moongen.sh 
     ```
 ## Configuration
 
@@ -40,7 +40,7 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
    [root@LinuxServer ~]# grubby --update-kernel=`grubby --default-kernel` --args="default_hugepagesz=1G hugepagesz=1G hugepages=32"
    ```
 
-2. Bind DPDK to two network interfaces needed by the traffic generator.  If you intend to use MoonGen and ran ./setup.sh previously, then you can use ./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py.  If you intend to use TRex, it also includes a binding utility under [/opt/trex/current]/dpdk_set_ports.py.  Binding with vfio-pci kernel module is recommended.
+2. Bind DPDK to two network interfaces needed by the traffic generator.  If you intend to use MoonGen and ran ./setup-moongen.sh previously, then you can use ./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py.  If you intend to use TRex, it also includes a binding utility under [/opt/trex/current]/dpdk_set_ports.py.  Binding with vfio-pci kernel module is recommended.
       
 ## Running
    

@@ -1,19 +1,19 @@
-# lua-trafficgen
+# trafficgen
 A network traffic generator using Lua programming language and the MoonGen project
 
 ## Installation:
 1.  Download the code:
     ```
-    [root@LinuxServer root]#git clone https://github.com/atheurer/lua-trafficgen
+    [root@LinuxServer root]#git clone https://github.com/atheurer/trafficgen
     ```
     
 2.  Build the code:
     ```
-    [root@LinuxServer root]#cd lua-trafficgen
-    [root@LinuxServer lua-trafficgen]#./setup.sh 
+    [root@LinuxServer root]#cd trafficgen
+    [root@LinuxServer trafficgen]#./setup-moongen.sh 
     ```
 
-2.  Create a file called opnfv-vsperf-cfg.lua within the lua-trafficgen directory. 
+2.  Create a file called opnfv-vsperf-cfg.lua within the trafficgen directory. 
     ```
     This is a configuration file that one can use to override default values. It should have the content structure:
 
@@ -37,16 +37,16 @@ A network traffic generator using Lua programming language and the MoonGen proje
     Set up the huge allocation via setup-hugetlbfs.sh, or can do it via parameters at boot time thus will 
     be persistant across system reboots, e.g.:
         
-        [root@LinuxServer lua-trafficgen]# ./MoonGen/setup-hugetlbfs.sh 
+        [root@LinuxServer trafficgen]# ./MoonGen/setup-hugetlbfs.sh 
         
         or
         
-        [root@LinuxServer lua-trafficgen]# cat /proc/cmdline
+        [root@LinuxServer trafficgen]# cat /proc/cmdline
         BOOT_IMAGE=/vmlinuz-3.10.0-325.el7.x86_64 root=/dev/mapper/LinuxServer_rhel72-root ro crashkernel=auto rd.lvm.lv=LinuxServer_rhel72/root rd.lvm.lv=LinuxServer_rhel72/swap rhgb quiet LANG=en_US.UTF-8 intel_iommu=on default_hugepagesz=1G hugepagesz=1G hugepages=32 selinux=0 iommu=pt
         
         via using for example the grubby utility:
         
-        [root@LinuxServer lua-trafficgen]# grubby --update-kernel=`grubby --default-kernel` --args="default_hugepagesz=1G hugepagesz=1G hugepages=32"
+        [root@LinuxServer trafficgen]# grubby --update-kernel=`grubby --default-kernel` --args="default_hugepagesz=1G hugepagesz=1G hugepages=32"
         
         Note that if the boot command line is modified, a reboot must occur in order to allocate memory with 
         the new hugepage settings.
@@ -86,7 +86,7 @@ A network traffic generator using Lua programming language and the MoonGen proje
       
     This can also be seen via the DPDK utility 'dpdk-devbind.py' again under MoonGen's DPDK dependency directory:
 
-    [root@LinuxServer lua-trafficgen]./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --status
+    [root@LinuxServer trafficgen]./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --status
 
     Network devices using DPDK-compatible driver
     ============================================
@@ -110,19 +110,19 @@ A network traffic generator using Lua programming language and the MoonGen proje
     Use 'dpdk-devbind.py' to unbind network devices from current drivers. In this case, its ixgbe. Before 
     doing the unbind, shutdown the interfaces.
      
-    [root@LinuxServer lua-trafficgen]# ifdown em1 
-    [root@LinuxServer lua-trafficgen]# ifdown em2 
-    [root@LinuxServer lua-trafficgen]./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --unbind 0000:01:00.0 0000:01:00.1
+    [root@LinuxServer trafficgen]# ifdown em1 
+    [root@LinuxServer trafficgen]# ifdown em2 
+    [root@LinuxServer trafficgen]./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --unbind 0000:01:00.0 0000:01:00.1
 
     Again using 'dpdk-devbind.py', bind DPDK to the interfaces to be used with MoonGen.  In this case, 
     the two 10G network devices will be used:
 
-    [root@LinuxServer lua-trafficgen]#modprobe vfio-pci 
-    [root@LinuxServer lua-trafficgen]#./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --bind=vfio-pci 0000:01:00.0 0000:01:00.1
+    [root@LinuxServer trafficgen]#modprobe vfio-pci 
+    [root@LinuxServer trafficgen]#./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --bind=vfio-pci 0000:01:00.0 0000:01:00.1
         
     And now it can be seen that the 10G network devices are bound to the appropriate DPDK supported driver:
         
-    [root@LinuxServer lua-trafficgen]./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --status
+    [root@LinuxServer trafficgen]./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py --status
     
     Network devices using DPDK-compatible driver
     ============================================
@@ -152,7 +152,7 @@ A network traffic generator using Lua programming language and the MoonGen proje
    
    Here is an example of a short run (100% packet loss allowed so test won't run very long):
    
-[root@LinuxServer lua-trafficgen]#./MoonGen/build/MoonGen trafficgen.lua 
+[root@LinuxServer trafficgen]#./MoonGen/build/MoonGen trafficgen.lua 
 
 [WARN]  malloc() allocates objects >= 1 MiB from LuaJIT memory space.
 [WARN]  Install libjemalloc if you encounter out of memory errors.
