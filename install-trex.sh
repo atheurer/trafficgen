@@ -59,7 +59,7 @@ while true; do
     esac
 done
 
-trex_url=http://trex-tgn.cisco.com/trex/release/${trex_ver}.tar.gz
+trex_url=https://trex-tgn.cisco.com/trex/release/${trex_ver}.tar.gz
 trex_dir="${base_dir}/${trex_ver}"
 
 if [ -d ${trex_dir} ]; then
