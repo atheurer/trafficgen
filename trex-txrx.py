@@ -7,7 +7,6 @@ import string
 import datetime
 import math
 import threading
-import thread
 from decimal import *
 from trex.stl.api import *
 from trex_tg_lib import *

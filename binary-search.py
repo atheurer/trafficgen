@@ -12,7 +12,6 @@ import time
 import json
 import string
 import threading
-import thread
 import select
 import signal
 import copy
