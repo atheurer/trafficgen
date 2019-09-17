@@ -32,7 +32,7 @@ def bs_logger_cleanup(notifier, thread):
 
 def bs_logger(msg):
      t_global.bs_logger_queue.append({ 'timestamp': time.time(),
-                                       'message':   msg })
+                                       'message':   str(msg) })
      return(0)
 
 def bs_logger_worker(log, thread_exit):
@@ -953,11 +953,11 @@ def handle_process_output(process, process_stream, capture):
           if process_stream in ready_streams[0]:
                line = process_stream.readline()
                if capture:
-                    lines.append(line)
+                    lines.append(line.decode())
      if process.poll() is not None:
           for line in process_stream:
                if capture:
-                    lines.append(line)
+                    lines.append(line.decode())
           lines.append("--END--")
      return lines
 
@@ -2236,7 +2236,7 @@ def main():
                         try:
                              bs_logger("\tCompressing %s" % (trial_result['profiler-logfile']))
                              output = subprocess.check_output(["xz", "-9", "--threads=0", "--verbose", profile_file], stderr=subprocess.STDOUT)
-                             bs_logger("\t\t%s" % (output))
+                             bs_logger("\t\t%s" % (output.decode()))
                         except subprocess.CalledProcessError as e:
                              bs_logger("\tError compressing %s (return code = %d)" % (trial_result['profiler-logfile'], e.returncode))
                              bs_logger(e.output)
