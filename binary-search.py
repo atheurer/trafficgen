@@ -237,7 +237,7 @@ def process_options ():
                         dest='max_loss_pct',
                         help='maximum percentage of packet loss',
                         default=0.002,
-			type = float
+                        type = float
                         )
     parser.add_argument('--src-ports',
                         dest='src_ports',
@@ -759,13 +759,13 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + ' --devices=0,1' # fix to allow different devices
         cmd = cmd + ' --measureLatency=0' # fix to allow latency measurment (whern txrx supports)
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
-	cmd = cmd + ' --size=' + str(trial_params['frame_size'])
-	cmd = cmd + ' --runTime=' + str(trial_params['runtime'])
+        cmd = cmd + ' --size=' + str(trial_params['frame_size'])
+        cmd = cmd + ' --runTime=' + str(trial_params['runtime'])
 
-	traffic_direction=0
-	if trial_params['traffic_direction'] == 'bidirectional':
+        traffic_direction=0
+        if trial_params['traffic_direction'] == 'bidirectional':
             traffic_direction=1
-	cmd = cmd + ' --bidirectional=' + str(traffic_direction)
+        cmd = cmd + ' --bidirectional=' + str(traffic_direction)
 
         if trial_params['vlan_ids'] != '':
             cmd = cmd + ' --vlanIds=' + str(trial_params['vlan_ids'])
@@ -789,21 +789,21 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
             cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs'])
         flow_mods_opt = ''
         if trial_params['use_src_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',srcIp'
+            flow_mods_opt = flow_mods_opt + ',srcIp'
         if trial_params['use_dst_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',dstIp'
+            flow_mods_opt = flow_mods_opt + ',dstIp'
         if trial_params['use_encap_src_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapSrcIp'
+            flow_mods_opt = flow_mods_opt + ',encapSrcIp'
         if trial_params['use_encap_dst_ip_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapDstIp'
+            flow_mods_opt = flow_mods_opt + ',encapDstIp'
         if trial_params['use_src_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',srcMac'
+            flow_mods_opt = flow_mods_opt + ',srcMac'
         if trial_params['use_dst_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',dstMac'
+            flow_mods_opt = flow_mods_opt + ',dstMac'
         if trial_params['use_encap_src_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapSrcMac'
+            flow_mods_opt = flow_mods_opt + ',encapSrcMac'
         if trial_params['use_encap_dst_mac_flows'] == 1:
-	    flow_mods_opt = flow_mods_opt + ',encapDstMac'
+            flow_mods_opt = flow_mods_opt + ',encapDstMac'
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'null-txrx':
@@ -1985,9 +1985,9 @@ def main():
               if final_validation:
                    trial_params['runtime'] = t_global.args.validation_runtime
                    trial_params['trial_mode'] = 'validation'
-		   if in_repeat_validation:
+                   if in_repeat_validation:
                         bs_logger('\nTrial Mode: Repeat Final Validation')
-		   else:
+                   else:
                         bs_logger('\nTrial Mode: Final Validation')
               elif do_search:
                    trial_params['runtime'] = t_global.args.search_runtime
@@ -2027,7 +2027,7 @@ def main():
               if trial_result == 'quit':
                    return(1)
 
-	      if not in_repeat_validation:
+              if not in_repeat_validation:
                    trial_results['trials'].append({ 'trial': trial_params['trial'],
                                                     'rate': trial_params['rate'],
                                                     'rate_unit': trial_params['rate_unit'],
@@ -2041,7 +2041,7 @@ def main():
                                                     'trial_params': copy.deepcopy(trial_params),
                                                     'stream_info': copy.deepcopy(stream_info['streams']),
                                                     'detailed_stats': copy.deepcopy(detailed_stats['stats']) })
-	      else:
+              else:
                    bs_logger("Not appending stats because this is a repeat of the final validation")
 
               if trial_result == "pass":
@@ -2075,7 +2075,7 @@ def main():
                         if in_repeat_validation:
                              bs_logger("Finished repeat final validation for debug collection") # this message triggers pbench to stop debug tools
                              break
-			else:
+                        else:
                              final_validation = False
                              next_rate = rate - (trial_params['search_granularity'] * rate / 100) # subtracting by at least search_granularity percent avoids very small reductions in rate
                    else:
@@ -2100,7 +2100,7 @@ def main():
                    retries = 0
               elif trial_result == "pass":
                    if in_repeat_validation or do_warmup:
-			debug_stats = trial_stats
+                        debug_stats = trial_stats
                    else:
                         passed_stats = trial_stats
                    if final_validation: # no longer necessary to continue searching
@@ -2123,7 +2123,7 @@ def main():
                              prev_fail_rate = rate
                              retries = 0
                         else:
-			     if trial_params['repeat_final_validation']:
+                             if trial_params['repeat_final_validation']:
                                   if in_repeat_validation:     
                                        # the repeat of the final validation is done, so stop running trials
                                        bs_logger("Finished repeat final validation for debug collection") # this message triggers pbench to stop debug tools
