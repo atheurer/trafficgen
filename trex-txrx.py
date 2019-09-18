@@ -998,16 +998,23 @@ def main():
         for device_pair in device_pairs:
              if t_global.args.run_bidirec:
                   if port_info[device_pair['->']['ports']['tx']]["rx"]["counters"] <= port_info[device_pair['->']['ports']['rx']]["rx"]["counters"]:
-                       device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['tx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['tx']]["rx"]["counters"]
                   else:
-                       device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['rx']]["rx"]["counters"]
              else:
                   if t_global.args.run_revunidirec:
                        device_pair['max_default_pg_ids'] = port_info[device_pair['<-']['ports']['rx']]["rx"]["counters"] / len(device_pairs)
                   else:
                        device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['rx']]["rx"]["counters"] / len(device_pairs)
 
-             device_pair['max_latency_pg_ids'] = 128 / len(device_pairs) # 128 is the maximum number of software counters for latency in TRex
+             if len(device_pairs) > 1:
+                  # ensure that an even number of pg_ids are available per device_pair
+                  remainder = device_pair['max_default_pg_ids'] % len(device_pairs)
+                  device_pair['max_default_pg_ids'] -= remainder
+                  # divide the pg_ids across the device_pairs
+                  device_pair['max_default_pg_ids'] /= len(device_pairs)
+
+             device_pair['max_latency_pg_ids'] = int(128 / len(device_pairs)) # 128 is the maximum number of software counters for latency in TRex
 
         pg_id_base = 1
         for device_pair in device_pairs:
@@ -1021,15 +1028,31 @@ def main():
                   device_pair[direction]['pg_ids']['latency']['available']   = device_pair['max_latency_pg_ids']
                   device_pair[direction]['pg_ids']['latency']['start_index'] = device_pair[direction]['pg_ids']['default']['start_index'] + device_pair[direction]['pg_ids']['default']['available']
              else:
-                  device_pair['->']['pg_ids']['default']['available']   = device_pair['max_default_pg_ids'] / 2
+                  extra_default_pg_id = 0
+                  if (device_pair['max_default_pg_ids'] % 2) == 1:
+                       device_pair['max_default_pg_ids'] -= 1
+                       extra_default_pg_id = 1
+
+                  extra_latency_pg_id = 0
+                  if (device_pair['max_latency_pg_ids'] % 2) == 1:
+                       device_pair['max_latency_pg_ids'] -= 1
+                       extra_latency_pg_id = 1
+
+                  device_pair['->']['pg_ids']['default']['available']   = int(device_pair['max_default_pg_ids'] / 2)
                   device_pair['->']['pg_ids']['default']['start_index'] = pg_id_base
-                  device_pair['->']['pg_ids']['latency']['available']   = device_pair['max_latency_pg_ids'] / 2
+                  device_pair['->']['pg_ids']['latency']['available']   = int(device_pair['max_latency_pg_ids'] / 2)
                   device_pair['->']['pg_ids']['latency']['start_index'] = device_pair['->']['pg_ids']['default']['start_index'] + device_pair['->']['pg_ids']['default']['available']
 
                   device_pair['<-']['pg_ids']['default']['available']   = device_pair['->']['pg_ids']['default']['available']
                   device_pair['<-']['pg_ids']['default']['start_index'] = device_pair['->']['pg_ids']['default']['start_index'] + device_pair['->']['pg_ids']['default']['available'] + device_pair['->']['pg_ids']['latency']['available']
                   device_pair['<-']['pg_ids']['latency']['available']   = device_pair['->']['pg_ids']['latency']['available']
                   device_pair['<-']['pg_ids']['latency']['start_index'] = device_pair['<-']['pg_ids']['default']['start_index'] + device_pair['<-']['pg_ids']['default']['available']
+
+                  if extra_default_pg_id:
+                       device_pair['->']['pg_ids']['default']['available'] += extra_default_pg_id
+
+                  if extra_latency_pg_id:
+                       device_pair['->']['pg_ids']['latency']['available'] += extra_latency_pg_id
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
