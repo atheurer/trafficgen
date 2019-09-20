@@ -69,7 +69,7 @@ else
     if pushd ${base_dir} >/dev/null; then
 	tarfile="${tmp_dir}/${trex_ver}.tar.gz"
 	/bin/rm -f ${tarfile}
-	if wget -O ${tarfile} ${trex_url} && tar zxf ${tarfile}; then
+	if curl --output ${tarfile} ${trex_url} && tar zxf ${tarfile}; then
 	    /bin/rm ${tarfile}
 	    echo "installed TRex from ${trex_url}"
 	else

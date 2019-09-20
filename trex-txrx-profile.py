@@ -7,7 +7,6 @@ import string
 import datetime
 import math
 import threading
-import thread
 import uuid
 from decimal import *
 from trex.stl.api import *
@@ -408,9 +407,9 @@ class stl_stream:
           if self.dummy:
                my_pg_id = 0
           if self.flow_stats_type == 'default':
-               flow_stats = STLFlowStats(pg_id = my_pg_id)
+               flow_stats = STLFlowStats(pg_id = int(my_pg_id))
           elif self.flow_stats_type == 'latency':
-               flow_stats = STLFlowLatencyStats(pg_id = my_pg_id)
+               flow_stats = STLFlowLatencyStats(pg_id = int(my_pg_id))
 
           return(STLStream(packet = self.packet,
                            flow_stats = flow_stats,
@@ -1303,18 +1302,35 @@ def main():
 
         for device_pair in device_pairs:
              if port_info[device_pair[t_global.constants['forward_direction']]['ports']['tx']]["rx"]["counters"] <= port_info[device_pair[t_global.constants['forward_direction']]['ports']['rx']]["rx"]["counters"]:
-                  device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['tx']]["rx"]["counters"] / len(device_pairs)
+                  device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['tx']]["rx"]["counters"]
              else:
-                  device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                  device_pair['max_default_pg_ids'] = port_info[device_pair[t_global.constants['forward_direction']]['ports']['rx']]["rx"]["counters"]
 
-             device_pair['max_latency_pg_ids'] = 128 / len(device_pairs) # 128 is the maximum number of software counters for latency in TRex
+             if len(device_pairs) > 1:
+                  # ensure that an even number of pg_ids are available per device_pair
+                  remainder = device_pair['max_default_pg_ids'] % len(device_pairs)
+                  device_pair['max_default_pg_ids'] -= remainder
+                  # divide the pg_ids across the device_pairs
+                  device_pair['max_default_pg_ids'] /= len(device_pairs)
+
+             device_pair['max_latency_pg_ids'] = int(128 / len(device_pairs)) # 128 is the maximum number of software counters for latency in TRex
 
         pg_id_base = 1000
         for device_pair in device_pairs:
-             device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']       = device_pair['max_default_pg_ids'] / 2
+             extra_default_pg_id = 0
+             if (device_pair['max_default_pg_ids'] % 2) == 1:
+                  device_pair['max_default_pg_ids'] -= 1
+                  extra_default_pg_id = 1
+
+             extra_latency_pg_id = 0
+             if (device_pair['max_latency_pg_ids'] % 2) == 1:
+                  device_pair['max_latency_pg_ids'] -= 1
+                  extra_latency_pg_id = 1
+
+             device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']       = int(device_pair['max_default_pg_ids'] / 2)
              device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['available']   = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']
              device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['start_index'] = pg_id_base
-             device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']       = device_pair['max_latency_pg_ids'] / 2
+             device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']       = int(device_pair['max_latency_pg_ids'] / 2)
              device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['available']   = device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']
              device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['start_index'] = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['start_index'] + device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']
 
@@ -1324,6 +1340,14 @@ def main():
              device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['total']       = device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']
              device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['available']   = device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['total']
              device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['start_index'] = device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['start_index'] + device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['total']
+
+             if extra_default_pg_id:
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total'] += extra_default_pg_id
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['available'] += extra_default_pg_id
+
+             if extra_latency_pg_id:
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total'] += extra_latency_pg_id
+                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['available'] += extra_latency_pg_id
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
