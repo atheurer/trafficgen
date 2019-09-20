@@ -1712,6 +1712,25 @@ def main():
 
     # option handling
     setup_config_var("output_dir", t_global.args.output_dir, trial_params, config_tag = False)
+
+    # make sure that the output directory exists
+    if not os.path.isdir(trial_params['output_dir']):
+         bs_logger("The specified output directory '%s' does not exist" % (trial_params['output_dir']))
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
+    else:
+         # make sure that the output directory can be written to
+         perm_test_path = "%s/perm.test" % (trial_params['output_dir'])
+         try:
+              perm_test_file = open(perm_test_path, 'w')
+              print("testing permissions", file=perm_test_file)
+              perm_test_file.close()
+              os.unlink(perm_test_path)
+         except IOError:
+              bs_logger(error("Permissions test to output directory '%s' failed" % (trial_params['output_dir'])))
+              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+              return(1)
+
     setup_config_var("traffic_generator", t_global.args.traffic_generator, trial_params)
     setup_config_var("rate", rate, trial_params)
     setup_config_var("runtime_tolerance", t_global.args.runtime_tolerance, trial_params)
