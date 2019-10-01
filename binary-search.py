@@ -461,6 +461,11 @@ def process_options ():
                         default = '',
                         type = str
                         )
+    parser.add_argument('--disable-upward-search',
+                        dest = 'disable_upward_search',
+                        help = 'Do not allow binary search to increase beyond the initial rate if it passes final validation',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -1665,6 +1670,11 @@ def main():
     if t_global.args.traffic_generator == 'null-txrx':
          random.seed()
 
+    if t_global.args.traffic_generator == 'trex-txrx' and t_global.args.rate_unit == "%" and rate > 100.0:
+         bs_logger("The trex-txrx traffic generator does not support a rate larger than 100.0 when --rate-unit=% since that equates to line rate")
+         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+         return(1)
+
     if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
          bs_logger("The moongen-txrx traffic generator does not support --rate-unit=%")
          bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
@@ -1752,6 +1762,7 @@ def main():
     setup_config_var("repeat_final_validation", t_global.args.repeat_final_validation, trial_params)
     setup_config_var('warmup_trial', t_global.args.warmup_trial, trial_params)
     setup_config_var('warmup_trial_runtime', t_global.args.warmup_trial_runtime, trial_params)
+    setup_config_var('disable_upward_search', t_global.args.disable_upward_search, trial_params)
 
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
@@ -1821,6 +1832,10 @@ def main():
          setup_config_var('process_all_profiler_data', t_global.args.process_all_profiler_data, trial_params)
 
          setup_config_var('traffic_direction', 'bidirectional', trial_params, config_tag = False, silent = True)
+
+    if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%" and rate == 100.0:
+         bs_logger("Disabling upward binary searching since the traffic generator is trex-txrx and the rate is 100% which is line rate")
+         trial_params['disable_upward_search'] = True
 
     if t_global.args.traffic_generator == 'trex-txrx-profile':
          trial_params['loaded_traffic_profile'] = load_traffic_profile(traffic_profile = trial_params['traffic_profile'],
@@ -2122,7 +2137,7 @@ def main():
                    else:
                         passed_stats = trial_stats
                    if final_validation: # no longer necessary to continue searching
-                        if initial_rate == rate:
+                        if initial_rate == rate and not trial_params['disable_upward_search']:
                              bs_logger("Detected requested rate is too low, doubling rate and restarting search")
 
                              final_validation = False
@@ -2135,6 +2150,11 @@ def main():
                                   do_search = True
 
                              rate = 2 * initial_rate
+                             if t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%" and rate >= 100.0:
+                                  bs_logger("Limiting upward search to maximum of 100% when traffic generator is trex-txrx (line rate)")
+                                  rate = 100.0
+                                  bs_logger("Disabling upward binary searching since the traffic generator is trex-txrx and the rate is 100% which is line rate")
+                                  trial_params['disable_upward_search'] = True
                              initial_rate = rate
                              prev_rate = 0
                              prev_pass_rate = [0]
