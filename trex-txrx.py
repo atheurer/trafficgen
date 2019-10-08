@@ -313,8 +313,8 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
                     max_uint32 = int(4294967295)
                     if stream_total_pkts > max_uint32:
                          stream_loop = True
-                         stream_loops = stream_total_pkts / max_uint32
                          stream_loop_remainder = stream_total_pkts % max_uint32
+                         stream_loops = int(((stream_total_pkts - stream_loop_remainder) / max_uint32))
 
                          if stream_loop_remainder == 0:
                               stream_loops -= 1
@@ -1003,9 +1003,9 @@ def main():
                        device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['rx']]["rx"]["counters"]
              else:
                   if t_global.args.run_revunidirec:
-                       device_pair['max_default_pg_ids'] = port_info[device_pair['<-']['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['<-']['ports']['rx']]["rx"]["counters"]
                   else:
-                       device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['rx']]["rx"]["counters"] / len(device_pairs)
+                       device_pair['max_default_pg_ids'] = port_info[device_pair['->']['ports']['rx']]["rx"]["counters"]
 
              if len(device_pairs) > 1:
                   # ensure that an even number of pg_ids are available per device_pair
