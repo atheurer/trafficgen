@@ -1178,7 +1178,15 @@ def main():
         for device_pair in device_pairs:
              for direction in directions:
                   if device_pair[direction]['active']:
-                       myprint("Transmitting at %s%s from port %d to port %d for %d seconds..." % (t_global.args.rate, t_global.args.rate_unit, device_pair[direction]['ports']['tx'], device_pair[direction]['ports']['rx'], t_global.args.runtime))
+                       rate_unit = t_global.args.rate_unit
+                       if rate_unit == '%':
+                            rate_unit = '%%'
+
+                       myprint("Transmitting at %s%s from port %d to port %d for %d seconds..." % (t_global.args.rate,
+                                                                                                   rate_unit,
+                                                                                                   device_pair[direction]['ports']['tx'],
+                                                                                                   device_pair[direction]['ports']['rx'],
+                                                                                                   t_global.args.runtime))
 
         # start the traffic
         c.start(ports = run_ports, force = True, duration = t_global.args.runtime, total = False, core_mask = STLClient.CORE_MASK_PIN)
