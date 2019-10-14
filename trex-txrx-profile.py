@@ -868,8 +868,8 @@ def create_stream (stream, device_pair, direction, other_direction, flow_scaler)
                              # check if the total number of packets to TX is greater than can be held in an uint32 (API limit)
                              max_uint32 = int(4294967295)
                              if stream_total_pkts > max_uint32:
-                                  stream_loops = stream_total_pkts / max_uint32
                                   stream_loop_remainder = stream_total_pkts % max_uint32
+                                  stream_loops = int(((stream_total_pkts - stream_loop_remainder) / max_uint32))
 
                                   if stream_loop_remainder == 0:
                                        stream_loops -= 1
