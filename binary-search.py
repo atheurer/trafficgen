@@ -325,7 +325,7 @@ def process_options ():
     parser.add_argument('--max-retries',
                         dest='max_retries',
                         help='Maximum number of trial retries before aborting',
-                        default = 3,
+                        default = 1,
                         type = int
                         )
     parser.add_argument('--loss-granularity',
