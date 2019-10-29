@@ -44,8 +44,13 @@ def process_options():
 def generate_report(input_json):
     if t_global.args.report_type == 'log':
         for entry in input_json['log']:
+            prefix = ""
+            if 'bso' in entry and entry['bso']:
+                 prefix = "[BSO]"
+            if 'prefix' in entry and len(entry['prefix']):
+                 prefix = "[%s]" % (entry['prefix'])
             for line in entry['message'].split('\n'):
-                print("[%s] %s" % (format_timestamp(entry['timestamp']/1000), line))
+                print("[%s]%s %s" % (format_timestamp(entry['timestamp']/1000), prefix, line))
     elif t_global.args.report_type == "trial-list":
         print("Available Trials:")
         for trial in input_json['trials']:

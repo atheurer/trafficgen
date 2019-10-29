@@ -30,9 +30,11 @@ def bs_logger_cleanup(notifier, thread):
      thread.join()
      return(0)
 
-def bs_logger(msg):
+def bs_logger(msg, bso = True, prefix = ""):
      t_global.bs_logger_queue.append({ 'timestamp': time.time(),
-                                       'message':   str(msg) })
+                                       'message':   str(msg),
+                                       'bso':       bso,
+                                       'prefix':    prefix })
      return(0)
 
 def bs_logger_worker(log, thread_exit):
@@ -41,8 +43,13 @@ def bs_logger_worker(log, thread_exit):
                bs_log_entry = t_global.bs_logger_queue.popleft()
 
                bs_log_entry_time = format_timestamp(bs_log_entry['timestamp'])
+               bs_log_entry_prefix = ""
+               if bs_log_entry['bso']:
+                    bs_log_entry_prefix = "[BSO]"
+               if len(bs_log_entry['prefix']):
+                    bs_log_entry_prefix = "[%s]" % (bs_log_entry['prefix'])
                for bs_log_entry_line in bs_log_entry['message'].split('\n'):
-                    print("[%s] %s" % (bs_log_entry_time, bs_log_entry_line))
+                    print("[%s]%s %s" % (bs_log_entry_time, bs_log_entry_prefix, bs_log_entry_line))
 
                bs_log_entry['timestamp'] = bs_log_entry['timestamp'] * 1000
                log.append(bs_log_entry)
@@ -637,7 +644,7 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
                     continue
 
                if primary_close_file:
-                    bs_logger(line.rstrip('\n'))
+                    bs_logger(line.rstrip('\n'), bso = False, prefix = "PQO")
                print(line.rstrip('\n'), file=primary_output_file)
 
                if line.rstrip('\n') == "Connection severed":
@@ -980,7 +987,7 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                   do_loop = False
                   continue
 
-             bs_logger("%s:%s" % (prefix, line.rstrip('\n')))
+             bs_logger(line.rstrip('\n'), bso = False, prefix = prefix)
 
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   #[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
@@ -1088,7 +1095,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                   continue
 
              if trial_params['traffic_generator'] == 'moongen-txrx':
-                  bs_logger(line.rstrip('\n'))
+                  bs_logger(line.rstrip('\n'), bso = False, prefix = "MoonGen")
 
              if trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
                   m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE JSON STREAM PROFILE FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
