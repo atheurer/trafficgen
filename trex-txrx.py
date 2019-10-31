@@ -663,7 +663,7 @@ def process_options ():
                                                      use_protocol_flows = t_global.args.use_protocol_flows)
     myprint(t_global.args)
 
-def segment_monitor(connection, device_pairs, run_ports, max_loss_pct, normal_exit_event, early_exit_event):
+def segment_monitor(connection, device_pairs, run_ports, normal_exit_event, early_exit_event):
     try:
          myprint("Segment Monitor: Running")
 
