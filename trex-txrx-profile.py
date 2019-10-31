@@ -1317,15 +1317,11 @@ def main():
 
         pg_id_base = 1000
         for device_pair in device_pairs:
-             extra_default_pg_id = 0
              if (device_pair['max_default_pg_ids'] % 2) == 1:
                   device_pair['max_default_pg_ids'] -= 1
-                  extra_default_pg_id = 1
 
-             extra_latency_pg_id = 0
              if (device_pair['max_latency_pg_ids'] % 2) == 1:
                   device_pair['max_latency_pg_ids'] -= 1
-                  extra_latency_pg_id = 1
 
              device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']       = int(device_pair['max_default_pg_ids'] / 2)
              device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['available']   = device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total']
@@ -1340,14 +1336,6 @@ def main():
              device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['total']       = device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total']
              device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['available']   = device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['total']
              device_pair[t_global.constants['reverse_direction']]['pg_ids']['latency']['start_index'] = device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['start_index'] + device_pair[t_global.constants['reverse_direction']]['pg_ids']['default']['total']
-
-             if extra_default_pg_id:
-                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['total'] += extra_default_pg_id
-                  device_pair[t_global.constants['forward_direction']]['pg_ids']['default']['available'] += extra_default_pg_id
-
-             if extra_latency_pg_id:
-                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['total'] += extra_latency_pg_id
-                  device_pair[t_global.constants['forward_direction']]['pg_ids']['latency']['available'] += extra_latency_pg_id
 
              pg_id_base = pg_id_base + device_pair['max_default_pg_ids'] + device_pair['max_latency_pg_ids']
 
