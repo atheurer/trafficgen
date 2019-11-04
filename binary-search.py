@@ -30,9 +30,11 @@ def bs_logger_cleanup(notifier, thread):
      thread.join()
      return(0)
 
-def bs_logger(msg):
+def bs_logger(msg, bso = True, prefix = ""):
      t_global.bs_logger_queue.append({ 'timestamp': time.time(),
-                                       'message':   str(msg) })
+                                       'message':   str(msg),
+                                       'bso':       bso,
+                                       'prefix':    prefix })
      return(0)
 
 def bs_logger_worker(log, thread_exit):
@@ -41,8 +43,13 @@ def bs_logger_worker(log, thread_exit):
                bs_log_entry = t_global.bs_logger_queue.popleft()
 
                bs_log_entry_time = format_timestamp(bs_log_entry['timestamp'])
+               bs_log_entry_prefix = ""
+               if bs_log_entry['bso']:
+                    bs_log_entry_prefix = "[BSO]"
+               if len(bs_log_entry['prefix']):
+                    bs_log_entry_prefix = "[%s]" % (bs_log_entry['prefix'])
                for bs_log_entry_line in bs_log_entry['message'].split('\n'):
-                    print("[%s] %s" % (bs_log_entry_time, bs_log_entry_line))
+                    print("[%s]%s %s" % (bs_log_entry_time, bs_log_entry_prefix, bs_log_entry_line))
 
                bs_log_entry['timestamp'] = bs_log_entry['timestamp'] * 1000
                log.append(bs_log_entry)
@@ -325,7 +332,7 @@ def process_options ():
     parser.add_argument('--max-retries',
                         dest='max_retries',
                         help='Maximum number of trial retries before aborting',
-                        default = 3,
+                        default = 1,
                         type = int
                         )
     parser.add_argument('--loss-granularity',
@@ -637,7 +644,7 @@ def handle_query_process_stderr(process, trial_params, port_info, exit_event):
                     continue
 
                if primary_close_file:
-                    bs_logger(line.rstrip('\n'))
+                    bs_logger(line.rstrip('\n'), bso = False, prefix = "PQO")
                print(line.rstrip('\n'), file=primary_output_file)
 
                if line.rstrip('\n') == "Connection severed":
@@ -980,7 +987,7 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
                   do_loop = False
                   continue
 
-             bs_logger("%s:%s" % (prefix, line.rstrip('\n')))
+             bs_logger(line.rstrip('\n'), bso = False, prefix = prefix)
 
              if trial_params['traffic_generator'] == 'moongen-txrx':
                   #[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
@@ -1088,7 +1095,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                   continue
 
              if trial_params['traffic_generator'] == 'moongen-txrx':
-                  bs_logger(line.rstrip('\n'))
+                  bs_logger(line.rstrip('\n'), bso = False, prefix = "MoonGen")
 
              if trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
                   m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE JSON STREAM PROFILE FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
@@ -1499,159 +1506,282 @@ def setup_config_var(variable, value, trial_params, config_tag = True, silent = 
                bs_logger("%s=%s" % (variable, value))
 
 def evaluate_trial(trial_params, trial_stats):
-    trial_result = 'pass'
-    test_abort = False
-    total_tx_packets = 0
-    total_rx_packets = 0
-    for dev_pair in trial_params['test_dev_pairs']:
-        pair_abort = False
-        if trial_stats[dev_pair['tx']]['tx_active'] and trial_stats[dev_pair['tx']]['tx_packets'] == 0:
-            pair_abort = True
-            bs_logger("binary search failed because no packets were transmitted between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
+     bs_logger("(Evaluating trial)")
 
-        if trial_stats[dev_pair['rx']]['rx_active'] and trial_stats[dev_pair['rx']]['rx_packets'] == 0:
-            pair_abort = True
-            bs_logger("binary search failed because no packets were received between device pair: %d -> %d" % (dev_pair['tx'], dev_pair['rx']))
+     trial_result = 'pass'
+     total_tx_packets = 0
+     total_rx_packets = 0
 
-        if 'rx_invalid_error' in trial_stats[dev_pair['tx']]:
-            pair_abort = True
-            bs_logger("binary search failed because packets were received on an incorrect port between device pair: %d -> %d (pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['tx']]['rx_invalid_error']))
+     for dev_pair in trial_params['test_dev_pairs']:
+          if trial_stats[dev_pair['tx']]['tx_active'] and trial_stats[dev_pair['tx']]['tx_packets'] == 0:
+               trial_result = 'abort'
+               bs_logger("\t(critical requirement failure, no packets were transmitted between device pair: %d -> %d, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_result))
 
-        if 'tx_invalid_error' in trial_stats[dev_pair['rx']]:
-            pair_abort = True
-            bs_logger("binary search failed because packets were transmitted on an incorrect port between device pair: %d -> %d (pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['tx_invalid_error']))
+          if trial_stats[dev_pair['rx']]['rx_active'] and trial_stats[dev_pair['rx']]['rx_packets'] == 0:
+               trial_result = 'abort'
+               bs_logger("\t(critical requirement failure, no packets were received between device pair: %d -> %d, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_result))
 
-        if pair_abort:
-            test_abort = True
-            continue
+          if 'tx_invalid_error' in trial_stats[dev_pair['rx']]:
+               trial_result = 'abort'
+               bs_logger("\t(critical requirement failure, packets were transmitted on an incorrect port between device pair: %d -> %d, pg_ids: [%s], trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['rx']]['tx_invalid_error'],
+                          trial_result))
 
-        if 'latency_duplicate_error' in trial_stats[dev_pair['rx']]:
-            if trial_params['duplicate_packet_failure_mode'] == 'quit':
-                test_abort = True
-            else:
-                trial_result = trial_params['duplicate_packet_failure_mode']
-                bs_logger("(trial failed requirement, duplicate latency packets detected, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['latency_duplicate_error']) )
+          if 'rx_invalid_error' in trial_stats[dev_pair['tx']]:
+               trial_result = 'abort'
+               bs_logger("\t(critical requirement failure, packets were received on an incorrect port between device pair: %d -> %d, pg_ids: [%s], trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['tx']]['rx_invalid_error'],
+                          trial_result))
 
-        if 'tx_missing_error' in trial_stats[dev_pair['tx']]:
-            trial_result = 'fail'
-            bs_logger("(trial failed requirement, missing TX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['tx']]['tx_missing_error']))
+          if 'latency_duplicate_error' in trial_stats[dev_pair['rx']]:
+               if trial_params['duplicate_packet_failure_mode'] == 'quit':
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, duplicate latency packets detected, device pair: %d -> %d, pg_ids: [%s], trial result: %s)" %
+                              (dev_pair['tx'],
+                               dev_pair['rx'],
+                               trial_stats[dev_pair['rx']]['latency_duplicate_error'],
+                               trial_result))
 
-        if 'rx_missing_error' in trial_stats[dev_pair['rx']]:
-            trial_result = 'fail'
-            bs_logger("(trial failed requirement, missing RX results, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_missing_error']))
+          if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
+               if trial_params['negative_packet_loss_mode'] == 'quit':
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: [%s], trial result: %s)" %
+                              (dev_pair['tx'],
+                               dev_pair['rx'],
+                               trial_stats[dev_pair['rx']]['rx_negative_loss_error'],
+                               trial_result))
 
-        if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
-            if trial_params['negative_packet_loss_mode'] == 'quit':
-                test_abort = True
-            else:
-                trial_result = trial_params['negative_packet_loss_mode']
-            bs_logger("(trial failed requirement, negative individual stream RX packet loss, action: %s, device pair: %d -> %d, pg_ids: %s)" % (trial_params['negative_packet_loss_mode'], dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_negative_loss_error']))
-
-        if trial_params['loss_granularity'] == 'segment' and 'rx_loss_error' in trial_stats[dev_pair['rx']]:
-            trial_result = 'fail'
-            bs_logger("(trial failed requirement, individual stream RX packet loss, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['rx_loss_error']))
-
-        if trial_params['loss_granularity'] == 'device' and trial_stats[dev_pair['rx']]['rx_active']:
-            if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] < 0:
-                if trial_params['negative_packet_loss_mode'] == 'quit':
-                    test_abort = True
-                else:
-                    trial_result = trial_params['negative_packet_loss_mode']
-                bs_logger("(trial failed requirement, negative device packet loss, action: %s, device pair: %d -> %d)" % (trial_params['negative_packet_loss_mode'], dev_pair['tx'], dev_pair['rx']))
-
-            requirement_msg = "passed"
-            if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
-                requirement_msg = "failed"
-                trial_result = 'fail'
-            bs_logger("(trial %s requirement, percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(t_global.args.max_loss_pct), commify(trial_stats[dev_pair['rx']]['rx_lost_packets_pct']), commify(trial_stats[dev_pair['rx']]['rx_lost_packets'])))
-
-            if t_global.args.measure_latency:
-                requirement_msg = "passed"
-                if trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct'] > t_global.args.max_loss_pct:
-                    requirement_msg = "failed"
-                    trial_result = 'fail'
-                bs_logger("(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(t_global.args.max_loss_pct), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct']), commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets'])))
-
-        if 'ddos_rx_error' in trial_stats[dev_pair['rx']]:
-            trial_result = 'fail'
-            bs_logger("(trial failed requirement, individual DDoS stream RX packets received, device pair: %d -> %d, pg_ids: %s)" % (dev_pair['tx'], dev_pair['rx'], trial_stats[dev_pair['rx']]['ddos_rx_error']))
-
-        if t_global.args.traffic_generator != 'null-txrx' and trial_stats[dev_pair['tx']]['tx_active']:
-            requirement_msg = "passed"
-            tx_rate = trial_stats[dev_pair['tx']]['tx_pps'] / 1000000.0
-            tolerance_min = 0.0
-            tolerance_max = 0.0
-            if t_global.args.traffic_generator == 'trex-txrx' or t_global.args.traffic_generator == 'trex-txrx-profile':
-                tolerance_min = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
-                tolerance_max = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
-                if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                    requirement_msg = "retry"
-                    if trial_result == "pass":
-                        trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
-                tolerance_min *= 1000000
-                tolerance_max *= 1000000
-            elif t_global.args.traffic_generator == 'moongen-txrx':
-                tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
-                tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
-                if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                    requirement_msg = "retry"
-                    if trial_result == "pass":
-                        trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
-            trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
-            trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
-            bs_logger("(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %s - %s, achieved: %s)" % (requirement_msg, dev_pair['tx'], dev_pair['rx'], commify(tolerance_min/1000000), commify(tolerance_max/1000000), commify(tx_rate)))
-
-    if test_abort:
-        bs_logger(error('Binary search aborting due to critical error'))
-        return('quit')
-
-    if trial_params['loss_granularity'] == 'direction':
-        for direction in trial_stats['directional']:
-            if trial_stats['directional'][direction]['active']:
-                if trial_stats['directional'][direction]['rx_lost_packets_pct'] < 0:
+          if trial_params['loss_granularity'] == 'device' and trial_stats[dev_pair['rx']]['rx_active']:
+               if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] < 0:
                     if trial_params['negative_packet_loss_mode'] == 'quit':
-                        test_abort = True
-                    else:
-                        trial_result = trial_params['negative_packet_loss_mode']
-                    bs_logger("(trial failed requirement, negative direction packet loss, action: %s, direction: %s)" % (trial_params['negative_packet_loss_mode'], direction))
+                         trial_result = 'abort'
+                         bs_logger("\t(critical requirement failure, negative device packet loss, device pair: %d -> %d, trial result: %s)" %
+                                   (dev_pair['tx'],
+                                    dev_pair['rx'],
+                                    trial_result))
 
-                requirement_msg = "passed"
-                if trial_stats['directional'][direction]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
-                    requirement_msg = "failed"
-                    trial_result = 'fail'
-                bs_logger("(trial %s requirement, percent loss, direction: %s, requested: %s%%, achieved: %s%%, lost packets: %s)" % (requirement_msg, direction, commify(t_global.args.max_loss_pct), commify(trial_stats['directional'][direction]['rx_lost_packets_pct']), commify(trial_stats['directional'][direction]['rx_lost_packets'])))
+     if trial_params['loss_granularity'] == 'direction':
+          for direction in trial_stats['directional']:
+               if trial_stats['directional'][direction]['active']:
+                    if trial_stats['directional'][direction]['rx_lost_packets_pct'] < 0:
+                         if trial_params['negative_packet_loss_mode'] == 'quit':
+                              trial_result = 'abort'
+                              bs_logger("\t(critical requirement failure, negative direction packet loss, direction: %s, trial result: %s)" %
+                                        (direction,
+                                         trial_result))
 
-    if 'global' in trial_stats:
-        tolerance_min = float(trial_params['runtime']) * (1 - (float(trial_params['runtime_tolerance']) / 100))
-        tolerance_max = float(trial_params['runtime']) * (1 + (float(trial_params['runtime_tolerance']) / 100))
-        trial_stats['global']['runtime_tolerance_min'] = tolerance_min
-        trial_stats['global']['runtime_tolerance_max'] = tolerance_max
+     if trial_result == 'abort':
+          trial_result = 'quit'
+          bs_logger(error("(binary search aborting due to critical error, trial result: %s)" %
+                          (trial_result)))
+          return(trial_result)
 
-        if trial_stats['global']['timeout']:
-            bs_logger("(trial timeout, forcing a retry, timeouts can cause inconclusive trial results)")
-            trial_result = "retry-to-fail"
-        else:
-            if trial_stats['global']['runtime'] < tolerance_min or trial_stats['global']['runtime'] > tolerance_max:
-                bs_logger("(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %s - %s, achieved: %s)" % (commify(tolerance_min), commify(tolerance_max), commify(trial_stats['global']['runtime'])))
-                if trial_result == "pass":
-                    trial_result = "retry-to-fail"
+     for dev_pair in trial_params['test_dev_pairs']:
+          if t_global.args.traffic_generator != 'null-txrx' and trial_stats[dev_pair['tx']]['tx_active']:
+               requirement_msg = "passed"
+               result_msg = "unmodified"
+               tx_rate = trial_stats[dev_pair['tx']]['tx_pps'] / 1000000.0
+               tolerance_min = 0.0
+               tolerance_max = 0.0
+               if t_global.args.traffic_generator == 'trex-txrx' or t_global.args.traffic_generator == 'trex-txrx-profile':
+                    tolerance_min = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 - trial_params['rate_tolerance']) / 100)
+                    tolerance_max = (trial_stats[dev_pair['tx']]['tx_pps_target'] / 1000000) * ((100.0 + trial_params['rate_tolerance']) / 100)
+                    if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                         requirement_msg = "failed"
+                         result_msg = "modified"
+                         trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
+                    tolerance_min *= 1000000
+                    tolerance_max *= 1000000
+               elif t_global.args.traffic_generator == 'moongen-txrx':
+                    tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
+                    tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
+                    if tx_rate > tolerance_max or tx_rate < tolerance_min:
+                         requirement_msg = "failed"
+                         result_msg = "modified"
+                         trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
+               trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
+               trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
+               bs_logger("\t(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %s - %s, achieved: %s, trial result status: %s, trial result: %s)" %
+                         (requirement_msg,
+                          dev_pair['tx'],
+                          dev_pair['rx'],
+                          commify(tolerance_min/1000000),
+                          commify(tolerance_max/1000000),
+                          commify(tx_rate),
+                          result_msg,
+                          trial_result))
 
-        if trial_stats['global']['early_exit']:
-            bs_logger("(trial failed due to early exit)")
-            trial_result = 'fail'
+     for dev_pair in trial_params['test_dev_pairs']:
+          if 'latency_duplicate_error' in trial_stats[dev_pair['rx']]:
+               trial_result = trial_params['duplicate_packet_failure_mode']
+               bs_logger("\t(trial failed requirement, duplicate latency packets detected, device pair: %d -> %d, pg_ids: [%s], trial result status: modified, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['rx']]['latency_duplicate_error'],
+                          trial_result) )
 
-        if trial_stats['global']['force_quit']:
-            bs_logger("Received Force Quit")
-            return('quit')
+          if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
+               trial_result = trial_params['negative_packet_loss_mode']
+               bs_logger("\t(trial failed requirement, negative individual stream RX packet loss, device pair: %d -> %d, pg_ids: [%s], trial result status: modified, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['rx']]['rx_negative_loss_error'],
+                          trial_result))
 
-    if trial_params['trial_mode'] == 'warmup':
-         # when in warmup we want to ignore the results of the
-         # validations, but it is potentially helpful to see the test
-         # output so rather than short circuit we do all the tests but
-         # then just report a passing result
-         return('pass')
-    else:
-         return(trial_result)
+          if 'tx_missing_error' in trial_stats[dev_pair['tx']]:
+               trial_result = 'fail'
+               bs_logger("\t(trial failed requirement, missing TX results, device pair: %d -> %d, pg_ids: [%s], trial result status: modified, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['tx']]['tx_missing_error'],
+                          trial_result))
+
+          if 'rx_missing_error' in trial_stats[dev_pair['rx']]:
+               trial_result = 'fail'
+               bs_logger("\t(trial failed requirement, missing RX results, device pair: %d -> %d, pg_ids: [%s], trail result status: modified, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['rx']]['rx_missing_error'],
+                          trial_result))
+
+          if 'ddos_rx_error' in trial_stats[dev_pair['rx']]:
+               trial_result = 'fail'
+               bs_logger("\t(trial failed requirement, individual DDoS stream RX packets received, device pair: %d -> %d, pg_ids: [%s], trial result status: modified, trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['rx']]['ddos_rx_error'],
+                          trial_result))
+
+     if trial_params['loss_granularity'] == 'direction':
+          for direction in trial_stats['directional']:
+               if trial_stats['directional'][direction]['active']:
+                    if trial_stats['directional'][direction]['rx_lost_packets_pct'] < 0:
+                         trial_result = trial_params['negative_packet_loss_mode']
+                         bs_logger("\t(trial failed requirement, negative direction packet loss, direction: %s, trial result status: modified, trial result: %s)" %
+                                   (direction,
+                                    trial_result))
+
+                    requirement_msg = "passed"
+                    result_msg = "unmodified"
+                    if trial_stats['directional'][direction]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
+                         requirement_msg = "failed"
+                         result_msg = "modified"
+                         trial_result = 'fail'
+                    bs_logger("\t(trial %s requirement, percent loss, direction: %s, requested: %s%%, achieved: %s%%, lost packets: %s, trial result status: %s, trial result: %s)" %
+                              (requirement_msg,
+                               direction,
+                               commify(t_global.args.max_loss_pct),
+                               commify(trial_stats['directional'][direction]['rx_lost_packets_pct']),
+                               commify(trial_stats['directional'][direction]['rx_lost_packets']),
+                               result_msg,
+                               trial_result))
+     else:
+          for dev_pair in trial_params['test_dev_pairs']:
+               if trial_params['loss_granularity'] == 'segment':
+                    if 'rx_loss_error' in trial_stats[dev_pair['rx']]:
+                         trial_result = 'fail'
+                         bs_logger("\t(trial failed requirement, individual stream RX packet loss, device pair: %d -> %d, pg_ids: [%s], trial result status: modified, trial result: %s)" %
+                                   (dev_pair['tx'],
+                                    dev_pair['rx'],
+                                    trial_stats[dev_pair['rx']]['rx_loss_error'],
+                                    trial_result))
+               elif trial_params['loss_granularity'] == 'device':
+                    if trial_stats[dev_pair['rx']]['rx_active']:
+                         if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] < 0:
+                              trial_result = trial_params['negative_packet_loss_mode']
+                              bs_logger("\t(trial failed requirement, negative device packet loss, device pair: %d -> %d, trial result status: modified, trial result: %s)" %
+                                        (dev_pair['tx'],
+                                         dev_pair['rx'],
+                                         trial_result))
+
+                         requirement_msg = "passed"
+                         result_msg = "unmodified"
+                         if trial_stats[dev_pair['rx']]['rx_lost_packets_pct'] > t_global.args.max_loss_pct:
+                              requirement_msg = "failed"
+                              result_msg = "modified"
+                              trial_result = 'fail'
+                         bs_logger("\t(trial %s requirement, percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s, trial result status: %s, trial result: %s)" %
+                                   (requirement_msg,
+                                    dev_pair['tx'],
+                                    dev_pair['rx'],
+                                    commify(t_global.args.max_loss_pct),
+                                    commify(trial_stats[dev_pair['rx']]['rx_lost_packets_pct']),
+                                    commify(trial_stats[dev_pair['rx']]['rx_lost_packets']),
+                                    result_msg,
+                                    trial_result))
+
+                         if t_global.args.measure_latency:
+                              requirement_msg = "passed"
+                              result_msg = "unmodified"
+                              if trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct'] > t_global.args.max_loss_pct:
+                                   requirement_msg = "failed"
+                                   result_msg = "modified"
+                                   trial_result = 'fail'
+                              bs_logger("\t(trial %s requirement, latency percent loss, device pair: %d -> %d, requested: %s%%, achieved: %s%%, lost packets: %s, trial result status: %s, trial result: %s)" %
+                                        (requirement_msg,
+                                         dev_pair['tx'],
+                                         dev_pair['rx'],
+                                         commify(t_global.args.max_loss_pct),
+                                         commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets_pct']),
+                                         commify(trial_stats[dev_pair['rx']]['rx_latency_lost_packets']),
+                                         result_msg,
+                                         trial_result))
+
+     if 'global' in trial_stats:
+          tolerance_min = float(trial_params['runtime']) * (1 - (float(trial_params['runtime_tolerance']) / 100))
+          tolerance_max = float(trial_params['runtime']) * (1 + (float(trial_params['runtime_tolerance']) / 100))
+          trial_stats['global']['runtime_tolerance_min'] = tolerance_min
+          trial_stats['global']['runtime_tolerance_max'] = tolerance_max
+
+          if trial_stats['global']['timeout']:
+               trial_result = "retry-to-fail"
+               bs_logger("\t(trial timeout, forcing a retry, timeouts can cause inconclusive trial results, trial result status: modified, trial result: %s)" %
+                         (trial_result))
+          else:
+               if trial_stats['global']['runtime'] < tolerance_min or trial_stats['global']['runtime'] > tolerance_max:
+                    result_msg = "unmodified"
+                    if trial_result == "pass":
+                         trial_result = "retry-to-fail"
+                         result_msg = "modified"
+                    bs_logger("\t(trial failed requirement, runtime tolerance test, forcing retry, tolerance: %s - %s, achieved: %s, trial result status: %s, trial result: %s)" %
+                              (commify(tolerance_min),
+                               commify(tolerance_max),
+                               commify(trial_stats['global']['runtime']),
+                               result_msg,
+                               trial_result))
+
+          if trial_stats['global']['early_exit']:
+               trial_result = 'fail'
+               bs_logger("\t(trial failed due to early exit, trial result status: modified, trial result: %s)" %
+                         (trial_result))
+
+          if trial_stats['global']['force_quit']:
+               trial_result = 'quit'
+               bs_logger("\t(received force quit, trial result status: modified, trial result: %s" %
+                         (trial_result))
+               return(trial_result)
+
+     if trial_params['trial_mode'] == 'warmup':
+          # when in warmup we want to ignore the results of the
+          # validations, but it is potentially helpful to see the test
+          # output so rather than short circuit we do all the tests but
+          # then just report a passing result
+          trial_result = 'pass'
+          bs_logger("\t(since this was a warmup trial the actual results do not matter and are ignored, trial result status: modified, trial result: %s)" %
+                    (trial_result))
+          return(trial_result)
+     else:
+          return(trial_result)
 
 def main():
     trial_results = { 'trials': [],
@@ -2087,11 +2217,10 @@ def main():
 
                    if retries >= trial_params['max_retries']:
                         if trial_result == "retry-to-quit":
-                             bs_logger('---> The retry limit for a trial has been reached.  This is probably due to a rate tolerance failure.  <---')
-                             bs_logger('---> You must adjust the --rate-tolerance to a higher value, or use --rate to start with a lower rate. <---')
+                             bs_logger("\tEXCEPTION: The retry limit for a trial has been reached with quiting being the configured behavior.")
                              return(1)
                         elif trial_result == "retry-to-fail":
-                             bs_logger('---> The retry limit has been reached.  Failing and continuing. <---')
+                             bs_logger("\tEXCEPTION: The retry limit for a trial has been reached with failing and continuing being the configured behavior.")
                              retries = 0
                              trial_result = "fail"
                    else:
@@ -2103,6 +2232,7 @@ def main():
               if t_global.args.one_shot == 1 and not do_warmup:
                    bs_logger("Finished binary-search") # this message triggers pbench to stop default tools
                    break
+
               if trial_result == "fail":
                    if final_validation:
                         if in_repeat_validation:
@@ -2136,6 +2266,7 @@ def main():
                         debug_stats = trial_stats
                    else:
                         passed_stats = trial_stats
+
                    if final_validation: # no longer necessary to continue searching
                         if initial_rate == rate and not trial_params['disable_upward_search']:
                              bs_logger("Detected requested rate is too low, doubling rate and restarting search")
