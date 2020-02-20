@@ -1142,9 +1142,13 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                             if trial_params['use_device_stats']:
                                  stats[device_pair['tx']]['tx_active'] = True
                                  stats[device_pair['rx']]['rx_active'] = True
+                                 stats['directional'][device_pair['direction']]['active'] = True
 
                                  stats[device_pair['tx']]['tx_packets'] += int(results[str(device_pair['tx'])]['opackets'])
+                                 stats['directional'][device_pair['direction']]['tx_packets'] += int(results[str(device_pair['tx'])]['opackets'])
+
                                  stats[device_pair['rx']]['rx_packets'] += int(results[str(device_pair['rx'])]['ipackets'])
+                                 stats['directional'][device_pair['direction']]['rx_packets'] += int(results[str(device_pair['rx'])]['ipackets'])
 
                                  stats[device_pair['rx']]['rx_lost_packets'] = stats[device_pair['tx']]['tx_packets'] - stats[device_pair['rx']]['rx_packets']
                                  stats[device_pair['rx']]['rx_lost_packets_pct'] = 100.0 * stats[device_pair['rx']]['rx_lost_packets'] / stats[device_pair['tx']]['tx_packets']
@@ -1193,8 +1197,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                                                 if stream_type == "latency":
                                                      stats[device_pair['tx']]['tx_latency_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                                     stats['directional'][device_pair['direction']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
-                                                     stats['directional'][device_pair['direction']]['active'] = True
+                                                     if not trial_params['use_device_stats']:
+                                                          stats['directional'][device_pair['direction']]['tx_packets'] += int(results["flow_stats"][str(pg_id)]["tx_pkts"][str(device_pair['tx'])])
+                                                          stats['directional'][device_pair['direction']]['active'] = True
                                            else:
                                                 stats_error_append_pg_id(stats[device_pair['tx']], 'tx_missing', pg_id)
 
@@ -1206,8 +1211,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                                                 if stream_type == "latency":
                                                      stats[device_pair['rx']]['rx_latency_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                                     stats['directional'][device_pair['direction']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
-                                                     stats['directional'][device_pair['direction']]['active'] = True
+                                                     if not trial_params['use_device_stats']:
+                                                          stats['directional'][device_pair['direction']]['rx_packets'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])])
+                                                          stats['directional'][device_pair['direction']]['active'] = True
 
                                                      stats[device_pair['rx']]['rx_latency_average'] += int(results["flow_stats"][str(pg_id)]["rx_pkts"][str(device_pair['rx'])]) * float(results["latency"][str(pg_id)]["latency"]["average"])
 
