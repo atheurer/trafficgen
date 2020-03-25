@@ -1012,7 +1012,7 @@ def main():
                   remainder = device_pair['max_default_pg_ids'] % len(device_pairs)
                   device_pair['max_default_pg_ids'] -= remainder
                   # divide the pg_ids across the device_pairs
-                  device_pair['max_default_pg_ids'] /= len(device_pairs)
+                  device_pair['max_default_pg_ids'] = int(device_pair['max_default_pg_ids'] / len(device_pairs))
 
              device_pair['max_latency_pg_ids'] = int(128 / len(device_pairs)) # 128 is the maximum number of software counters for latency in TRex
 
