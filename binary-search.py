@@ -2226,6 +2226,10 @@ def main():
                    else:
                         bs_logger('(trial results are ignored since this is a warmup run)')
               elif trial_result == "retry-to-fail" or trial_result == "retry-to-quit":
+                   if final_validation and in_repeat_validation:
+                        bs_logger("Finished repeat final validation for debug collection") # this message triggers pbench to stop debug tools
+                        break
+
                    bs_logger('(trial must be repeated because one or more requirements did not pass, but allow a retry)')
 
                    if retries >= trial_params['max_retries']:
