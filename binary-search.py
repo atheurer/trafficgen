@@ -1222,6 +1222,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                                                      if float(results["latency"][str(pg_id)]["latency"]["total_max"]) > stats[device_pair['rx']]['rx_latency_maximum']:
                                                           stats[device_pair['rx']]['rx_latency_maximum'] = float(results["latency"][str(pg_id)]["latency"]["total_max"])
+
+                                                     if stats[device_pair['rx']]['rx_latency_minimum'] == 0.0 or float(results["latency"][str(pg_id)]["latency"]["total_min"]) < stats[device_pair['rx']]['rx_latency_minimum']:
+                                                          stats[device_pair['rx']]['rx_latency_minimum'] = float(results["latency"][str(pg_id)]["latency"]["total_min"])
                                            else:
                                                 stats_error_append_pg_id(stats[device_pair['rx']], 'rx_missing', pg_id)
 
@@ -1293,7 +1296,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                       stats[device_pair['rx']]['rx_latency_average'] = -1.0
 
                                  bs_logger("Device Pair: %s | Latency TX | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_latency_packets']), commify(stats[device_pair['tx']]['tx_latency_pps']), commify(stats[device_pair['tx']]['tx_latency_l1_bps']), commify(stats[device_pair['tx']]['tx_latency_l2_bps'])))
-                                 bs_logger("Device Pair: %s | Latency RX | packets=%s rate=%s l1_bps=%s l2_bps=%s average=%s maximum=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_latency_packets']), commify(stats[device_pair['rx']]['rx_latency_pps']), commify(stats[device_pair['rx']]['rx_latency_l1_bps']), commify(stats[device_pair['rx']]['rx_latency_l2_bps']), commify(stats[device_pair['rx']]['rx_latency_average']), commify(stats[device_pair['rx']]['rx_latency_maximum'])))
+                                 bs_logger("Device Pair: %s | Latency RX | packets=%s rate=%s l1_bps=%s l2_bps=%s average=%s minimum=%s maximum=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_latency_packets']), commify(stats[device_pair['rx']]['rx_latency_pps']), commify(stats[device_pair['rx']]['rx_latency_l1_bps']), commify(stats[device_pair['rx']]['rx_latency_l2_bps']), commify(stats[device_pair['rx']]['rx_latency_average']), commify(stats[device_pair['rx']]['rx_latency_minimum']), commify(stats[device_pair['rx']]['rx_latency_maximum'])))
 
                        for direction in stats['directional']:
                             if stats['directional'][direction]['active']:
@@ -1373,6 +1376,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
 
                                                      if float(results["latency"][str(pg_id)]["latency"]["total_max"]) > stats[device_pair['rx']]['rx_latency_maximum']:
                                                           stats[device_pair['rx']]['rx_latency_maximum'] = float(results["latency"][str(pg_id)]["latency"]["total_max"])
+
+                                                     if stats[device_pair['rx']]['rx_latency_minimum'] == 0.0 or float(results["latency"][str(pg_id)]["latency"]["total_min"]) < stats[device_pair['rx']]['rx_latency_minimum']:
+                                                          stats[device_pair['rx']]['rx_latency_minimum'] = float(results["latency"][str(pg_id)]["latency"]["total_min"])
                                            else:
                                                 stats_error_append_pg_id(stats[device_pair['rx']], 'rx_missing', pg_id)
 
@@ -1451,7 +1457,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                       stats[device_pair['rx']]['rx_latency_average'] = -1.0
 
                                  bs_logger("Device Pair: %s | Latency TX | packets=%s rate=%s l1_bps=%s l2_bps=%s" % (device_pair['path'], commify(stats[device_pair['tx']]['tx_latency_packets']), commify(stats[device_pair['tx']]['tx_latency_pps']), commify(stats[device_pair['tx']]['tx_latency_l1_bps']), commify(stats[device_pair['tx']]['tx_latency_l2_bps'])))
-                                 bs_logger("Device Pair: %s | Latency RX | packets=%s rate=%s l1_bps=%s l2_bps=%s average=%s maximum=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_latency_packets']), commify(stats[device_pair['rx']]['rx_latency_pps']), commify(stats[device_pair['rx']]['rx_latency_l1_bps']), commify(stats[device_pair['rx']]['rx_latency_l2_bps']), commify(stats[device_pair['rx']]['rx_latency_average']), commify(stats[device_pair['rx']]['rx_latency_maximum'])))
+                                 bs_logger("Device Pair: %s | Latency RX | packets=%s rate=%s l1_bps=%s l2_bps=%s average=%s minimum=%s maximum=%s" % (device_pair['path'], commify(stats[device_pair['rx']]['rx_latency_packets']), commify(stats[device_pair['rx']]['rx_latency_pps']), commify(stats[device_pair['rx']]['rx_latency_l1_bps']), commify(stats[device_pair['rx']]['rx_latency_l2_bps']), commify(stats[device_pair['rx']]['rx_latency_average']), commify(stats[device_pair['rx']]['rx_latency_minimum']), commify(stats[device_pair['rx']]['rx_latency_maximum'])))
 
                        for direction in stats['directional']:
                             if stats['directional'][direction]['active']:
@@ -2009,6 +2015,7 @@ def main():
                                         'rx_latency_lost_packets':     0,
                                         'rx_latency_lost_packets_pct': 0.0,
                                         'rx_latency_maximum':          0.0,
+                                        'rx_latency_minimum':          0.0,
                                         'rx_latency_l1_bps':           0.0,
                                         'rx_latency_l2_bps':           0.0,
                                         'rx_latency_pps':              0.0,
@@ -2219,6 +2226,10 @@ def main():
                    else:
                         bs_logger('(trial results are ignored since this is a warmup run)')
               elif trial_result == "retry-to-fail" or trial_result == "retry-to-quit":
+                   if final_validation and in_repeat_validation:
+                        bs_logger("Finished repeat final validation for debug collection") # this message triggers pbench to stop debug tools
+                        break
+
                    bs_logger('(trial must be repeated because one or more requirements did not pass, but allow a retry)')
 
                    if retries >= trial_params['max_retries']:
