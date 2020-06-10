@@ -1246,6 +1246,8 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                            if results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']] != "N/A":
                                                 if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) < 0:
                                                      stats_error_append_pg_id(stats[device_pair['rx']], 'rx_negative_loss', pg_id)
+                                                elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) == 100.0:
+                                                     stats_error_append_pg_id(stats[device_pair['rx']], 'rx_total_loss', pg_id)
                                                 elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
                                                      stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
 
@@ -1401,7 +1403,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                                      stats_error_append_pg_id(stats[device_pair['rx']], 'rx_negative_loss', pg_id)
                                                 else:
                                                      if traffic_type == 'measurement':
-                                                          if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
+                                                          if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) == 100.0:
+                                                               stats_error_append_pg_id(stats[device_pair['rx']], 'rx_total_loss', pg_id)
+                                                          elif float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) > trial_params["max_loss_pct"]:
                                                                stats_error_append_pg_id(stats[device_pair['rx']], 'rx_loss', pg_id)
                                                      elif traffic_type == 'ddos':
                                                           if float(results["flow_stats"][str(pg_id)]["loss"]["pct"][device_pair['path']]) != 100.0:
@@ -1563,6 +1567,14 @@ def evaluate_trial(trial_params, trial_stats):
                                dev_pair['rx'],
                                trial_stats[dev_pair['rx']]['latency_duplicate_error'],
                                trial_result))
+
+          if 'rx_total_loss_error' in trial_stats[dev_pair['rx']]:
+               trial_result = 'abort'
+               bs_logger("\t(critical requirement failure, individual stream 100%% RX packet loss , device pair: %d -> %d, pg_ids: [%s], trial result: %s)" %
+                         (dev_pair['tx'],
+                          dev_pair['rx'],
+                          trial_stats[dev_pair['rx']]['rx_total_loss_error'],
+                          trial_result))
 
           if 'rx_negative_loss_error' in trial_stats[dev_pair['rx']]:
                if trial_params['negative_packet_loss_mode'] == 'quit':
