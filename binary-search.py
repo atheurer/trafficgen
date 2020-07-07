@@ -309,7 +309,7 @@ def process_options ():
                         dest='traffic_generator',
                         help='name of traffic generator: trex-txrx or trex-txrx-profile or moongen-txrx of null-txrx',
                         default = "trex-txrx",
-                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'moongen-txrx', 'null-txrx' ]
+                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'moongen-txrx', 'xena', 'null-txrx' ]
                         )
     parser.add_argument('--measure-latency',
                         dest='measure_latency',
@@ -817,6 +817,10 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
             flow_mods_opt = flow_mods_opt + ',encapDstMac'
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
+    elif trial_params['traffic_generator'] == 'xena':
+         # TODO: pass binary search trial parameters to external helper module (xena-txrx.py)
+         print('Xena traffic generator - run_trial() placeholder stub')
+         sys.exit()
     elif trial_params['traffic_generator'] == 'null-txrx':
          cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
          cmd = cmd + ' --mirrored-log'
@@ -1921,6 +1925,15 @@ def main():
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
          foo = None
+
+    # set configuration from the argument parser
+    if t_global.args.traffic_generator == 'xena':
+         # 1932-1935 are bare minimum - required to prevent script crash
+         setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
+         setup_config_var("device_pairs", t_global.args.device_pairs, trial_params)
+         setup_config_var('active_device_pairs', t_global.args.active_device_pairs, trial_params)
+         setup_config_var("rate_unit", t_global.args.rate_unit, trial_params)
+         # TODO: add more config variables;  
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
