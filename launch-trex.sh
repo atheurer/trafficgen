@@ -10,8 +10,9 @@ use_l2="n"
 use_vlan="n"
 devices=""
 yaml_file=""
+mem_limit=2048
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,yaml-file:" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,yaml-file:,mem-limit:" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -44,6 +45,10 @@ if [ $? -ne 0 ]; then
     printf -- "--yaml-file=str\n"
     printf -- "  Optional parameter to specify a manually created TRex YAML file.\n"
     printf -- "  There is no default\n"
+    printf -- "\n"
+    printf -- "--mem-limit=num\n"
+    printf -- "  Optional parameter to specify the per node memory limit for DPDK.\n"
+    printf -- "  Default is ${mem_limit}"
     exit 1
 fi
 eval set -- "$opts"
@@ -100,6 +105,13 @@ while true; do
 		    echo "ERROR: The YAML file you specified (${yaml_file}) does not exist/could not be located"
 		    exit 1
 		fi
+	    fi
+	    ;;
+	--mem-limit)
+	    shift
+	    if [ -n "${1}" ]; then
+		mem_limit=${1}
+		shift
 	    fi
 	    ;;
 	--)
@@ -192,6 +204,9 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 	trex_config_cmd="./dpdk_setup_ports.py -c `echo ${devices} | sed -e s/,/" "/g` --cores-include ${cpu_list} -o ${yaml_file} ${trex_config_args}"
 	echo "configuring trex with: ${trex_config_cmd}"
 	${trex_config_cmd}
+
+	# set the memory limit so that trex doesn't consume all available hugepages
+	sed -i -e '/interfaces.*/a\' -e "  limit_memory: ${mem_limit}" ${yaml_file}
 
 	if [ "${use_l2}" == "y" ]; then
 	    /bin/rm -fv ${tmp_yaml_file}
