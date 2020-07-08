@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This script is intended to optimally configure TRex and launch it in
-# a screen session for the user.
+# a tmux session for the user.
 
 tmp_dir="/tmp"
 trex_dir="/opt/trex/current"
@@ -218,11 +218,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     cat ${yaml_file}
     echo "-------------------------------------------------------------------"
     rm -fv /tmp/trex.server.out
-    screen -dmS trex -t server ${trex_server_cmd}
-    screen -x trex -X chdir /tmp
-    screen -x trex -p server -X logfile trex.server.out
-    screen -x trex -p server -X logtstamp on
-    screen -x trex -p server -X log on
+    tmux new-session -d -n server -s trex bash -c "${trex_server_cmd} | tee /tmp/trex.server.out"
 
     # wait for trex server to be ready                                                                                                                                                                                                    
     count=60
@@ -235,7 +231,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     if [ ${num_ports} -eq 2 ]; then
         echo "trex-server is ready"
     else
-        echo "ERROR: trex-server could not start properly.  Check \'screen -x trex\' and/or \'cat /tmp/trex.server.out\'"
+        echo "ERROR: trex-server could not start properly.  Check \'tmux attach -t trex\' and/or \'cat /tmp/trex.server.out\'"
         exit 1
     fi
 else
