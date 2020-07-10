@@ -473,6 +473,22 @@ def process_options ():
                         help = 'Do not allow binary search to increase beyond the initial rate if it passes final validation',
                         action = 'store_true',
                         )
+    parser.add_argument("--user",
+                        dest='user',
+                        help='The user for a Xena chassis session. String is limited to 8 characters',
+                        type=str
+                        )
+    parser.add_argument("--pwd",
+                        dest='pwd',
+                        help='Optional argument for Xena session; defaults to "xena"',
+                        default='xena',
+                        type=str
+                        )
+    parser.add_argument("--chassis",
+                        dest='chassis',
+                        help='Argument for use with Xena; specifies the IP address of the Xena chassis to connect to',
+                        type=str
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -1928,12 +1944,16 @@ def main():
 
     # set configuration from the argument parser
     if t_global.args.traffic_generator == 'xena':
-         # 1932-1935 are bare minimum - required to prevent script crash
+         # first four are bare minimum - required to prevent script crash
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
          setup_config_var("device_pairs", t_global.args.device_pairs, trial_params)
          setup_config_var('active_device_pairs', t_global.args.active_device_pairs, trial_params)
          setup_config_var("rate_unit", t_global.args.rate_unit, trial_params)
-         # TODO: add more config variables;  
+         # user, pwd, chassis are added to simplify working with XenaPythonLib
+         setup_config_var('user', t_global.args.user, trial_params)
+         setup_config_var('pwd', t_global.args.pwd, trial_params)
+         setup_config_var('chassis', t_global.args.chassis, trial_params)
+         # TODO: add more config variables  
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
