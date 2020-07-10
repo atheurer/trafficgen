@@ -473,18 +473,18 @@ def process_options ():
                         help = 'Do not allow binary search to increase beyond the initial rate if it passes final validation',
                         action = 'store_true',
                         )
-    parser.add_argument("--user",
+    parser.add_argument("--xena_user",
                         dest='user',
                         help='The user for a Xena chassis session. String is limited to 8 characters',
                         type=str
                         )
-    parser.add_argument("--pwd",
+    parser.add_argument("--xena_pwd",
                         dest='pwd',
                         help='Optional argument for Xena session; defaults to "xena"',
                         default='xena',
                         type=str
                         )
-    parser.add_argument("--chassis",
+    parser.add_argument("--xena_chassis",
                         dest='chassis',
                         help='Argument for use with Xena; specifies the IP address of the Xena chassis to connect to',
                         type=str
