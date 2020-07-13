@@ -834,9 +834,17 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'xena':
-         # TODO: pass binary search trial parameters to external helper module (xena-txrx.py)
-         cmd = 'python -u ' + t_global.trafficgen_dir + 'xena-txrx.py'
-         sys.exit()
+        # required trial arguments
+        cmd = 'python -u ' + t_global.trafficgen_dir + 'xena-txrx.py'
+        cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
+        cmd = cmd + ' --chasis=' + str(trial_params['chasis'])
+        cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
+        cmd = cmd + ' --pwd=' + str(trial_params['pwd'])
+        cmd = cmd + ' --rate=' + str(trial_params['rate'])
+        cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
+        cmd = cmd + ' --user=' + str(trial_params['user'])
+
+        # TODO: optional trial arguments
     elif trial_params['traffic_generator'] == 'null-txrx':
          cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
          cmd = cmd + ' --mirrored-log'
