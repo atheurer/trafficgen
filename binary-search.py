@@ -835,7 +835,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         cmd = cmd + flow_mods_opt
     elif trial_params['traffic_generator'] == 'xena':
          # TODO: pass binary search trial parameters to external helper module (xena-txrx.py)
-         print('Xena traffic generator - run_trial() placeholder stub')
+         cmd = 'python -u ' + t_global.trafficgen_dir + 'xena-txrx.py'
          sys.exit()
     elif trial_params['traffic_generator'] == 'null-txrx':
          cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
