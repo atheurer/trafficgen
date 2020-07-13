@@ -474,18 +474,18 @@ def process_options ():
                         action = 'store_true',
                         )
     parser.add_argument("--xena_user",
-                        dest='user',
+                        dest='xena_user',
                         help='The user for a Xena chassis session. String is limited to 8 characters',
                         type=str
                         )
     parser.add_argument("--xena_pwd",
-                        dest='pwd',
+                        dest='xena_pwd',
                         help='Optional argument for Xena session; defaults to "xena"',
                         default='xena',
                         type=str
                         )
     parser.add_argument("--xena_chassis",
-                        dest='chassis',
+                        dest='xena_chassis',
                         help='Argument for use with Xena; specifies the IP address of the Xena chassis to connect to',
                         type=str
                         )
@@ -837,12 +837,12 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
         # required trial arguments
         cmd = 'python -u ' + t_global.trafficgen_dir + 'xena-txrx.py'
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
-        cmd = cmd + ' --chasis=' + str(trial_params['chasis'])
+        cmd = cmd + ' --xena_chassis=' + str(trial_params['xena_chassis'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
-        cmd = cmd + ' --pwd=' + str(trial_params['pwd'])
+        cmd = cmd + ' --xena_pwd=' + str(trial_params['xena_pwd'])
         cmd = cmd + ' --rate=' + str(trial_params['rate'])
         cmd = cmd + ' --runtime=' + str(trial_params['runtime'])
-        cmd = cmd + ' --user=' + str(trial_params['user'])
+        cmd = cmd + ' --xena_user=' + str(trial_params['xena_user'])
 
         # TODO: optional trial arguments
     elif trial_params['traffic_generator'] == 'null-txrx':
@@ -1958,9 +1958,9 @@ def main():
          setup_config_var('active_device_pairs', t_global.args.active_device_pairs, trial_params)
          setup_config_var("rate_unit", t_global.args.rate_unit, trial_params)
          # user, pwd, chassis are added to simplify working with XenaPythonLib
-         setup_config_var('user', t_global.args.user, trial_params)
-         setup_config_var('pwd', t_global.args.pwd, trial_params)
-         setup_config_var('chassis', t_global.args.chassis, trial_params)
+         setup_config_var('xena_user', t_global.args.xena_user, trial_params)
+         setup_config_var('xena_pwd', t_global.args.xena_pwd, trial_params)
+         setup_config_var('xena_chassis', t_global.args.xena_chassis, trial_params)
          # TODO: add more config variables  
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
