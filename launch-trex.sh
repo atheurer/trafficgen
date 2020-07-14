@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # This script is intended to optimally configure TRex and launch it in
-# a screen session for the user.
+# a tmux session for the user.
 
 tmp_dir="/tmp"
 trex_dir="/opt/trex/current"
@@ -10,8 +10,9 @@ use_l2="n"
 use_vlan="n"
 devices=""
 yaml_file=""
+mem_limit=2048
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,yaml-file:" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,yaml-file:,mem-limit:" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -44,6 +45,10 @@ if [ $? -ne 0 ]; then
     printf -- "--yaml-file=str\n"
     printf -- "  Optional parameter to specify a manually created TRex YAML file.\n"
     printf -- "  There is no default\n"
+    printf -- "\n"
+    printf -- "--mem-limit=num\n"
+    printf -- "  Optional parameter to specify the per node memory limit for DPDK.\n"
+    printf -- "  Default is ${mem_limit}"
     exit 1
 fi
 eval set -- "$opts"
@@ -100,6 +105,13 @@ while true; do
 		    echo "ERROR: The YAML file you specified (${yaml_file}) does not exist/could not be located"
 		    exit 1
 		fi
+	    fi
+	    ;;
+	--mem-limit)
+	    shift
+	    if [ -n "${1}" ]; then
+		mem_limit=${1}
+		shift
 	    fi
 	    ;;
 	--)
@@ -193,6 +205,9 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 	echo "configuring trex with: ${trex_config_cmd}"
 	${trex_config_cmd}
 
+	# set the memory limit so that trex doesn't consume all available hugepages
+	sed -i -e '/interfaces.*/a\' -e "  limit_memory: ${mem_limit}" ${yaml_file}
+
 	if [ "${use_l2}" == "y" ]; then
 	    /bin/rm -fv ${tmp_yaml_file}
 	fi
@@ -211,18 +226,14 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     else
         vlan_opt=""
     fi
-    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 ${vlan_opt}"
+    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 --prefix trafficgen_trex_ ${vlan_opt}"
     echo "about to run: ${trex_server_cmd}"
     echo "trex yaml:"
     echo "-------------------------------------------------------------------"
     cat ${yaml_file}
     echo "-------------------------------------------------------------------"
     rm -fv /tmp/trex.server.out
-    screen -dmS trex -t server ${trex_server_cmd}
-    screen -x trex -X chdir /tmp
-    screen -x trex -p server -X logfile trex.server.out
-    screen -x trex -p server -X logtstamp on
-    screen -x trex -p server -X log on
+    tmux new-session -d -n server -s trex bash -c "${trex_server_cmd} | tee /tmp/trex.server.out"
 
     # wait for trex server to be ready                                                                                                                                                                                                    
     count=60
@@ -235,7 +246,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     if [ ${num_ports} -eq 2 ]; then
         echo "trex-server is ready"
     else
-        echo "ERROR: trex-server could not start properly.  Check \'screen -x trex\' and/or \'cat /tmp/trex.server.out\'"
+        echo "ERROR: trex-server could not start properly.  Check \'tmux attach -t trex\' and/or \'cat /tmp/trex.server.out\'"
         exit 1
     fi
 else
