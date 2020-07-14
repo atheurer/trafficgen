@@ -3,7 +3,6 @@ from __future__ import print_function
 
 import argparse
 import sys
-import time
 from xenalib.XenaSocket import XenaSocket
 from xenalib.XenaManager import XenaManager
 
@@ -79,7 +78,7 @@ def main():
     
     xenaUsr = t_global.args.xena_user
     xenaPwd = t_global.args.xena_chassis
-    xenaChassis = t_global.args.xena_chasis
+    xenaChassis = t_global.args.xena_chassis
 
     # create the communication socket
     xsocket = XenaSocket(xenaChassis)
@@ -88,12 +87,11 @@ def main():
     try:
         xsocket.connect()
         print('Xena chassis connection successful')
-    except TypeError:
+    except Exception as e:
         # failure to connect returns object 'timeout', triggering a TypeError
-        print('Error: connection to Xena chassis failed.')
+        print('Error: connection to Xena chassis failed;', e)
     else:
         # executes if no exception
-        time.sleep(5) # pause so connection appears in Valkyrie Manager
         print('Disconnecting from Xena chassis...')
         del xsocket
 
