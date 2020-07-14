@@ -3,10 +3,12 @@ from __future__ import print_function
 
 import argparse
 import sys
-# TODO: imports
+import time
+from xenalib.XenaSocket import XenaSocket
+from xenalib.XenaManager import XenaManager
 
-# xena-txrx is currently a stub
-# script will interface between binary-search.py and XenaPythonLib
+# overview: xena-txrx is currently in development
+# script interfaces between binary-search.py and XenaPythonLib
 
 # argument parser
 class t_global(object):
@@ -66,15 +68,35 @@ def args_print(*args, **kwargs):
           del kwargs['stderr_only']
      if not stderr_only:
           print(*args, **kwargs)
-     if stderr_only or t_global.args.mirrored_log:
+     if stderr_only:
           print(*args, file = sys.stderr, **kwargs)
      return
 
-# TODO: include XenaPythonLib functionality
+# TODO: expand XenaPythonLib functionality
 
 def main():
     process_options()
-    print('Called xena-txrx.py helper module stub')
+    
+    xenaUsr = t_global.args.xena_user
+    xenaPwd = t_global.args.xena_chassis
+    xenaChassis = t_global.args.xena_chasis
+
+    # create the communication socket
+    xsocket = XenaSocket(xenaChassis)
+
+    # connect to Xena chassis, raise exception if fail
+    try:
+        xsocket.connect()
+        print('Xena chassis connection successful')
+    except TypeError:
+        # failure to connect returns object 'timeout', triggering a TypeError
+        print('Error: connection to Xena chassis failed.')
+    else:
+        # executes if no exception
+        time.sleep(5) # pause so connection appears in Valkyrie Manager
+        print('Disconnecting from Xena chassis...')
+        del xsocket
+
     sys.exit()
 
 if __name__ == '__main__':
