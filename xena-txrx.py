@@ -98,15 +98,11 @@ def main():
         # add port 0 and config
         port0 = xm.add_port(1, 0) # 1 = module, 0 = port
         port0.set_pause_frames_off()
-    except Exception as e:
-        print('Fail to add port 0; ', e)
-
-    try:
         # add port 1 and config
         port1 = xm.add_port(1, 1) # 1 = module, 1 = port
         port1.set_pause_frames_off()
     except Exception as e:
-        print('Fail to add port 1; ', e)
+        print('Fail to add port; ', e)
 
     finally:
         # close the connection
