@@ -77,7 +77,7 @@ def main():
     process_options()
     
     xenaUsr = t_global.args.xena_user
-    xenaPwd = t_global.args.xena_chassis
+    xenaPwd = t_global.args.xena_pwd
     xenaChassis = t_global.args.xena_chassis
 
     # create the communication socket
@@ -89,13 +89,31 @@ def main():
         print('Xena chassis connection successful')
     except Exception as e:
         # failure to connect returns object 'timeout', triggering a TypeError
-        print('Error: connection to Xena chassis failed;', e)
-    else:
-        # executes if no exception
-        print('Disconnecting from Xena chassis...')
-        del xsocket
+        print('Error: connection to Xena chassis failed; ', e)
 
-    sys.exit()
+    # create the manager session
+    xm = XenaManager(xsocket, xenaUsr, xenaPwd)
+
+    try:
+        # add port 0 and config
+        port0 = xm.add_port(1, 0) # 1 = module, 0 = port
+        port0.set_pause_frames_off()
+    except Exception as e:
+        print('Fail to add port 0; ', e)
+
+    try:
+        # add port 1 and config
+        port1 = xm.add_port(1, 1) # 1 = module, 1 = port
+        port1.set_pause_frames_off()
+    except Exception as e:
+        print('Fail to add port 1; ', e)
+
+    finally:
+        # close the connection
+        print('Disconnecting from Xena...')
+        del xm
+        del xsocket
+        print('Connection severed')
 
 if __name__ == '__main__':
     main()
