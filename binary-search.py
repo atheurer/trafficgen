@@ -307,9 +307,9 @@ def process_options ():
                         )
     parser.add_argument('--traffic-generator', 
                         dest='traffic_generator',
-                        help='name of traffic generator: trex-txrx or trex-txrx-profile or moongen-txrx or xena or null-txrx',
+                        help='name of traffic generator: trex-txrx or trex-txrx-profile or moongen-txrx or xena or Valkyrie2544 or null-txrx',
                         default = "trex-txrx",
-                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'moongen-txrx', 'xena', 'null-txrx' ]
+                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'moongen-txrx', 'xena', 'valkyrie2544', 'null-txrx' ]
                         )
     parser.add_argument('--measure-latency',
                         dest='measure_latency',
