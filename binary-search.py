@@ -489,6 +489,126 @@ def process_options ():
                         help='Argument for use with Xena; specifies the IP address of the Xena chassis to connect to',
                         type=str
                         )
+    parser.add_argument('--valkyrie2544-f', '--valkyrie2544-config_file',
+                        dest='valkyrie2544_config_file',
+                        type=str,
+                        default='',
+                        help='Xena/Valkyrie 2544 json config file name'
+                        )
+    parser.add_argument('--valkyrie2544-d', '--valkyrie2544-debug', 
+                        dest='valkyrie2544_debug',
+                        action='store_true', 
+                        help='Valkyrie2455: Enable debug logging'
+                        )
+    parser.add_argument('--valkyrie2544-w', '--valkyrie2544-windows_mode', 
+                        dest='valkyrie2544_windows_mode',
+                        required=False,
+                        action='store_true', 
+                        help='Valkyrie2455: Use windows mode, no mono'
+                        )
+    parser.add_argument('--valkyrie2544-l', '--valkyrie2544-verify_duration', 
+                        required=False,
+                        dest='valkyrie2544_verify_duration',
+                        type=int, 
+                        default=7200,
+                        help='Valkyrie2455: Verification duration in seconds')
+    parser.add_argument('--valkyrie2544-r', '--valkyrie2544-retry_attempts', 
+                        type=int,
+                        dest='valkyrie2544_retry_attempts',
+                        default=10,
+                        required=False, 
+                        help='Valkyrie2455: Maximum verify attempts')
+    parser.add_argument('--valkyrie2544-s', '--valkyrie2544-smart_search', 
+                        action='store_true',
+                        dest='valkyrie2544_smart_search',
+                        required=False, 
+                        help='Valkyrie2455: Enable smart search',
+                        default=False)
+    parser.add_argument('--valkyrie2544-p', '--valkyrie2544-pdf_output', 
+                        action='store_true',
+                        dest='valkyrie2544_pdf_output',
+                        required=False,
+                        help='Valkyrie2455: Generate PDF report, do not use on Linux!',
+                        default=False)
+    parser.add_argument('--valkyrie2544-t', '--valkyrie2544-search_trial_duration', 
+                        required=False,
+                        dest='valkyrie2544_search_trial_duration',
+                        help='Valkyrie2455: Search trial duration in seconds', 
+                        type=int,
+                        default=0)
+    parser.add_argument('--valkyrie2544-z', '--valkyrie2544-collect_latency', 
+                        required=False,
+                        dest='valkyrie2544_collect_latency',
+                        help='Valkyrie2455: Enable Latency counters', 
+                        action='store_true',
+                        default=False)
+    parser.add_argument('--valkyrie2544-k', '--valkyrie2544-packet_sizes', 
+                        required=False, 
+                        nargs='+',
+                        dest='valkyrie2544_packet_sizes',
+                        type=int, 
+                        default=False,
+                        help='Valkyrie2455: Specify custom packet sizes for test')
+    parser.add_argument('--valkyrie2544-a', '--valkyrie2544-acceptable_loss', 
+                        required=False,
+                        dest='valkyrie2544_acceptable_loss',
+                        type=float,
+                        help='Valkyrie2455: Specify acceptable loss in terms of percent of packages lost')
+    parser.add_argument('--valkyrie2544-v', '--valkyrie2544-save_file_name', 
+                        required=False,
+                        dest='valkyrie2544_save_file_name',
+                        type=str,
+                        default='', 
+                        help='Valkyrie2455: File name to save new config file as')
+    parser.add_argument('--valkyrie2544-i', '--valkyrie2544-initial_tput', 
+                        required=False,
+                        dest='valkyrie2544_initial_tput',
+                        type=float,
+                        help='Valkyrie2455: Specify initial throughput for test')
+    parser.add_argument('--valkyrie2544-M', '--valkyrie2544-max_tput', 
+                        required=False,
+                        dest='valkyrie2544_max_tput',
+                        type=float,
+                        help='Valkyrie2455: Specify maximum throughput for test')
+    parser.add_argument('--valkyrie2544-m', '--valkyrie2544-min_tput', 
+                        required=False,
+                        dest='valkyrie2544_min_tput',
+                        type=float,
+                        help='Valkyrie2455: Specify minimum throughput for test')
+    parser.add_argument('--valkyrie2544-n', '--valkyrie2544-mac_address', 
+                        required=False,
+                        dest='valkyrie2544_mac_address',
+                        nargs='+',
+                        type=str, 
+                        help='Valkyrie2455: Set src and destination mac address')
+    parser.add_argument('--valkyrie2544-c', '--valkyrie2544-connection_ips', 
+                        required=False,
+                        dest='valkyrie2544_connection_ips',
+                        nargs='+',
+                        type=str, 
+                        help='Valkyrie2455: Set src and destination ip address')
+    parser.add_argument('--valkyrie2544-o', '--valkyrie2544-resolution_tput', 
+                        required=False,
+                        dest='valkyrie2544_resolution_tput',
+                        type=float,
+                        help='Specify resolution rate for throughput test')
+    parser.add_argument('--valkyrie2544-u', '--valkyrie2544-flow_count', 
+                        required=False,
+                        dest='valkyrie2544_flow_count',
+                        choices=['1', '1k', '4k', '10k', '100k', '1M'],
+                        help='Choose number of flows to run')
+    parser.add_argument('--valkyrie2544-b', '--valkyrie2544-use_both_flows', 
+                        required=False,
+                        dest='valkyrie2544_use_both_flows',
+                        default=False,
+                        action='store_true',
+                        help='Valkyrie2455: Use value passed to --flow_count for both MAC and IP does not work for 100k and 1M')
+    parser.add_argument('--valkyrie2544-e', '--valkyrie2544-use_mac_flows', 
+                        required=False,
+                        dest='valkyrie2544_use_mac_flows',
+                        default=False,
+                        action='store_true', 
+                        help='Valkyrie2455: Use value passed to --flow_count for MAC')
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
