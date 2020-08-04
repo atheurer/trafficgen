@@ -381,6 +381,12 @@ def process_options ():
     generate network traffic and report packet loss
     """);
 
+    parser.add_argument('--trex-host',
+                        dest='trex_host',
+                        help='Hostname/IP address of the server where TRex is running',
+                        default='localhost',
+                        type = str
+                        )
     parser.add_argument('--debug',
                         dest='debug',
                         help='Should debugging be enabled',
@@ -829,7 +835,7 @@ def main():
                                'max_latency_pg_ids': 0,
                                'device_pair': device_pair })
 
-    c = STLClient()
+    c = STLClient(server = t_global.args.trex_host)
     passed = True
 
     stats = 0
