@@ -71,6 +71,12 @@ def setup_global_variables ():
 def process_options ():
     parser = argparse.ArgumentParser(usage="generate network traffic and report packet loss")
 
+    parser.add_argument('--trex-host',
+                        dest='trex_host',
+                        help='Hostname/IP address of the server where TRex is running',
+                        default='localhost',
+                        type = str
+                        )
     parser.add_argument('--debug',
                         dest='debug',
                         help='Should debugging be enabled',
@@ -1265,7 +1271,7 @@ def main():
     myprint(dump_json_readable(traffic_profile), stderr_only = True)
     myprint("PARSABLE TRAFFIC PROFILE: %s" % dump_json_parsable(traffic_profile), stderr_only = True)
 
-    c = STLClient()
+    c = STLClient(server = t_global.args.trex_host)
 
     try:
         thread_exit = threading.Event()

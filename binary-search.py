@@ -473,6 +473,12 @@ def process_options ():
                         help = 'Do not allow binary search to increase beyond the initial rate if it passes final validation',
                         action = 'store_true',
                         )
+    parser.add_argument('--trex-host',
+                        dest = 'trex_host',
+                        help = 'Hostname/IP address of the server where TRex is running',
+                        default = 'localhost',
+                        type = str
+                        )
     parser.add_argument("--xena_user",
                         dest='xena_user',
                         help='The user for a Xena chassis session. String is limited to 8 characters',
@@ -854,6 +860,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
         cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx-profile.py'
+        cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --random-seed=' + str(trial_params['random_seed'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
@@ -888,6 +895,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
         cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx.py'
+        cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
         cmd = cmd + ' --mirrored-log'
@@ -1978,6 +1986,7 @@ def main():
          setup_config_var("vlan_ids", t_global.args.vlan_ids, trial_params)
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
+         setup_config_var("trex_host", t_global.args.trex_host, trial_params)
          setup_config_var("device_pairs", t_global.args.device_pairs, trial_params)
          setup_config_var('active_device_pairs', t_global.args.active_device_pairs, trial_params)
          setup_config_var("rate_unit", t_global.args.rate_unit, trial_params)
