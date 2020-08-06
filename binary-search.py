@@ -163,13 +163,13 @@ def process_options ():
                         )
     parser.add_argument('--validation-runtime', 
                         dest='validation_runtime',
-                        help='tiral period in seconds during final validation',
+                        help='trial period in seconds during final validation',
                         default=30,
                         type = int,
                         )
     parser.add_argument('--search-runtime', 
                         dest='search_runtime',
-                        help='tiral period in seconds during binary search',
+                        help='trial period in seconds during binary search',
                         default=30,
                         type = int,
                         )
