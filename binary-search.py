@@ -577,6 +577,7 @@ def get_trex_port_info(trial_params, dev_pairs):
                     devices[dev_pair[direction]] += 1
 
      cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-query.py'
+     cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
      cmd = cmd + ' --mirrored-log'
      cmd = cmd + device_string
 

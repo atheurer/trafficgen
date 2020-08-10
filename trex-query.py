@@ -30,6 +30,12 @@ def process_options ():
     query TRex for information about it's ports
     """);
 
+    parser.add_argument('--trex-host',
+                        dest='trex_host',
+                        help='Hostname/IP address of the server where TRex is running',
+                        default='localhost',
+                        type = str
+                        )
     parser.add_argument('--mirrored-log',
                         dest='mirrored_log',
                         help='Should the logging sent to STDOUT be mirrored on STDERR',
@@ -55,7 +61,7 @@ def main():
          myprint(error("%s" % (e)))
          quit(1)
 
-    c = STLClient()
+    c = STLClient(server = t_global.args.trex_host)
     passed = True
 
     stats = 0
