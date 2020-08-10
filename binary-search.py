@@ -495,6 +495,51 @@ def process_options ():
                         help='Argument for use with Xena; specifies the IP address of the Xena chassis to connect to',
                         type=str
                         )
+    parser.add_argument('--xena_module',
+                        dest='xena_module',
+                        help='Argument for use with Xena; specifies the chassis module to use',
+                        type=int
+                        )
+    parser.add_argument('--valkyrie2544-windows_mode', 
+                        dest='valkyrie2544_windows_mode',
+                        required=False,
+                        action='store_true', 
+                        help='Valkyrie2455: Use windows mode, no mono'
+                        )
+    parser.add_argument('--valkyrie2544-smart_search', 
+                        action='store_true',
+                        dest='valkyrie2544_smart_search',
+                        required=False, 
+                        help='Valkyrie2455: Enable smart search',
+                        default=False)
+    parser.add_argument('--valkyrie2544-pdf_output', 
+                        action='store_true',
+                        dest='valkyrie2544_pdf_output',
+                        required=False,
+                        help='Valkyrie2455: Generate PDF report, do not use on Linux!',
+                        default=False)
+    parser.add_argument('--valkyrie2544-packet_sizes', 
+                        required=False,
+                        dest='valkyrie2544_packet_sizes',
+                        type=int, 
+                        default=False,
+                        help='Valkyrie2455: Specify custom packet sizes for test')
+    parser.add_argument('--valkyrie2544-save_file_name', 
+                        required=False,
+                        dest='valkyrie2544_save_file_name',
+                        type=str,
+                        default='', 
+                        help='Valkyrie2455: File name to save new config file as')
+    parser.add_argument('--valkyrie2544-initial_tput', 
+                        required=False,
+                        dest='valkyrie2544_initial_tput',
+                        type=float,
+                        help='Valkyrie2455: Specify initial throughput for test')
+    parser.add_argument('--valkyrie2544-resolution_tput', 
+                        required=False,
+                        dest='valkyrie2544_resolution_tput',
+                        type=float,
+                        help='Specify resolution rate for throughput test')
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -1960,6 +2005,71 @@ def main():
     if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
          foo = None
+
+    # valkyrie2544 - Xena throughput test functionality
+    if t_global.args.traffic_generator == 'valkyrie2544':
+        setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
+        setup_config_var('valkyrie2544_windows_mode', t_global.args.valkyrie2544_windows_mode, trial_params)
+        setup_config_var('validation_runtime', t_global.args.validation_runtime, trial_params)
+        setup_config_var('max_retries', t_global.args.max_retries, trial_params)
+        setup_config_var('valkyrie2544_smart_search', t_global.args.valkyrie2544_smart_search, trial_params)
+        setup_config_var('valkyrie2544_pdf_output', t_global.args.valkyrie2544_pdf_output, trial_params)
+        setup_config_var('search_runtime', t_global.args.search_runtime, trial_params)
+        setup_config_var('measure_latency', t_global.args.measure_latency, trial_params)
+        setup_config_var('valkyrie2544_packet_sizes', t_global.args.valkyrie2544_packet_sizes, trial_params)
+        setup_config_var('max_loss_pct', t_global.args.max_loss_pct, trial_params)
+        setup_config_var('valkyrie2544-save_file_name', t_global.args.valkyrie2544_save_file_name, trial_params)
+        setup_config_var('valkyrie2544_initial_tput', t_global.args.valkyrie2544_initial_tput, trial_params)
+        setup_config_var('rate', t_global.args.rate, trial_params)
+        setup_config_var('min_rate', t_global.args.min_rate, trial_params)
+        setup_config_var('xena_module', t_global.args.xena_module, trial_params)
+        setup_config_var('src_macs', t_global.args.src_macs, trial_params)
+        setup_config_var('dst_macs', t_global.args.dst_macs, trial_params)
+        setup_config_var('src_ips', t_global.args.src_ips, trial_params)
+        setup_config_var('dst_ips', t_global.args.dst_ips, trial_params)
+        setup_config_var('valkyrie2544_resolution_tput', t_global.args.valkyrie2544_resolution_tput, trial_params)
+        setup_config_var('num_flows', t_global.args.num_flows, trial_params)
+        setup_config_var('use_src_ip_flows', t_global.args.use_src_ip_flows, trial_params)
+        setup_config_var('use_dst_ip_flows', t_global.args.use_dst_ip_flows, trial_params)
+        setup_config_var('use_src_mac_flows', t_global.args.use_src_mac_flows, trial_params)
+        setup_config_var('use_dst_mac_flows', t_global.args.use_dst_mac_flows, trial_params)
+
+        cmd = 'python -u ' + t_global.trafficgen_dir + 'valkyrie2544-helper.py'
+        cmd = cmd + ' ' + ' --traffic-profile ' + str(trial_params['traffic_profile'])
+        if t_global.args.valkyrie2544_windows_mode: # --windows_mode
+            cmd = cmd + ' --valkyrie2544-windows_mode'
+        if t_global.args.validation_runtime: # --verify_duration
+            cmd = cmd + ' --validation-runtime ' + str(t_global.args.validation_runtime)
+        if t_global.args.max_retries: # --retry_attempts
+            cmd = cmd + ' --max-retries ' + str(t_global.args.max_retries)
+        if t_global.args.valkyrie2544_smart_search: # --smart_search
+            cmd = cmd + ' --valkyrie2544-smart_search'
+        if t_global.args.valkyrie2544_pdf_output: # --pdf_output
+            cmd = cmd + ' --pdf_output'
+        if t_global.args.search_runtime: # --search_trial_duration
+            cmd = cmd + ' --search-runtime ' + str(t_global.args.search_runtime) 
+        if t_global.args.measure_latency: # --collect_latency
+            cmd = cmd + ' --measure-latency ' + str(t_global.args.measure_latency)
+        if t_global.args.valkyrie2544_packet_sizes: # --packet_sizes
+            cmd = cmd + ' --valkyrie2544-packet_sizes '
+        if t_global.args.max_loss_pct: # --acceptable_loss
+            cmd = cmd + ' --max-loss-pct ' + str(t_global.args.max_loss_pct)
+        if t_global.args.valkyrie2544_save_file_name: # --save_file_name
+            cmd = cmd + ' --valkyrie2544-save_file_name'
+        if t_global.args.valkyrie2544_initial_tput: # --initial_tput
+            cmd = cmd + ' --valkyrie2544-initial_tput'
+        if t_global.args.rate: # --max_tput
+            cmd = cmd + ' --rate ' + str(t_global.args.rate)
+        if t_global.args.min_rate: # --min_tput
+            cmd = cmd + ' --min_tput ' + str(t_global.args.min_rate)
+        if t_global.args.dst_macs: # --mac_address
+            cmd = cmd + ' --dst-macs ' + str(t_global.args.dst_macs)
+        if t_global.args.src_macs:
+            cmd = cmd + ' --src-macs ' + str(args.src_macs)
+        tg_process = subprocess.Popen(cmd, shell=True, stdout=sys.stdout)
+        tg_process.wait()
+        bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+        return
 
     # set configuration from the argument parser
     if t_global.args.traffic_generator == 'xena':
