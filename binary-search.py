@@ -1260,8 +1260,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                                      if float(results["latency"][str(pg_id)]["latency"]["total_max"]) > stats[device_pair['rx']]['rx_latency_maximum']:
                                                           stats[device_pair['rx']]['rx_latency_maximum'] = float(results["latency"][str(pg_id)]["latency"]["total_max"])
 
-                                                     if stats[device_pair['rx']]['rx_latency_minimum'] == 0.0 or float(results["latency"][str(pg_id)]["latency"]["total_min"]) < stats[device_pair['rx']]['rx_latency_minimum']:
-                                                          stats[device_pair['rx']]['rx_latency_minimum'] = float(results["latency"][str(pg_id)]["latency"]["total_min"])
+                                                     if results["latency"][str(pg_id)]["latency"]["total_min"] != "N/A":
+                                                          if stats[device_pair['rx']]['rx_latency_minimum'] == 0.0 or float(results["latency"][str(pg_id)]["latency"]["total_min"]) < stats[device_pair['rx']]['rx_latency_minimum']:
+                                                               stats[device_pair['rx']]['rx_latency_minimum'] = float(results["latency"][str(pg_id)]["latency"]["total_min"])
                                            else:
                                                 stats_error_append_pg_id(stats[device_pair['rx']], 'rx_missing', pg_id)
 
@@ -1416,8 +1417,9 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                                                      if float(results["latency"][str(pg_id)]["latency"]["total_max"]) > stats[device_pair['rx']]['rx_latency_maximum']:
                                                           stats[device_pair['rx']]['rx_latency_maximum'] = float(results["latency"][str(pg_id)]["latency"]["total_max"])
 
-                                                     if stats[device_pair['rx']]['rx_latency_minimum'] == 0.0 or float(results["latency"][str(pg_id)]["latency"]["total_min"]) < stats[device_pair['rx']]['rx_latency_minimum']:
-                                                          stats[device_pair['rx']]['rx_latency_minimum'] = float(results["latency"][str(pg_id)]["latency"]["total_min"])
+                                                     if results["latency"][str(pg_id)]["latency"]["total_min"] != "N/A":
+                                                          if stats[device_pair['rx']]['rx_latency_minimum'] == 0.0 or float(results["latency"][str(pg_id)]["latency"]["total_min"]) < stats[device_pair['rx']]['rx_latency_minimum']:
+                                                               stats[device_pair['rx']]['rx_latency_minimum'] = float(results["latency"][str(pg_id)]["latency"]["total_min"])
                                            else:
                                                 stats_error_append_pg_id(stats[device_pair['rx']], 'rx_missing', pg_id)
 
