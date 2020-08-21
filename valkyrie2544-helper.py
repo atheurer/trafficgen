@@ -89,7 +89,8 @@ def main(args):
         cmd = cmd + ' --use_both_flows'
     
     XenaVerify_pipe = subprocess.Popen(cmd, shell=True, stdout=sys.stdout)
-    print('VALKYRIE2544HELPER cmd: ', cmd)
+    if _DEBUG:
+        print('VALKYRIE2544HELPER cmd: ', cmd)
     
     data = ''
     
@@ -234,8 +235,9 @@ if __name__ == '__main__':
                         )
 
     args = parser.parse_args()
-    if args.debug:
+    if _DEBUG:
         print("HELPER DEBUG ENABLED!!!")
+        print('HELPER INPUT ARGS: ', args)
     main(args)
 
 
