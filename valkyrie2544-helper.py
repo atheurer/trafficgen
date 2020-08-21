@@ -115,7 +115,7 @@ if __name__ == '__main__':
                         dest='traffic_profile',
                         help='Xena/Valkyrie 2544 json config file name',
                         default = '',
-                        type = str
+                        type=str
                         )
     parser.add_argument('--valkyrie2544-windows_mode', required=False,
                         action='store_true', help='Use windows mode, no mono')
@@ -123,7 +123,7 @@ if __name__ == '__main__':
                         dest='validation_runtime',
                         help='trial period in seconds during final validation',
                         default=30,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('-l', '--verify_duration', required=False,
                         type=int, default=7200,
@@ -131,8 +131,8 @@ if __name__ == '__main__':
     parser.add_argument('--max-retries',
                         dest='max_retries',
                         help='Maximum number of trial retries before aborting',
-                        default = 1,
-                        type = int
+                        default=1,
+                        type=int
                         )
     parser.add_argument('--valkyrie2544-smart_search', action='store_true',
                         required=False, help='Enable smart search',
@@ -145,13 +145,13 @@ if __name__ == '__main__':
                         dest='search_runtime',
                         help='trial period in seconds during binary search',
                         default=30,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('--measure-latency',
                         dest='measure_latency',
                         help='Collect latency statistics or not',
-                        default = 1,
-                        type = int
+                        default=1,
+                        type=int
                         )
     parser.add_argument('--valkyrie2544-packet_sizes', required=False, nargs='+',
                         type=int, default=False,
@@ -159,7 +159,7 @@ if __name__ == '__main__':
     parser.add_argument('--max-loss-pct', 
                         dest='max_loss_pct',
                         help='maximum percentage of packet loss',
-                        type = float
+                        type=float
                         )
     parser.add_argument('--valkyrie2544-save_file_name', required=False, type=str,
                         default='./2bUsed.x2544', 
@@ -171,7 +171,7 @@ if __name__ == '__main__':
     parser.add_argument('--min-rate',
                         dest='min_rate',
                         help='minimum rate per device',
-                        type = float
+                        type=float
                         )
     parser.add_argument('--src-macs', 
                         dest='src_macs',
@@ -199,31 +199,31 @@ if __name__ == '__main__':
                         dest='num_flows',
                         help='Choose number of flows to run',
                         default=1024,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('--use-src-ip-flows', 
                         dest='use_src_ip_flows',
                         help='implement flows by source IP',
                         default=1,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('--use-dst-ip-flows', 
                         dest='use_dst_ip_flows',
                         help='implement flows by destination IP',
                         default=1,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('--use-src-mac-flows', 
                         dest='use_src_mac_flows',
                         help='implement flows by source MAC',
                         default=1,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('--use-dst-mac-flows', 
                         dest='use_dst_mac_flows',
                         help='implement flows by destination MAC',
                         default=1,
-                        type = int,
+                        type=int,
                         )
     parser.add_argument('--xena_module',
                         dest='xena_module',
