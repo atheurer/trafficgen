@@ -165,9 +165,12 @@ if __name__ == '__main__':
                         default='./2bUsed.x2544', 
                         help='File name to save new config file as')
     parser.add_argument('--valkyrie2544-initial_tput', required=False, type=float,
-                        help='Specify initial throughput for test')
-    parser.add_argument('--rate', required=False, type=float, dest='rate',
-                        help='Specify maximum throughput for test')
+                        dest='initial_tput',
+                        help='Specify initial throughput for test'
+                        )
+    parser.add_argument('--max-rate', required=False, type=float, dest='max_rate',
+                        help='Specify maximum throughput for test'
+                        )
     parser.add_argument('--min-rate',
                         dest='min_rate',
                         help='minimum rate per device',
