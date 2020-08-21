@@ -521,7 +521,8 @@ def process_options ():
     parser.add_argument('--valkyrie2544-packet_sizes', 
                         required=False,
                         dest='valkyrie2544_packet_sizes',
-                        type=int, 
+                        type=int,
+                        nargs='+',
                         default=False,
                         help='Valkyrie2455: Specify custom packet sizes for test')
     parser.add_argument('--valkyrie2544-save_file_name', 
@@ -539,7 +540,7 @@ def process_options ():
                         required=False,
                         dest='valkyrie2544_max_tput',
                         type=float,
-                        default=100.00
+                        default=100.00,
                         help='Valkyrie2455: Specify maximum throughput for test')
     parser.add_argument('--valkyrie2544-resolution_tput', 
                         required=False,
