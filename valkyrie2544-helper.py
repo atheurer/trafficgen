@@ -13,21 +13,13 @@
 # limitations under the License.
 
 import argparse
-import json
-import locale
-import logging
-import os
 import subprocess
 import sys
-from time import sleep
-import xml.etree.ElementTree as ET
-import base64
 
 import pprint
 
 pp = pprint.PrettyPrinter(indent=4)
 
-_LOGGER = logging.getLogger(__name__)
 _DEBUG = False
 
 def main(args):
