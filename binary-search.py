@@ -500,6 +500,11 @@ def process_options ():
                         help='Argument for use with Xena; specifies the chassis module to use',
                         type=int
                         )
+    parser.add_argument('--valkyrie2544-debug', 
+                        dest='valkyrie2544_debug',
+                        action='store_true', 
+                        help='Valkyrie2455: Enable debug logging - not yet fully implemented'
+                        )
     parser.add_argument('--valkyrie2544-windows_mode', 
                         dest='valkyrie2544_windows_mode',
                         required=False,
