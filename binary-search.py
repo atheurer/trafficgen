@@ -2035,6 +2035,7 @@ def main():
     # valkyrie2544 - Xena throughput test functionality
     if t_global.args.traffic_generator == 'valkyrie2544':
         setup_config_var('traffic_profile', t_global.args.traffic_profile, trial_params)
+        setup_config_var('valkyrie2544_debug', t_global.args.valkyrie2544_debug, trial_params)
         setup_config_var('valkyrie2544_windows_mode', t_global.args.valkyrie2544_windows_mode, trial_params)
         setup_config_var('validation_runtime', t_global.args.validation_runtime, trial_params)
         setup_config_var('max_retries', t_global.args.max_retries, trial_params)
@@ -2062,6 +2063,8 @@ def main():
 
         cmd = 'python -u ' + t_global.trafficgen_dir + 'valkyrie2544-helper.py'
         cmd = cmd + ' ' + ' --traffic-profile ' + str(trial_params['traffic_profile'])
+        if t_global.args.valkyrie2544_debug: # --debug
+            cmd = cmd + ' --valkyrie2544-debug'
         if t_global.args.valkyrie2544_windows_mode: # --windows_mode
             cmd = cmd + ' --valkyrie2544-windows_mode'
         if t_global.args.validation_runtime: # --verify_duration
@@ -2083,7 +2086,7 @@ def main():
         if t_global.args.valkyrie2544_save_file_name: # --save_file_name
             cmd = cmd + ' --valkyrie2544-save_file_name'
         if t_global.args.valkyrie2544_initial_tput: # --initial_tput
-            cmd = cmd + ' --valkyrie2544-initial_tput'
+            cmd = cmd + ' --valkyrie2544-initial_tput ' + str(t_global.args.valkyrie2544_initial_tput)
         if t_global.args.valkyrie2544_max_tput: # --max_tput
             cmd = cmd + ' --max-rate ' + str(t_global.args.valkyrie2544_max_tput)
         if t_global.args.min_rate: # --min_tput
@@ -2091,7 +2094,7 @@ def main():
         if t_global.args.dst_macs: # --mac_address
             cmd = cmd + ' --dst-macs ' + str(t_global.args.dst_macs)
         if t_global.args.src_macs:
-            cmd = cmd + ' --src-macs ' + str(args.src_macs)
+            cmd = cmd + ' --src-macs ' + str(t_global.args.src_macs)
         tg_process = subprocess.Popen(cmd, shell=True, stdout=sys.stdout)
         tg_process.wait()
         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
