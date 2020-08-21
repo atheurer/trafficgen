@@ -32,6 +32,7 @@ import pprint
 
 pp = pprint.PrettyPrinter(indent=4)
 
+_DEBUG = False
 _LOGGER = logging.getLogger(__name__)
 _LOCALE = locale.getlocale()[1]
 _XENA_USER = 'TestUser'
@@ -527,7 +528,8 @@ def run_xena(config_file, windows_mode=False):
     # read the contents of the log before we start so the next read in the
     # wait method are only looking at the text from this test instance
     log_handle.read()
-    print('XENAVERFIY mono_pipe args: ', args)
+    if _DEBUG:
+        print('XENAVERFIY mono_pipe args: ', args)
     mono_pipe = subprocess.Popen(args, stdout=sys.stdout)
     data = ''
     if _PYTHON_2:
@@ -647,8 +649,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     print('XENAVERFIY ARGS: ', args)
-    if args.debug:
+    if _DEBUG:
         print("DEBUG ENABLED!!!")
+        print('XENAVERFIY INPUT ARGS: ', args)
     main(args)
 
 
