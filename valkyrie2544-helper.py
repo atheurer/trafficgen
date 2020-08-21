@@ -44,13 +44,15 @@ def main(args):
     if args.measure_latency == 0: # --collect_latency
         cmd = cmd + ' --collect_latency'
     if args.valkyrie2544_packet_sizes: # --packet_sizes
-        cmd = cmd + ' --packet_sizes ' + str(args.valkyrie2544_packet_sizes)
+        cmd = cmd + ' --packet_sizes '
+        for size in args.valkyrie2544_packet_sizes:
+            cmd = cmd + str(size)
     if args.max_loss_pct: # --acceptable_loss
         cmd = cmd + ' --acceptable_loss ' + str(args.max_loss_pct)
     if args.valkyrie2544_save_file_name: # --save_file_name
         cmd = cmd + ' --save_file_name ' + args.valkyrie2544_save_file_name
     if args.valkyrie2544_initial_tput: # --initial_tput
-        cmd = cmd + ' --initial_tput ' + str(args.valkyrie2544_initial_tput)
+        cmd = cmd + ' --initial_tput ' + str(args.initial_tput)
     if args.rate: # --max_tput
         cmd = cmd + ' --max_tput ' + str(args.rate)
     if args.min_rate: # --min_tput
