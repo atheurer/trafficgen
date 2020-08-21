@@ -1,4 +1,6 @@
 # Xena2544ThroughputVerify
+This README covers XenaVerify.py and is intended primarily for debugging. For general documentation regarding Xena/trafficgen please refer to README-xena-trafficgen-integration.md
+
 ## Setup:
 
 1. For linux Install Mono ->
