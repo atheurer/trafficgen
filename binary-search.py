@@ -535,6 +535,12 @@ def process_options ():
                         dest='valkyrie2544_initial_tput',
                         type=float,
                         help='Valkyrie2455: Specify initial throughput for test')
+    parser.add_argument('--valkyrie2544-max_tput', 
+                        required=False,
+                        dest='valkyrie2544_max_tput',
+                        type=float,
+                        default=100.00
+                        help='Valkyrie2455: Specify maximum throughput for test')
     parser.add_argument('--valkyrie2544-resolution_tput', 
                         required=False,
                         dest='valkyrie2544_resolution_tput',
@@ -2020,7 +2026,7 @@ def main():
         setup_config_var('max_loss_pct', t_global.args.max_loss_pct, trial_params)
         setup_config_var('valkyrie2544-save_file_name', t_global.args.valkyrie2544_save_file_name, trial_params)
         setup_config_var('valkyrie2544_initial_tput', t_global.args.valkyrie2544_initial_tput, trial_params)
-        setup_config_var('rate', t_global.args.rate, trial_params)
+        setup_config_var('valkyrie2544_max_tput', t_global.args.valkyrie2544_max_tput, trial_params)
         setup_config_var('min_rate', t_global.args.min_rate, trial_params)
         setup_config_var('xena_module', t_global.args.xena_module, trial_params)
         setup_config_var('src_macs', t_global.args.src_macs, trial_params)
@@ -2058,8 +2064,8 @@ def main():
             cmd = cmd + ' --valkyrie2544-save_file_name'
         if t_global.args.valkyrie2544_initial_tput: # --initial_tput
             cmd = cmd + ' --valkyrie2544-initial_tput'
-        if t_global.args.rate: # --max_tput
-            cmd = cmd + ' --rate ' + str(t_global.args.rate)
+        if t_global.args.valkyrie2544_max_tput: # --max_tput
+            cmd = cmd + ' --max-rate ' + str(t_global.args.valkyrie2544_max_tput)
         if t_global.args.min_rate: # --min_tput
             cmd = cmd + ' --min_tput ' + str(t_global.args.min_rate)
         if t_global.args.dst_macs: # --mac_address
