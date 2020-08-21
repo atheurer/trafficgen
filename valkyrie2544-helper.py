@@ -51,10 +51,10 @@ def main(args):
         cmd = cmd + ' --acceptable_loss ' + str(args.max_loss_pct)
     if args.valkyrie2544_save_file_name: # --save_file_name
         cmd = cmd + ' --save_file_name ' + args.valkyrie2544_save_file_name
-    if args.valkyrie2544_initial_tput: # --initial_tput
+    if args.initial_tput: # --initial_tput
         cmd = cmd + ' --initial_tput ' + str(args.initial_tput)
-    if args.rate: # --max_tput
-        cmd = cmd + ' --max_tput ' + str(args.rate)
+    if args.max_rate: # --max_tput
+        cmd = cmd + ' --max_tput ' + str(args.max_rate)
     if args.min_rate: # --min_tput
         cmd = cmd + ' --min_tput ' + str(args.min_rate)
     if args.dst_macs and args.src_macs: # --mac_address
