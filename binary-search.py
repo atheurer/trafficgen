@@ -2081,6 +2081,8 @@ def main():
             cmd = cmd + ' --measure-latency ' + str(t_global.args.measure_latency)
         if t_global.args.valkyrie2544_packet_sizes: # --packet_sizes
             cmd = cmd + ' --valkyrie2544-packet_sizes '
+            for size in t_global.args.valkyrie2544_packet_sizes:
+                cmd = cmd + str(size)
         if t_global.args.max_loss_pct: # --acceptable_loss
             cmd = cmd + ' --max-loss-pct ' + str(t_global.args.max_loss_pct)
         if t_global.args.valkyrie2544_save_file_name: # --save_file_name
