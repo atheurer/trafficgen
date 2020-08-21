@@ -112,7 +112,8 @@ class XenaJSON(object):
         self.active_ids = list(self.json_data['StreamProfileHandler'][
             'ProfileAssignmentMap'].values())  # Assume 1 <= len(active_ids) <=2
         self.entities = self.json_data['StreamProfileHandler']['EntityList']
-        self.active_entities = [x for x in self.entities if x['ItemID'] in self.active_ids] 
+        self.active_entities = [x for x in self.entities if x['ItemID'] in self.active_ids]
+        self.filename = self.json_data['ReportConfig']['ReportFilename']
 
     # pylint: disable=too-many-arguments
     def modify_2544_tput_options(self, initial_value=None, value_resolution = None, 
@@ -545,9 +546,12 @@ def run_xena(config_file, windows_mode=False):
                     log_handle.close()
                     mono_pipe.terminate()
                     break
-
+    
+    config = XenaJSON(config_file)
+    report = config.filename
+    report = report + '.xml'
     # parse the result file and return the needed data
-    root = ET.parse(r'./valkyrie2544-report.xml').getroot()
+    root = ET.parse(report).getroot()
     return (root[0][1][0].get('TestState'),
             float(root[0][1][0].get('TotalTxRatePcnt')),
             float(root[0][1][0].get('TotalTxRateFps')),
