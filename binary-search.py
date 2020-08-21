@@ -1952,6 +1952,25 @@ def main():
     else:
          t_global.args.frame_size = int(t_global.args.frame_size)
 
+    if t_global.args.traffic_generator == 'valkyrie2544' and t_global.args.traffic_profile == '':
+        bs_logger('Valkyrie2544 requires a json config file')
+        bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+        return(1)
+
+    if t_global.args.traffic_generator == 'valkyrie2544' and (t_global.args.num_flows < 1 or t_global.args.num_flows > 1000000):
+        bs_logger('Please enter a number of flows between 1 and 1000000')
+        bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+        return(1)
+    
+    # if the max rate falls below default min rate, lower the min rate
+    if t_global.args.traffic_generator == 'valkyrie2544' and t_global.args.valkyrie2544_max_tput < 11:
+        t_global.args.valkyrie2544_initial_tput = t_global.args.valkyrie2544_max_tput * 0.5
+    
+    if t_global.args.traffic_generator == 'valkyrie2544' and (t_global.args.valkyrie2544_max_tput < 1 or t_global.args.valkyrie2544_max_tput > 100):
+        bs_logger('Please enter a maximum traffic rate between 0 and 100')
+        bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
+        return(1)
+
     # the packet rate in millions/sec is based on 10Gbps, update for other Ethernet speeds
     if rate == 0:
         if t_global.args.traffic_generator == "null-txrx" or t_global.args.traffic_generator == "trex-txrx-profile" or (t_global.args.traffic_generator == "trex-txrx" and t_global.args.rate_unit == "%"):
