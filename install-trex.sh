@@ -2,7 +2,7 @@
 
 base_dir="/opt/trex"
 tmp_dir="/tmp"
-trex_ver="v2.53"
+trex_ver="v2.81"
 insecure_curl=0
 force_install=0
 
