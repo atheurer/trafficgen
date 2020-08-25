@@ -4,8 +4,9 @@ base_dir="/opt/trex"
 tmp_dir="/tmp"
 trex_ver="v2.53"
 insecure_curl=0
+force_install=0
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,base-dir:,version:,insecure" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,base-dir:,version:,insecure,force" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -27,6 +28,9 @@ if [ $? -ne 0 ]; then
     printf -- "  Disable SSL cert verification for the TRex download site.\n"
     printf -- "  Some environments require this due to the usage of an uncommon CA.\n"
     printf -- "  Do not use this option if you do not understand the implications.\n"
+    printf -- "\n"
+    printf -- "--force\n"
+    printf -- "  Download and install TRex even if it is already present.\n"
     exit 1
 fi
 eval set -- "$opts"
@@ -57,6 +61,10 @@ while true; do
 	    shift
 	    insecure_curl=1
 	    ;;
+	--force)
+	    shift
+	    force_install=1
+	    ;;
 	--)
 	    break
 	    ;;
@@ -72,9 +80,13 @@ done
 trex_url=https://trex-tgn.cisco.com/trex/release/${trex_ver}.tar.gz
 trex_dir="${base_dir}/${trex_ver}"
 
-if [ -d ${trex_dir} ]; then
+if [ -d ${trex_dir} -a "${force_install}" == "0" ]; then
     echo "TRex ${trex_ver} already installed"
 else
+    if [ -d ${trex_dir} ]; then
+	/bin/rm -Rf ${trex_dir}
+    fi
+
     mkdir -p ${base_dir}
     if pushd ${base_dir} >/dev/null; then
 	tarfile="${tmp_dir}/${trex_ver}.tar.gz"
