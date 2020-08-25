@@ -3,8 +3,9 @@
 base_dir="/opt/trex"
 tmp_dir="/tmp"
 trex_ver="v2.53"
+insecure_curl=0
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,base-dir:,version:" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,base-dir:,version:,insecure" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -21,6 +22,11 @@ if [ $? -ne 0 ]; then
     printf -- "--version=str\n"
     printf -- "  Version of TRex to install\n"
     printf -- "  Default is ${trex_ver}\n"
+    printf -- "\n"
+    printf -- "--insecure\n"
+    printf -- "  Disable SSL cert verification for the TRex download site.\n"
+    printf -- "  Some environments require this due to the usage of an uncommon CA.\n"
+    printf -- "  Do not use this option if you do not understand the implications.\n"
     exit 1
 fi
 eval set -- "$opts"
@@ -47,6 +53,10 @@ while true; do
 		shift
 	    fi
 	    ;;
+	--insecure)
+	    shift
+	    insecure_curl=1
+	    ;;
 	--)
 	    break
 	    ;;
@@ -69,7 +79,11 @@ else
     if pushd ${base_dir} >/dev/null; then
 	tarfile="${tmp_dir}/${trex_ver}.tar.gz"
 	/bin/rm -f ${tarfile}
-	if curl --output ${tarfile} ${trex_url} && tar zxf ${tarfile}; then
+	curl_args=""
+	if [ "${insecure_curl}" == "1" ]; then
+	    curl_args="-k"
+	fi
+	if curl ${curl_args} --output ${tarfile} ${trex_url} && tar zxf ${tarfile}; then
 	    /bin/rm ${tarfile}
 	    echo "installed TRex from ${trex_url}"
 	else
