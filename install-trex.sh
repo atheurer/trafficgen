@@ -95,12 +95,25 @@ else
 	if [ "${insecure_curl}" == "1" ]; then
 	    curl_args="-k"
 	fi
-	if curl ${curl_args} --output ${tarfile} ${trex_url} && tar zxf ${tarfile}; then
-	    /bin/rm ${tarfile}
-	    echo "installed TRex from ${trex_url}"
+	echo "Downloading TRex ${trex_ver} from ${trex_url}..."
+	curl ${curl_args} --silent --output ${tarfile} ${trex_url}
+	curl_rc=$?
+	if [ "${curl_rc}" == "0" ]; then
+	    if tar zxf ${tarfile}; then
+		/bin/rm ${tarfile}
+		echo "installed TRex ${trex_ver} from ${trex_url}"
+	    else
+		echo "ERROR: could not unpack ${tarfile} for TRex ${trex_ver}"
+		exit 1
+	    fi
 	else
-	    echo "ERROR: could not install TRex ${trex_ver}"
-	    exit 1
+	    if [ "${curl_rc}" == "60" ]; then
+		echo "ERROR: SSL certificate failed validation on TRex download.  Run --help and see --insecure option"
+		exit 1
+	    else
+		echo "ERROR: TRex download failed (curl return code is ${curl_rc})"
+		exit 1
+	    fi
 	fi
 	popd >/dev/null
     else
