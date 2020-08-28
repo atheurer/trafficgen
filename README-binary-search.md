@@ -1,54 +1,62 @@
 # binary-search.py
-A script to conduct a binary-search for maximum packet throughput.  This script is designed to work with different traffic generator solutions.  Currently it supports two software traffic generators: MoonGen (with txrx.lua) and TRex (with trex-txrx.lua).  The goal is to refine and enhance the binary-search features completely separate from the actual traffic generators.
+A script to conduct a binary-search for maximum packet throughput.  This script is designed to work with different traffic generator solutions.  Currently it supports two software traffic generators: MoonGen (with txrx.lua) and TRex (with trex-txrx.py and trex-txrx-profile.py).  The goal is to refine and enhance the binary-search features completely separate from the actual traffic generators.
 
 ## Installation
 1.  Download
 
     First, download this git repository
-    ```
-    [root@LinuxServer ~]#cd /opt
-    [root@LinuxServer opt]#git clone https://github.com/atheurer/trafficgen
-    ```
-    Next, if you intend on using TRex with binary-search.py, also download the TRex package, here: http://trex-tgn.cisco.com/trex/release/v2.22.tar.gz
-    
-2.  Build/Intsall  
 
-    If you intend to use TRex, install TRex in /opt/trex/trex-version and create a symlink /opt/trex/current to point to the version you have installed.
+    ```
+    # git clone https://github.com/atheurer/trafficgen
+    ```
+    
+2.  Build/Install
+
+    If you intend to use TRex, the trafficgen repo includes a script (trex-install.sh) that will download and install TRex in /opt/trex:
+
     
     ```
-    [root@LinuxServer ~]# cd /opt
-    [root@LinuxServer opt]# mkdir -p trex
-    [root@LinuxServer opt]# cd trex
-    [root@LinuxServer trex]# tar zxf /your/path/to/v2.22.tar.gz
-    [root@LinuxServer trex]# ln -sf v2.22 current
-    [root@LinuxServer trex]# ls -l
+    # cd /path/to/trafficgen
+    # ./install-trex.sh
+    Downloading TRex v2.81 from https://trex-tgn.cisco.com/trex/release/v2.81.tar.gz...
+    installed TRex v2.81 from https://trex-tgn.cisco.com/trex/release/v2.81.tar.gz
+    # ls -l /opt/trex
     total 4
-    lrwxrwxrwx  1 root  root    5 Jun  9 01:00 current -> v2.22
-    drwxr-xr-x 11 33066   25 4096 Jun  9 11:38 v2.22
+    lrwxrwxrwx  1 root  root    5 Aug 26 15:27 current -> v2.81
+    drwxr-xr-x 17 33066   25 4096 May  7 12:17 v2.81
     ```
 
-    If intend to use MoonGen, then it can be build from this repo.  This repo includes a git submodule of a specific version of MoonGen repo, so that the txrx.lua script is synced with the proper version of MoonGen.  To build everything:
+    If you intend to use MoonGen, then it can be built from this repo.  This repo includes a git submodule of a specific version of the MoonGen repo.  This ensures that the txrx.lua script is synced with the proper version of MoonGen.  To build everything:
+
 
     ```
-    [root@LinuxServer opt]#cd trafficgen
-    [root@LinuxServer trafficgen]#./setup-moongen.sh 
+    # cd /path/to/trafficgen
+    # ./setup-moongen.sh 
     ```
+
 ## Configuration
 
 1. Allocate huegpages needed by the traffic generator.  1GB page size is recommended.  Reboot after grub has been modified.
+
    ```         
-   [root@LinuxServer ~]# grubby --update-kernel=`grubby --default-kernel` --args="default_hugepagesz=1G hugepagesz=1G hugepages=32"
+   # grubby --update-kernel=`grubby --default-kernel` --args="default_hugepagesz=1G hugepagesz=1G hugepages=32"
    ```
 
-2. Bind DPDK to two network interfaces needed by the traffic generator.  If you intend to use MoonGen and ran ./setup-moongen.sh previously, then you can use ./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py.  If you intend to use TRex, it also includes a binding utility under [/opt/trex/current]/dpdk_set_ports.py.  Binding with vfio-pci kernel module is recommended.
+2. Bind DPDK to two network interfaces needed by the traffic generator.
+
+   If you intend to use MoonGen and ran ./setup-moongen.sh previously, then you can use ./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py.
+
+   If you intend to use TRex, it also includes a binding utility under /opt/trex/current/dpdk_set_ports.py.  Binding with vfio-pci kernel module is recommended.
       
 ## Running
    
    binary-search.py is controlled entirely by command line options.  Please see all of the options with --help.  The recommded minimum number of optons are:
-   
+
+   ```
    --devices
    --traffic-generator
    --max-loss-pct
    --frame-size
-   
-   Note that you must use two physical devices, and these device shoud be connected direcly to a "device-under-test" or to each other to loopback testing
+   ```
+
+   Note that you must use two physical devices, and these device shoud be connected direcly to a "device-under-test" or to each other to enable loopback testing.
