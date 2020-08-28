@@ -307,9 +307,9 @@ def process_options ():
                         )
     parser.add_argument('--traffic-generator', 
                         dest='traffic_generator',
-                        help='name of traffic generator: trex-txrx or trex-txrx-profile or moongen-txrx or xena or Valkyrie2544 or null-txrx',
+                        help='name of traffic generator: trex-txrx or trex-txrx-profile or xena or Valkyrie2544 or null-txrx',
                         default = "trex-txrx",
-                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'moongen-txrx', 'xena', 'valkyrie2544', 'null-txrx' ]
+                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'xena', 'valkyrie2544', 'null-txrx' ]
                         )
     parser.add_argument('--measure-latency',
                         dest='measure_latency',
@@ -755,7 +755,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     tmp_stats = dict()
     streams = dict()
 
-    if trial_params['traffic_generator'] == 'moongen-txrx' or trial_params['traffic_generator'] == 'null-txrx':
+    if trial_params['traffic_generator'] == 'null-txrx':
          stats[0] = dict()
          stats[0]['tx_packets'] = 0
          stats[0]['rx_packets'] = 0
@@ -788,59 +788,7 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     trial_params['trial_profiler_file'] = "N/A"
 
-    if trial_params['traffic_generator'] == 'moongen-txrx':
-        cmd = t_global.trafficgen_dir + '/MoonGen/build/MoonGen txrx.lua'
-        cmd = cmd + ' --devices=0,1' # fix to allow different devices
-        cmd = cmd + ' --measureLatency=0' # fix to allow latency measurment (whern txrx supports)
-        cmd = cmd + ' --rate=' + str(trial_params['rate'])
-        cmd = cmd + ' --size=' + str(trial_params['frame_size'])
-        cmd = cmd + ' --runTime=' + str(trial_params['runtime'])
-
-        traffic_direction=0
-        if trial_params['traffic_direction'] == 'bidirectional':
-            traffic_direction=1
-        cmd = cmd + ' --bidirectional=' + str(traffic_direction)
-
-        if trial_params['vlan_ids'] != '':
-            cmd = cmd + ' --vlanIds=' + str(trial_params['vlan_ids'])
-        if trial_params['vxlan_ids'] != '':
-            cmd = cmd + ' --vxlanIds=' + str(trial_params['vxlan_ids'])
-        if trial_params['src_ips'] != '':
-            cmd = cmd + ' --srcIps=' + str(trial_params['src_ips'])
-        if trial_params['dst_ips'] != '':
-            cmd = cmd + ' --dstIps=' + str(trial_params['dst_ips'])
-        if trial_params['src_macs'] != '':
-            cmd = cmd + ' --srcMacs=' + str(trial_params['src_macs'])
-        if trial_params['dst_macs'] != '':
-            cmd = cmd + ' --dstMacs=' + str(trial_params['dst_macs'])
-        if trial_params['encap_src_ips'] != '':
-            cmd = cmd + ' --encapSrcIps=' + str(trial_params['encap_src_ips'])
-        if trial_params['encap_dst_ips'] != '':
-            cmd = cmd + ' --encapDstIps=' + str(trial_params['encap_dst_ips'])
-        if trial_params['encap_src_macs'] != '':
-            cmd = cmd + ' --encapSrcMacs=' + str(trial_params['encap_src_macs'])
-        if trial_params['encap_dst_macs'] != '':
-            cmd = cmd + ' --encapDstMacs=' + str(trial_params['encap_dst_macs'])
-        flow_mods_opt = ''
-        if trial_params['use_src_ip_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',srcIp'
-        if trial_params['use_dst_ip_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',dstIp'
-        if trial_params['use_encap_src_ip_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',encapSrcIp'
-        if trial_params['use_encap_dst_ip_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',encapDstIp'
-        if trial_params['use_src_mac_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',srcMac'
-        if trial_params['use_dst_mac_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',dstMac'
-        if trial_params['use_encap_src_mac_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',encapSrcMac'
-        if trial_params['use_encap_dst_mac_flows'] == 1:
-            flow_mods_opt = flow_mods_opt + ',encapDstMac'
-        flow_mods_opt = ' --flowMods="' + re.sub('^,', '', flow_mods_opt) + '"'
-        cmd = cmd + flow_mods_opt
-    elif trial_params['traffic_generator'] == 'xena':
+    if trial_params['traffic_generator'] == 'xena':
         # required trial arguments
         cmd = 'python -u ' + t_global.trafficgen_dir + 'xena-txrx.py'
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
@@ -1026,20 +974,7 @@ def handle_trial_process_stdout(process, trial_params, stats, exit_event):
 
              bs_logger(line.rstrip('\n'), bso = False, prefix = prefix)
 
-             if trial_params['traffic_generator'] == 'moongen-txrx':
-                  #[INFO]  [0]->[1] txPackets: 10128951 rxPackets: 10128951 packetLoss: 0 txRate: 2.026199 rxRate: 2.026199 packetLossPct: 0.000000
-                  #[INFO]  [0]->[1] txPackets: 10130148 rxPackets: 10130148 packetLoss: 0 txRate: 2.026430 rxRate: 2.026430 packetLossPct: 0.000000
-                  m = re.search(r"\[INFO\]\s+\[(\d+)\]\-\>\[(\d+)\]\s+txPackets:\s+(\d+)\s+rxPackets:\s+(\d+)\s+packetLoss:\s+(\-*\d+)\s+txRate:\s+(\d+\.\d+)\s+rxRate:\s+(\d+\.\d+)\s+packetLossPct:\s+(\-*\d+\.\d+)", line)
-                  if m:
-                       bs_logger(str('tx_packets, tx_rate, device', m.group(3), m.group(6), int(m.group(1))))
-                       bs_logger(str('rx_packets, rx_rate, device', m.group(4), m.group(7), int(m.group(2))))
-                       #stats[0] = {'rx_packets':int(m.group(4)), 'tx_packets':int(m.group(3)), 'tx_rate':float(m.group(6)), 'rx_rate':float(m.group(7))}
-                       #stats[1] = {'rx_packets':0, 'tx_packets':0, 'tx_rate':0, 'rx_rate':0}
-                       stats[int(m.group(1))]['tx_packets'] = int(m.group(3))
-                       stats[int(m.group(1))]['tx_pps'] = float(m.group(3)) / float(trial_params['runtime'])
-                       stats[int(m.group(2))]['rx_packets'] = int(m.group(4))
-                       stats[int(m.group(2))]['rx_pps'] = float(m.group(4)) / float(trial_params['runtime'])
-             elif trial_params['traffic_generator'] == 'null-txrx':
+             if trial_params['traffic_generator'] == 'null-txrx':
                   if line.rstrip('\n') == "exiting":
                        capture_output = False
                        exit_event.set()
@@ -1130,9 +1065,6 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
                   exit_event.set()
                   do_loop = False
                   continue
-
-             if trial_params['traffic_generator'] == 'moongen-txrx':
-                  bs_logger(line.rstrip('\n'), bso = False, prefix = "MoonGen")
 
              if trial_params['traffic_generator'] == 'trex-txrx' or trial_params['traffic_generator'] == 'trex-txrx-profile':
                   m = re.search(r"DEVICE PAIR ([0-9]+:[0-9]+) \| PARSABLE JSON STREAM PROFILE FOR DIRECTION '([0-9]+[-><]{2}[0-9]+)':\s+(.*)$", line)
@@ -1524,7 +1456,7 @@ def handle_trial_process_stderr(process, trial_params, stats, tmp_stats, streams
     return(0)
 
 def print_stats(trial_params, stats):
-     if t_global.args.traffic_generator == 'moongen-txrx' or t_global.args.traffic_generator == 'null-txrx':
+     if t_global.args.traffic_generator == 'null-txrx':
           string = ""
 
           string += '[\n'
@@ -1665,13 +1597,6 @@ def evaluate_trial(trial_params, trial_stats):
                          trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
                     tolerance_min *= 1000000
                     tolerance_max *= 1000000
-               elif t_global.args.traffic_generator == 'moongen-txrx':
-                    tolerance_min = trial_params['rate'] * (100 - trial_params['rate_tolerance']) / 100
-                    tolerance_max = trial_params['rate'] * (100 + trial_params['rate_tolerance']) / 100
-                    if tx_rate > tolerance_max or tx_rate < tolerance_min:
-                         requirement_msg = "failed"
-                         result_msg = "modified"
-                         trial_result = "retry-to-%s" % trial_params['rate_tolerance_failure']
                trial_stats[dev_pair['tx']]['tx_tolerance_min'] = tolerance_min
                trial_stats[dev_pair['tx']]['tx_tolerance_max'] = tolerance_max
                bs_logger("\t(trial %s requirement, TX rate tolerance, device pair: %d -> %d, unit: mpps, tolerance: %s - %s, achieved: %s, trial result status: %s, trial result: %s)" %
@@ -1868,11 +1793,6 @@ def main():
          bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
          return(1)
 
-    if t_global.args.traffic_generator == 'moongen-txrx' and t_global.args.rate_unit == "%":
-         bs_logger("The moongen-txrx traffic generator does not support --rate-unit=%")
-         bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
-         return(1)
-
     if t_global.args.traffic_generator == 'null-txrx' and t_global.args.rate_unit == "mpps":
          bs_logger("The null-txrx traffic generator does not support --rate-unit=mpps")
          bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
@@ -1889,10 +1809,6 @@ def main():
          return(1)
 
     if t_global.args.frame_size == "imix":
-         if t_global.args.traffic_generator == 'moongen-txrx':
-              bs_logger("The moongen-txrx traffic generator does not support --frame-size=imix")
-              bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
-              return(1)
          if t_global.args.rate_unit == "mpps":
               bs_logger("When --frame-size=imix then --rate-unit must be set to %")
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
@@ -1957,7 +1873,7 @@ def main():
     setup_config_var('warmup_trial_runtime', t_global.args.warmup_trial_runtime, trial_params)
     setup_config_var('disable_upward_search', t_global.args.disable_upward_search, trial_params)
 
-    if t_global.args.traffic_generator == "moongen-txrx" or t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
+    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          # empty for now
          foo = None
 
@@ -1974,7 +1890,7 @@ def main():
          setup_config_var('xena_chassis', t_global.args.xena_chassis, trial_params)
          # TODO: add more config variables  
 
-    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "moongen-txrx":
+    if t_global.args.traffic_generator == "trex-txrx":
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
          setup_config_var("num_flows", t_global.args.num_flows, trial_params)
          setup_config_var("frame_size", t_global.args.frame_size, trial_params)
@@ -1982,11 +1898,24 @@ def main():
          setup_config_var("use_dst_mac_flows", t_global.args.use_dst_mac_flows, trial_params)
          setup_config_var("use_src_ip_flows", t_global.args.use_src_ip_flows, trial_params)
          setup_config_var("use_dst_ip_flows", t_global.args.use_dst_ip_flows, trial_params)
+         setup_config_var("use_src_port_flows", t_global.args.use_src_port_flows, trial_params)
+         setup_config_var("use_dst_port_flows", t_global.args.use_dst_port_flows, trial_params)
          setup_config_var("src_macs", t_global.args.src_macs, trial_params)
          setup_config_var("dst_macs", t_global.args.dst_macs, trial_params)
          setup_config_var("src_ips", t_global.args.src_ips, trial_params)
          setup_config_var("dst_ips", t_global.args.dst_ips, trial_params)
+         setup_config_var("src_ports", t_global.args.src_ports, trial_params)
+         setup_config_var("dst_ports", t_global.args.dst_ports, trial_params)
          setup_config_var("vlan_ids", t_global.args.vlan_ids, trial_params)
+         setup_config_var("use_protocol_flows", t_global.args.use_protocol_flows, trial_params)
+         setup_config_var("packet_protocol", t_global.args.packet_protocol, trial_params)
+         setup_config_var("stream_mode", t_global.args.stream_mode, trial_params)
+         setup_config_var("enable_segment_monitor", t_global.args.enable_segment_monitor, trial_params)
+         setup_config_var('teaching_warmup_packet_type', t_global.args.teaching_warmup_packet_type, trial_params)
+         setup_config_var('teaching_measurement_packet_type', t_global.args.teaching_measurement_packet_type, trial_params)
+         setup_config_var("use_device_stats", t_global.args.use_device_stats, trial_params)
+         setup_config_var('send_teaching_warmup', t_global.args.send_teaching_warmup, trial_params)
+         setup_config_var('send_teaching_measurement', t_global.args.send_teaching_measurement, trial_params)
 
     if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var("trex_host", t_global.args.trex_host, trial_params)
@@ -2000,35 +1929,9 @@ def main():
          setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
          setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
 
-    if t_global.args.traffic_generator == "moongen-txrx":
-         setup_config_var("encap_src_macs", t_global.args.encap_src_macs, trial_params)
-         setup_config_var("encap_dest_macs", t_global.args.encap_dst_macs, trial_params)
-         setup_config_var("encap_src_ips", t_global.args.encap_src_ips, trial_params)
-         setup_config_var("encap_dest_ips", t_global.args.encap_dst_ips, trial_params)
-         setup_config_var("vxlan_ids", t_global.args.vxlan_ids, trial_params)
-         setup_config_var("use_encap_src_mac_flows", t_global.args.use_encap_src_mac_flows)
-         setup_config_var("use_encap_dst_mac_flows", t_global.args.use_encap_dst_mac_flows)
-         setup_config_var("use_encap_src_ip_flows", t_global.args.use_encap_src_ip_flows)
-         setup_config_var("use_encap_dst_ip_flows", t_global.args.use_encap_dst_ip_flows)
-
     if t_global.args.traffic_generator == "null-txrx":
          # empty for now
          foo = None
-
-    if t_global.args.traffic_generator == "trex-txrx":
-         setup_config_var("use_src_port_flows", t_global.args.use_src_port_flows, trial_params)
-         setup_config_var("use_dst_port_flows", t_global.args.use_dst_port_flows, trial_params)
-         setup_config_var("src_ports", t_global.args.src_ports, trial_params)
-         setup_config_var("dst_ports", t_global.args.dst_ports, trial_params)
-         setup_config_var("use_protocol_flows", t_global.args.use_protocol_flows, trial_params)
-         setup_config_var("packet_protocol", t_global.args.packet_protocol, trial_params)
-         setup_config_var("stream_mode", t_global.args.stream_mode, trial_params)
-         setup_config_var("enable_segment_monitor", t_global.args.enable_segment_monitor, trial_params)
-         setup_config_var('teaching_warmup_packet_type', t_global.args.teaching_warmup_packet_type, trial_params)
-         setup_config_var('teaching_measurement_packet_type', t_global.args.teaching_measurement_packet_type, trial_params)
-         setup_config_var("use_device_stats", t_global.args.use_device_stats, trial_params)
-         setup_config_var('send_teaching_warmup', t_global.args.send_teaching_warmup, trial_params)
-         setup_config_var('send_teaching_measurement', t_global.args.send_teaching_measurement, trial_params)
 
     if t_global.args.traffic_generator == "trex-txrx-profile":
          setup_config_var('random_seed', t_global.args.random_seed, trial_params)
@@ -2426,7 +2329,7 @@ def main():
                    bs_logger("There is no trial which passed")
                    failed_stats = []
 
-                   if t_global.args.traffic_generator == 'moongen-txrx' or t_global.args.traffic_generator == 'null-txrx':
+                   if t_global.args.traffic_generator == 'null-txrx':
                         failed_stats.append(copy.deepcopy(trial_params['null_stats']))
                         failed_stats.append(copy.deepcopy(trial_params['null_stats']))
                    elif t_global.args.traffic_generator == 'trex-txrx' or t_global.args.traffic_generator == 'trex-txrx-profile':
