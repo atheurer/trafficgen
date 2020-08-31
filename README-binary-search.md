@@ -1,5 +1,5 @@
 # binary-search.py
-A script to conduct a binary-search for maximum packet throughput.  This script is designed to work with different traffic generator solutions.  Currently it supports two software traffic generators: MoonGen (with txrx.lua) and TRex (with trex-txrx.py and trex-txrx-profile.py).  The goal is to refine and enhance the binary-search features completely separate from the actual traffic generators.
+A script to conduct a binary-search for maximum packet throughput.  This script is designed to work with different traffic generator solutions.  Currently it natively supports TRex (https://trex-tgn.cisco.com/) with two different traffic generator implementations: trex-txrx.py and trex-txrx-profile.py.  The goal is to refine and enhance the binary-search features completely separate from the actual traffic generators.
 
 ## Installation
 1.  Download
@@ -26,14 +26,6 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
     drwxr-xr-x 17 33066   25 4096 May  7 12:17 v2.81
     ```
 
-    If you intend to use MoonGen, then it can be built from this repo.  This repo includes a git submodule of a specific version of the MoonGen repo.  This ensures that the txrx.lua script is synced with the proper version of MoonGen.  To build everything:
-
-
-    ```
-    # cd /path/to/trafficgen
-    # ./setup-moongen.sh 
-    ```
-
 ## Configuration
 
 1. Allocate huegpages needed by the traffic generator.  1GB page size is recommended.  Reboot after grub has been modified.
@@ -43,8 +35,6 @@ A script to conduct a binary-search for maximum packet throughput.  This script 
    ```
 
 2. Bind DPDK to two network interfaces needed by the traffic generator.
-
-   If you intend to use MoonGen and ran ./setup-moongen.sh previously, then you can use ./MoonGen/libmoon/deps/dpdk/tools/dpdk-devbind.py.
 
    If you intend to use TRex, it also includes a binding utility under /opt/trex/current/dpdk_set_ports.py.  Binding with vfio-pci kernel module is recommended.
       
