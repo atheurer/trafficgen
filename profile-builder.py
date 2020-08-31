@@ -60,8 +60,8 @@ def process_options ():
                         )
     parser.add_argument('--rate', 
                         dest='rate',
-                        help='Packet rate per device per stream',
-                        default = 1000000.0,
+                        help='Packet rate per device per stream (mpps)',
+                        default = 1.0,
                         type = float
                         )
     parser.add_argument('--measure-latency',
@@ -153,7 +153,7 @@ def main ():
     stream = create_profile_stream(flows = t_global.args.num_flows,
                                    frame_size = t_global.args.frame_size,
                                    flow_mods = flow_mods,
-                                   rate = t_global.args.rate,
+                                   rate = t_global.args.rate * 1000000.0,
                                    frame_type = 'generic',
                                    measurement = True,
                                    teaching_warmup = integrated_teaching_warmup,
