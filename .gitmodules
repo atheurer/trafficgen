@@ -1,6 +1,0 @@
-[submodule "MoonGen"]
-	path = MoonGen
-	url = https://github.com/emmericp/MoonGen.git
-[submodule "XenaPythonLib"]
-	path = XenaPythonLib
-	url = https://github.com/fleitner/XenaPythonLib

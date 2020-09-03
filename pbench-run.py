@@ -21,7 +21,7 @@ def process_options ():
                         dest='traffic_generator',
                         help='Name of traffic generator to use.',
                         default = "trex-txrx",
-                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'moongen-txrx', 'null-txrx' ]
+                        choices = [ 'trex-txrx', 'trex-txrx-profile', 'null-txrx' ]
                         )
     parser.add_argument('--tmp-dir',
                         dest = 'tmp_dir',
