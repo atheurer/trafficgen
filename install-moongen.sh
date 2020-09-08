@@ -55,6 +55,16 @@ if pushd ${tg_dir} > /dev/null; then
 	    # manually initialize the libmoon submodule so we can tweak it
 	    git submodule update --init
 
+	    # point to private repos for libmoon dependencies
+	    sed -i -e "s|url = https://github.com/emmericp/LuaJIT|url = https://github.com/perftool-incubator/LuaJIT.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/emmericp/dpdk|url = https://github.com/perftool-incubator/dpdk.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/emmericp/pciids|url = https://github.com/perftool-incubator/pciids.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/emmericp/ljsyscall|url = https://github.com/perftool-incubator/ljsyscall.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/emmericp/pflua|url = https://github.com/perftool-incubator/pflua.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/emmericp/turbo|url = https://github.com/perftool-incubator/turbo.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/google/highwayhash.git|url = https://github.com/perftool-incubator/highwayhash.git|" libmoon/.gitmodules
+	    sed -i -e "s|url = https://github.com/01org/tbb.git|url = https://github.com/perftool-incubator/oneTBB.git|" libmoon/.gitmodules
+
 	    # disable the auto device binding, we don't want that to happen
 	    head -n -5 libmoon/build.sh > libmoon/foo
 	    echo ")" >> libmoon/foo
