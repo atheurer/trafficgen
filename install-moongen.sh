@@ -33,7 +33,9 @@ done
 
 tg_dir=$(dirname $0)
 
-moongen_url="https://github.com/emmericp/MoonGen.git"
+# private MoonGen repo
+moongen_url="https://github.com/perftool-incubator/MoonGen.git"
+
 moongen_dir="MoonGen"
 
 if pushd ${tg_dir} > /dev/null; then
@@ -47,8 +49,8 @@ if pushd ${tg_dir} > /dev/null; then
 	git clone ${moongen_url}
 
 	if pushd ${moongen_dir} > /dev/null; then
-	    # pick a tested MoonGen version/commit
-	    git checkout 525d9917c98a4760db72bb733cf6ad30550d6669
+	    # point to private libmoon repo
+	    sed -i -e "s|url = .*|url = https://github.com/perftool-incubator/libmoon.git|" .gitmodules
 
 	    # manually initialize the libmoon submodule so we can tweak it
 	    git submodule update --init
