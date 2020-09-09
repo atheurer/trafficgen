@@ -10,21 +10,46 @@ local log    = require "log"
 local FWD_ETH_DST = "24:6E:96:19:DE:DA"
 local REV_ETH_DST = "24:6E:96:19:DE:D8"
 
+function binary_search_log(msg)
+	io.stderr:write("[BS] "..msg.."\n")
+end
+
 function configure(parser)
 	parser:description("Generates bidirectional CBR traffic with hardware rate control and measure latencies.")
-	parser:argument("dev1", "Device to transmit from."):convert(tonumber)
-	parser:argument("dev2", "Device to receive to."):convert(tonumber)
-	parser:option("-f --file", "Filename of the latency histogram."):default("histogram.csv")
+	parser:option("--fwddev", "Forward device."):convert(tonumber):default(0)
+	parser:option("--revdev", "Reverse device."):convert(tonumber):default(1)
+	parser:option("--fwdfile", "Filename of the forward latency histogram."):default("fwd-histogram.csv")
+	parser:option("--revfile", "Filename of the reverse latency histogram."):default("rev-histogram.csv")
 	parser:option("-t --time", "Number of seconds to run"):default(30):convert(tonumber)
+	parser:option("-o --output", "Directory to write results to."):default("./")
+	parser:option("--binarysearch", "binary-search.py is invoking this script so handle output accordingly."):convert(tonumber):default(0)
 end
 
 function master(args)
-	local dev1 = device.config({port = args.dev1, rxQueues = 1, txQueues = 1})
-	local dev2 = device.config({port = args.dev2, rxQueues = 1, txQueues = 1})
+	if args.binarysearch == 1 then
+		binary_search_log("Invoked by binary-search.py")
+	end
+
+	local dev1 = device.config({port = args.fwddev, rxQueues = 1, txQueues = 1})
+	local dev2 = device.config({port = args.revdev, rxQueues = 1, txQueues = 1})
+
 	device.waitForLinks()
-	stats.startStatsTask{dev1, dev2}
+	if args.binarysearch == 1 then
+		binary_search_log("Devices online")
+	end
+
+	stats.startStatsTask({ devices = { dev1, dev2 } })
 	mg.startTask("timerSlave", dev1, dev2, args)
+
+	if args.binarysearch == 1 then
+		binary_search_log("Running")
+	end
+
 	mg.waitForTasks()
+
+	if args.binarysearch == 1 then
+		binary_search_log("Finished")
+	end
 end
 
 function timerSlave(dev1, dev2, args)
@@ -53,12 +78,12 @@ function timerSlave(dev1, dev2, args)
 
 	mg.sleepMillis(2000)
 
-	log:info("Forward Latency: %d->%d", args.dev1, args.dev2)
+	log:info("Forward Latency: %d->%d", args.fwddev, args.revdev)
 	fwd_hist:print()
-	fwd_hist:save("fwd-"..args.file)
+	fwd_hist:save(args.output.."/"..args.fwdfile)
 
-	log:info("Reverse Latency: %d->%d", args.dev2, args.dev1)
+	log:info("Reverse Latency: %d->%d", args.revdev, args.fwddev)
 	rev_hist:print()
-	rev_hist:save("rev-"..args.file)
+	rev_hist:save(args.output.."/"..args.revfile)
 end
 

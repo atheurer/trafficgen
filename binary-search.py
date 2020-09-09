@@ -367,6 +367,11 @@ def process_options ():
                         help='List of active device pairs in the form A:B[,C:D][,E:F][,...]',
                         default='--',
                         )
+    parser.add_argument('--latency-device-pair',
+                        dest='latency_device_pair',
+                        help='Latency device pair in the form A:B',
+                        default='--',
+                        )
     parser.add_argument('--disable-flow-cache',
                         dest='enable_flow_cache',
                         help='Force disablement of the TRex flow cache',
@@ -774,8 +779,25 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
                         streams[dev_pair[port]] = {}
 
     cmd = ""
+    latency_cmd = ""
 
     trial_params['trial_profiler_file'] = "N/A"
+
+    if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+         latency_device_pair = trial_params['latency_device_pair'].split(':')
+
+         trial_params['trial_fwd_latency_histogram_file'] = "binary-search.trial-%03d.latency.histogram.fwd.csv" % (trial_params['trial'])
+         trial_params['trial_rev_latency_histogram_file'] = "binary-search.trial-%03d.latency.histogram.rev.csv" % (trial_params['trial'])
+
+         latency_cmd = t_global.trafficgen_dir + '/MoonGen/build/MoonGen'
+         latency_cmd = latency_cmd + ' ' + t_global.trafficgen_dir + '/moongen-latency.lua'
+         latency_cmd = latency_cmd + ' --binarysearch 1'
+         latency_cmd = latency_cmd + ' --time ' + str(trial_params['runtime'])
+         latency_cmd = latency_cmd + ' --output ' + trial_params['output_dir']
+         latency_cmd = latency_cmd + ' --fwdfile ' + trial_params['trial_fwd_latency_histogram_file']
+         latency_cmd = latency_cmd + ' --revfile ' + trial_params['trial_rev_latency_histogram_file']
+         latency_cmd = latency_cmd + ' --fwddev ' + latency_device_pair[0]
+         latency_cmd = latency_cmd + ' --revdev ' + latency_device_pair[1]
 
     if trial_params['traffic_generator'] == 'null-txrx':
          cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
@@ -897,28 +919,62 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     bs_logger('cmd: %s' % (cmd))
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout_exit_event = threading.Event()
-    stderr_exit_event = threading.Event()
 
-    stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
-    stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, stderr_exit_event))
+    if latency_cmd != '':
+         bs_logger('latency cmd: %s' % (latency_cmd))
+         latency_process = subprocess.Popen(latency_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    tg_stdout_exit_event = threading.Event()
+    tg_stderr_exit_event = threading.Event()
+
+    if latency_cmd != '':
+         latency_stdout_exit_event = threading.Event()
+         latency_stderr_exit_event = threading.Event()
+
+    tg_stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, tg_stdout_exit_event))
+    tg_stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, tg_stderr_exit_event))
+
+    if latency_cmd != '':
+         latency_stdout_thread = threading.Thread(target = handle_trial_process_latency_stdout, args = (latency_process, trial_params, stats, latency_stdout_exit_event))
+         latency_stderr_thread = threading.Thread(target = handle_trial_process_latency_stderr, args = (latency_process, trial_params, stats, latency_stderr_exit_event))
 
     stats['trial_start'] = time.time() * 1000
-    stdout_thread.start()
-    stderr_thread.start()
 
-    stdout_exit_event.wait()
-    stderr_exit_event.wait()
-    retval = tg_process.wait()
+    tg_stdout_thread.start()
+    tg_stderr_thread.start()
 
-    stdout_thread.join()
-    stderr_thread.join()
+    if latency_cmd != '':
+         latency_stdout_thread.start()
+         latency_stderr_thread.start()
+
+    tg_stdout_exit_event.wait()
+    tg_stderr_exit_event.wait()
+
+    if latency_cmd != '':
+         latency_stdout_exit_event.wait()
+         latency_stderr_exit_event.wait()
+
+    tg_retval = tg_process.wait()
+    if latency_cmd != '':
+         latency_retval = latency_process.wait()
+
+    tg_stdout_thread.join()
+    tg_stderr_thread.join()
+
+    if latency_cmd != '':
+         latency_stdout_thread.join()
+         latency_stderr_thread.join()
+
     stats['trial_stop'] = time.time() * 1000
 
     signal.signal(signal.SIGINT, previous_sig_handler)
 
-    bs_logger('return code: %s' % (retval))
-    stats['retval'] = retval
+    bs_logger('tg return code: %s' % (tg_retval))
+    if latency_cmd != '':
+         bs_logger('latency return code: %s' % (latency_retval))
+         stats['retval'] = tg_retval + latency_retval
+    else:
+         stats['retval'] = tg_retval
 
     stream_info['streams'] = streams
     return stats
@@ -938,6 +994,49 @@ def handle_process_output(process, process_stream, capture):
                     lines.append(line.decode())
           lines.append("--END--")
      return lines
+
+def handle_trial_process_latency_stdout(process, trial_params, stats, exit_event):
+    latency_output_file = None
+    latency_close_file = False
+    trial_params['trial_latency_output_file'] = "binary-search.trial-%03d.latency.output.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_latency_output_file'])
+    try:
+         latency_output_file = open(filename, 'w')
+         latency_close_file = True
+    except IOError:
+         bs_logger(error("Could not open %s for writing" % (filename)))
+         latency_output_file = sys.stdout
+
+    capture_output = True
+    do_loop = True
+    while do_loop:
+         stdout_lines = handle_process_output(process, process.stdout, capture_output)
+
+         for line in stdout_lines:
+              if line == "--END--":
+                   exit_event.set()
+                   do_loop = False
+                   continue
+
+              print(line.rstrip('\n'), file = latency_output_file)
+
+def handle_trial_process_latency_stderr(process, trial_params, stats, exit_event):
+    prefix = "LAT"
+
+    capture_output = True
+    do_loop = True
+    while do_loop:
+         stdout_lines = handle_process_output(process, process.stderr, capture_output)
+
+         for line in stdout_lines:
+              if line == "--END--":
+                   exit_event.set()
+                   do_loop = False
+                   continue
+
+              m = re.search(r"^\[BS\]\s(.*)$", line)
+              if m:
+                   bs_logger(m.group(1), bso = False, prefix = prefix)
 
 def handle_trial_process_stdout(process, trial_params, stats, exit_event):
     prefix = "%03d" % trial_params['trial']
@@ -1854,10 +1953,6 @@ def main():
     setup_config_var('warmup_trial_runtime', t_global.args.warmup_trial_runtime, trial_params)
     setup_config_var('disable_upward_search', t_global.args.disable_upward_search, trial_params)
 
-    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
-         # empty for now
-         foo = None
-
     # set configuration from the argument parser
     if t_global.args.traffic_generator == "trex-txrx":
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
@@ -1898,6 +1993,7 @@ def main():
          setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
          setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
          setup_config_var('no_promisc', t_global.args.no_promisc, trial_params)
+         setup_config_var('latency_device_pair', t_global.args.latency_device_pair, trial_params)
 
     if t_global.args.traffic_generator == "null-txrx":
          # empty for now
