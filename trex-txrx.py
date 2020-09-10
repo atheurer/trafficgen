@@ -654,7 +654,12 @@ def process_options ():
     parser.add_argument('--no-promisc',
                         dest='no_promisc',
                         help='Do not use promiscuous mode for network interfaces (usually needed for virtual-functions)',
-                        action = 'store_true',
+                        action = 'store_true'
+                        )
+    parser.add_argument('--binary-search-synchronize',
+                        dest='binary_search_synchronize',
+                        help='Enable synchronization through binary-search.py.  Used to coordinate with other traffic generators.',
+                        action='store_true'
                         )
 
     t_global.args = parser.parse_args();
@@ -770,8 +775,6 @@ def segment_monitor(connection, device_pairs, run_ports, normal_exit_event, earl
          return(0)
 
 def main():
-    process_options()
-
     directions = [ '->', '<-' ]
 
     packet_values = { 'ports': { 'src': 32768,
@@ -1170,6 +1173,22 @@ def main():
         # clear the stats
         c.clear_stats(ports = all_ports)
 
+        if t_global.args.binary_search_synchronize:
+             parent_launch_sem = posix_ipc.Semaphore("trafficgen_child_launch")
+             parent_go_sem = posix_ipc.Semaphore("trafficgen_child_go")
+
+             myprint("Signaling binary-search.py that I am ready")
+             parent_launch_sem.release()
+
+             myprint("Waiting for binary-search.py to tell me to go")
+             parent_go_sem.acquire()
+             myprint("Received go from binary-search.py")
+
+             parent_launch_sem.close()
+             parent_go_sem.close()
+
+             myprint("Synchronization services complete")
+
         thread_normal_exit = threading.Event()
         thread_early_exit = threading.Event()
         segment_monitor_thread = threading.Thread(target = segment_monitor, args = (c, device_pairs, run_ports, thread_normal_exit, thread_early_exit))
@@ -1309,4 +1328,14 @@ def main():
         return return_value
 
 if __name__ == "__main__":
+    process_options()
+
+    # only import the posix_ipc library if traffic generator
+    # synchronization needs to be managed through binary-search.py.
+    # imports must be done at the module level which is why this is
+    # done here instead of in main()
+    if t_global.args.binary_search_synchronize:
+         myprint("Enabling synchronization through binary-search.py")
+         import posix_ipc
+
     exit(main())

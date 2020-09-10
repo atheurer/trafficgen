@@ -7,6 +7,9 @@ local hist   = require "histogram"
 local timer  = require "timer"
 local log    = require "log"
 
+package.cpath = "/opt/trafficgen/lua-luaipc/?.so;"..package.cpath
+local sem    = require "ipc.sem"
+
 local FWD_ETH_DST = "24:6E:96:19:DE:DA"
 local REV_ETH_DST = "24:6E:96:19:DE:D8"
 
@@ -36,6 +39,21 @@ function master(args)
 	device.waitForLinks()
 	if args.binarysearch == 1 then
 		binary_search_log("Devices online")
+
+		parent_launch_sem = sem.open("trafficgen_child_launch")
+		parent_go_sem = sem.open("trafficgen_child_go")
+
+		binary_search_log("Signaling binary-search.py that I am ready")
+		parent_launch_sem:inc()
+
+		binary_search_log("Waiting for binary-search.py to tell me to go")
+		parent_go_sem:dec()
+		binary_search_log("Received go from binary-search.py")
+
+		parent_launch_sem:close()
+		parent_go_sem:close()
+
+		binary_search_log("Synchronization services complete")
 	end
 
 	stats.startStatsTask({ devices = { dev1, dev2 } })

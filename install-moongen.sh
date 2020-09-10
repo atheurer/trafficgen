@@ -88,3 +88,8 @@ else
 fi
 
 exit 0
+
+# pip3 install posix_ipc
+
+# git clone https://github.com/siffiejoe/lua-luaipc.git
+# make

@@ -808,6 +808,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
         cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx-profile.py'
+        if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+             cmd = cmd + ' --binary-search-synchronize'
         cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --random-seed=' + str(trial_params['random_seed'])
@@ -845,6 +847,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
         cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx.py'
+        if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+             cmd = cmd + ' --binary-search-synchronize'
         cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
@@ -920,9 +924,15 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     bs_logger('cmd: %s' % (cmd))
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    child_launch_sem = None
+    child_go_sem = None
+
     if latency_cmd != '':
          bs_logger('latency cmd: %s' % (latency_cmd))
          latency_process = subprocess.Popen(latency_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+         child_launch_sem = posix_ipc.Semaphore("trafficgen_child_launch", flags = posix_ipc.O_CREX, initial_value = 0)
+         child_go_sem = posix_ipc.Semaphore("trafficgen_child_go", flags = posix_ipc.O_CREX, initial_value = 0)
 
     tg_stdout_exit_event = threading.Event()
     tg_stderr_exit_event = threading.Event()
@@ -946,6 +956,19 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     if latency_cmd != '':
          latency_stdout_thread.start()
          latency_stderr_thread.start()
+
+    if latency_cmd != '':
+         # sychronization stuff happens here
+         bs_logger("Waiting for children to launch")
+         child_launch_sem.acquire()
+         child_launch_sem.acquire()
+         bs_logger("Children have launched")
+
+         bs_logger("Telling children to go")
+         child_go_sem.release()
+         child_go_sem.release()
+
+         bs_logger("Synchronization services complete")
 
     tg_stdout_exit_event.wait()
     tg_stderr_exit_event.wait()
@@ -973,6 +996,12 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     if latency_cmd != '':
          bs_logger('latency return code: %s' % (latency_retval))
          stats['retval'] = tg_retval + latency_retval
+
+         child_launch_sem.unlink()
+         child_go_sem.unlink()
+
+         child_launch_sem.close()
+         child_go_sem.close()
     else:
          stats['retval'] = tg_retval
 
@@ -1855,12 +1884,9 @@ def main():
     trial_results = { 'trials': [],
                       'log':    [] }
 
-    process_options()
-
     bs_logger_exit = threading.Event()
     bs_logger_thread = threading.Thread(target = bs_logger_worker, args = (trial_results['log'], bs_logger_exit))
     bs_logger_thread.start()
-    bs_logger(str(t_global.args))
 
     final_validation = t_global.args.one_shot == 1
     rate = t_global.args.rate
@@ -2481,5 +2507,16 @@ def main():
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
 if __name__ == "__main__":
+    process_options()
+    bs_logger(str(t_global.args))
+
+    # only import the posix_ipc library if traffic generator
+    # synchronization needs to be managed.
+    # imports must be done at the module level which is why this is
+    # done here instead of in main()
+    if t_global.args.latency_device_pair != '--':
+         bs_logger("Enabling traffic generator synchronization")
+         import posix_ipc
+
     exit(main())
 
