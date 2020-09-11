@@ -17,6 +17,14 @@ function binary_search_log(msg)
 	io.stderr:write("[BS] "..msg.."\n")
 end
 
+function dual_log(args, msg)
+	if args.binarysearch == 1 then
+		io.stderr:write("[BS] "..msg.."\n")
+	end
+
+	io.stdout:write(msg.."\n")
+end
+
 function configure(parser)
 	parser:description("Generates bidirectional CBR traffic with hardware rate control and measure latencies.")
 	parser:option("--fwddev", "Forward device."):convert(tonumber):default(0)
@@ -70,12 +78,31 @@ function master(args)
 	end
 end
 
+function dump_histogram(args, direction, dev1, dev2, histogram, tx_samples)
+	rx_samples, sum, avg = histogram:totals()
+	dual_log(args, string.format("[%s Latency: %d->%d] TX Samples:            %d", direction, dev1, dev2, tx_samples))
+	dual_log(args, string.format("[%s Latency: %d->%d] RX Samples:            %d", direction, dev1, dev2, rx_samples))
+	dual_log(args, string.format("[%s Latency: %d->%d] Average:               %f", direction, dev1, dev2, avg))
+	dual_log(args, string.format("[%s Latency: %d->%d] Median:                %f", direction, dev1, dev2, histogram:median()))
+	dual_log(args, string.format("[%s Latency: %d->%d] Minimum:               %f", direction, dev1, dev2, histogram:min()))
+	dual_log(args, string.format("[%s Latency: %d->%d] Maximum:               %f", direction, dev1, dev2, histogram:max()))
+	dual_log(args, string.format("[%s Latency: %d->%d] Std. Dev:              %f", direction, dev1, dev2, histogram:standardDeviation()))
+	dual_log(args, string.format("[%s Latency: %d->%d] 95th Percentile:       %f", direction, dev1, dev2, histogram:percentile(95) or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] 99th Percentile:       %f", direction, dev1, dev2, histogram:percentile(99) or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] 99.9th Percentile:     %f", direction, dev1, dev2, histogram:percentile(99.9) or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] 99.99th Percentile:    %f", direction, dev1, dev2, histogram:percentile(99.99) or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] 99.999th Percentile:   %f", direction, dev1, dev2, histogram:percentile(99.999) or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] 99.9999th Percentile:  %f", direction, dev1, dev2, histogram:percentile(99.9999) or 0.0))
+end
+
 function timerSlave(dev1, dev2, args)
 	local fwd_timestamper = ts:newTimestamper(dev1:getTxQueue(0), dev2:getRxQueue(0))
 	local fwd_hist = hist:new()
+	local fwd_samples = 0
 
 	local rev_timestamper = ts:newTimestamper(dev2:getTxQueue(0), dev1:getRxQueue(0))
 	local rev_hist = hist:new()
+	local rev_samples = 0
 
 	if args.time > 0 then
 		ts_runtimer = timer:new(args.time)
@@ -86,9 +113,11 @@ function timerSlave(dev1, dev2, args)
 		if mode == 0 then
 			fwd_hist:update(fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end))
 			mode = 1
+			fwd_samples = fwd_samples + 1
 		else
 			rev_hist:update(rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end))
 			mode = 0
+			rev_samples = rev_samples + 1
 		end
 	end
 
@@ -96,12 +125,10 @@ function timerSlave(dev1, dev2, args)
 
 	mg.sleepMillis(2000)
 
-	log:info("Forward Latency: %d->%d", args.fwddev, args.revdev)
-	fwd_hist:print()
-	fwd_hist:save(args.output.."/"..args.fwdfile)
+	dump_histogram(args, "Forward", args.fwddev, args.revdev, fwd_hist, fwd_samples)
+	dump_histogram(args, "Reverse", args.revdev, args.fwddev, rev_hist, rev_samples)
 
-	log:info("Reverse Latency: %d->%d", args.revdev, args.fwddev)
-	rev_hist:print()
+	fwd_hist:save(args.output.."/"..args.fwdfile)
 	rev_hist:save(args.output.."/"..args.revfile)
 end
 
