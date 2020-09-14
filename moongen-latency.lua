@@ -13,8 +13,10 @@ local sem    = require "ipc.sem"
 local FWD_ETH_DST = "24:6E:96:19:DE:DA"
 local REV_ETH_DST = "24:6E:96:19:DE:D8"
 
-function binary_search_log(msg)
-	io.stderr:write("[BS] "..msg.."\n")
+function binary_search_log(args, msg)
+	if args.binarysearch == 1 then
+		io.stderr:write("[BS] "..msg.."\n")
+	end
 end
 
 function dual_log(args, msg)
@@ -26,19 +28,33 @@ function dual_log(args, msg)
 end
 
 function configure(parser)
-	parser:description("Generates bidirectional CBR traffic with hardware rate control and measure latencies.")
+	parser:description("Measure round trip latency using HW PTP timestamps.")
 	parser:option("--fwddev", "Forward device."):convert(tonumber):default(0)
 	parser:option("--revdev", "Reverse device."):convert(tonumber):default(1)
 	parser:option("--fwdfile", "Filename of the forward latency histogram."):default("fwd-histogram.csv")
 	parser:option("--revfile", "Filename of the reverse latency histogram."):default("rev-histogram.csv")
-	parser:option("-t --time", "Number of seconds to run"):default(30):convert(tonumber)
-	parser:option("-o --output", "Directory to write results to."):default("./")
+	parser:option("--time", "Number of seconds to run"):default(30):convert(tonumber)
+	parser:option("--output", "Directory to write results to."):default("./")
 	parser:option("--binarysearch", "binary-search.py is invoking this script so handle output accordingly."):convert(tonumber):default(0)
+	parser:option("--traffic-direction", "Control traffic direction.  One of: bi, uni, revuni"):default("bi"):target("traffic_direction")
+end
+
+function validate_traffic_direction(direction)
+	if     direction == "bi"     then return 0
+	elseif direction == "uni"    then return 0
+	elseif direction == "revuni" then return 0
+	else                              return 1
+	end
 end
 
 function master(args)
-	if args.binarysearch == 1 then
-		binary_search_log("Invoked by binary-search.py")
+	binary_search_log("Invoked by binary-search.py")
+
+	if validate_traffic_direction(args.traffic_direction) == 1 then
+		dual_log(args, string.format("Invalid traffic direction = %s", args.traffic_direction))
+		return ""
+	else
+		dual_log(args, string.format("Generating %sdirectional latency traffic", args.traffic_direction))
 	end
 
 	local dev1 = device.config({port = args.fwddev, rxQueues = 1, txQueues = 1})
@@ -67,15 +83,11 @@ function master(args)
 	stats.startStatsTask({ devices = { dev1, dev2 } })
 	mg.startTask("timerSlave", dev1, dev2, args)
 
-	if args.binarysearch == 1 then
-		binary_search_log("Running")
-	end
+	binary_search_log("Running")
 
 	mg.waitForTasks()
 
-	if args.binarysearch == 1 then
-		binary_search_log("Finished")
-	end
+	binary_search_log("Finished")
 end
 
 function dump_histogram(args, direction, dev1, dev2, histogram, tx_samples)
@@ -108,15 +120,23 @@ function timerSlave(dev1, dev2, args)
 		ts_runtimer = timer:new(args.time)
 	end
 
-	mode = 0
+	local mode = 0
+	if args.traffic_direction == "revuni" then
+		mode = 1
+	end
+
 	while (args.time == 0 or ts_runtimer:running()) and mg.running() do
 		if mode == 0 then
 			fwd_hist:update(fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end))
-			mode = 1
+			if args.traffic_direction == "bi" then
+				mode = 1
+			end
 			fwd_samples = fwd_samples + 1
 		else
 			rev_hist:update(rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end))
-			mode = 0
+			if args.traffic_direction == "bi" then
+				mode = 0
+			end
 			rev_samples = rev_samples + 1
 		end
 	end
@@ -125,10 +145,14 @@ function timerSlave(dev1, dev2, args)
 
 	mg.sleepMillis(2000)
 
-	dump_histogram(args, "Forward", args.fwddev, args.revdev, fwd_hist, fwd_samples)
-	dump_histogram(args, "Reverse", args.revdev, args.fwddev, rev_hist, rev_samples)
+	if args.traffic_direction == "bi" or args.traffic_direction == "uni" then
+		dump_histogram(args, "Forward", args.fwddev, args.revdev, fwd_hist, fwd_samples)
+		fwd_hist:save(args.output.."/"..args.fwdfile)
+	end
 
-	fwd_hist:save(args.output.."/"..args.fwdfile)
-	rev_hist:save(args.output.."/"..args.revfile)
+	if args.traffic_direction == "bi" or args.traffic_direction == "revuni" then
+		dump_histogram(args, "Reverse", args.revdev, args.fwddev, rev_hist, rev_samples)
+		rev_hist:save(args.output.."/"..args.revfile)
+	end
 end
 

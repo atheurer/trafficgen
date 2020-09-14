@@ -799,6 +799,13 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
          latency_cmd = latency_cmd + ' --fwddev ' + latency_device_pair[0]
          latency_cmd = latency_cmd + ' --revdev ' + latency_device_pair[1]
 
+         if trial_params['latency_traffic_direction'] == 'bidirectional':
+              latency_cmd = latency_cmd + ' --traffic-direction bi'
+         elif trial_params['latency_traffic_direction'] == 'unidirectional':
+              latency_cmd = latency_cmd + ' --traffic-direction uni'
+         elif trial_params['latency_traffic_direction'] == 'revunidirectional':
+              latency_cmd = latency_cmd + ' --traffic-direction revuni'
+
     if trial_params['traffic_generator'] == 'null-txrx':
          cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
          cmd = cmd + ' --mirrored-log'
@@ -1982,6 +1989,7 @@ def main():
     # set configuration from the argument parser
     if t_global.args.traffic_generator == "trex-txrx":
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
+         setup_config_var("latency_traffic_direction", t_global.args.traffic_direction, trial_params)
          setup_config_var("num_flows", t_global.args.num_flows, trial_params)
          setup_config_var("frame_size", t_global.args.frame_size, trial_params)
          setup_config_var("use_src_mac_flows", t_global.args.use_src_mac_flows, trial_params)
@@ -2046,6 +2054,15 @@ def main():
          if trial_params['loaded_traffic_profile'] == 1:
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
               return(1)
+
+         tmp_latency_traffic_direction = trial_params["loaded_traffic_profile"]["streams"][0]["traffic_direction"]
+         if tmp_latency_traffic_direction != "bidirectional":
+              for stream in trial_params['loaded_traffic_profile']['streams']:
+                   if stream["traffic_direction"] != tmp_latency_traffic_direction:
+                        tmp_latency_traffic_direction = "bidirectional"
+                        break
+         bs_logger("Configured via traffic profile introspection:")
+         setup_config_var("latency_traffic_direction", tmp_latency_traffic_direction, trial_params)
 
          trial_params['loaded_warmup_traffic_profile'] = None
          if t_global.args.warmup_trial and len(t_global.args.warmup_traffic_profile):
