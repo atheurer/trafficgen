@@ -749,6 +749,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     tmp_stats = dict()
     streams = dict()
 
+    stats['latency'] = dict()
+
     if trial_params['traffic_generator'] == 'null-txrx':
          stats[0] = dict()
          stats[0]['tx_packets'] = 0
@@ -782,6 +784,10 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     latency_cmd = ""
 
     trial_params['trial_profiler_file'] = "N/A"
+    trial_params['trial_fwd_latency_histogram_file'] = "N/A"
+    trial_params['trial_rev_latency_histogram_file'] = "N/A"
+    trial_params['trial_latency_output_file'] = "N/A"
+    trial_params['trial_latency_debug_file'] = "N/A"
 
     if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
          latency_device_pair = trial_params['latency_device_pair'].split(':')
@@ -1073,6 +1079,20 @@ def handle_trial_process_latency_stderr(process, trial_params, stats, exit_event
               m = re.search(r"^\[BS\]\s(.*)$", line)
               if m:
                    bs_logger(m.group(1), bso = False, prefix = prefix)
+
+                   r = re.search(r"\[([a-zA-Z]+) Latency: ([0-9]+)->([0-9]+)\]\s+(.*):\s+(.*)", m.group(1))
+                   if r:
+                        if not r.group(1) in stats['latency']:
+                             stats['latency'][r.group(1)] = dict()
+                             stats['latency'][r.group(1)]['tx_device'] = int(r.group(2))
+                             stats['latency'][r.group(1)]['rx_device'] = int(r.group(3))
+                             stats['latency'][r.group(1)]['percentiles'] = dict()
+
+                        f = re.search(r"(.*)th Percentile", r.group(4))
+                        if f:
+                             stats['latency'][r.group(1)]['percentiles'][f.group(1)] = float(r.group(5))
+                        else:
+                             stats['latency'][r.group(1)][r.group(4)] = float(r.group(5))
 
 def handle_trial_process_stdout(process, trial_params, stats, exit_event):
     prefix = "%03d" % trial_params['trial']
