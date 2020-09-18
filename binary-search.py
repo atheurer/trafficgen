@@ -1018,6 +1018,23 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     else:
          stats['retval'] = tg_retval
 
+    if latency_cmd != '':
+         # fixup the directional stats to include the latency stats since they come from different places
+
+         if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+              stats['directional']['->']['active'] = True
+              stats['directional']['->']['tx_packets'] += stats['latency']['Forward']['TX Samples']
+              stats['directional']['->']['rx_packets'] += stats['latency']['Forward']['RX Samples']
+              stats['directional']['->']['rx_lost_packets'] += (stats['latency']['Forward']['TX Samples'] - stats['latency']['Forward']['RX Samples'])
+              stats['directional']['->']['rx_lost_packets_pct'] = 100.0 * stats['directional']['->']['rx_lost_packets'] / stats['directional']['->']['tx_packets']
+
+         if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+              stats['directional']['<-']['active'] = True
+              stats['directional']['<-']['tx_packets'] += stats['latency']['Reverse']['TX Samples']
+              stats['directional']['<-']['rx_packets'] += stats['latency']['Reverse']['RX Samples']
+              stats['directional']['<-']['rx_lost_packets'] += (stats['latency']['Reverse']['TX Samples'] - stats['latency']['Reverse']['RX Samples'])
+              stats['directional']['<-']['rx_lost_packets_pct'] = 100.0 * stats['directional']['<-']['rx_lost_packets'] / stats['directional']['<-']['tx_packets']
+
     stream_info['streams'] = streams
     return stats
 
@@ -1737,6 +1754,59 @@ def evaluate_trial(trial_params, trial_stats):
                                         (direction,
                                          trial_result))
 
+     if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+          latency_device_pair = trial_params['latency_device_pair'].split(':')
+          latency_device_pair[0] = int(latency_device_pair[0])
+          latency_device_pair[1] = int(latency_device_pair[1])
+
+          if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+               if trial_stats['latency']['Forward']['TX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no forward packets were transmitted between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[0],
+                               latency_device_pair[1],
+                               trial_result))
+
+               if trial_stats['latency']['Forward']['RX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no forward packets were received between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[0],
+                               latency_device_pair[1],
+                               trial_result))
+
+          if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+               if trial_stats['latency']['Reverse']['TX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no reverse packets were transmitted between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[1],
+                               latency_device_pair[0],
+                               trial_result))
+
+               if trial_stats['latency']['Reverse']['RX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no reverse packets were received between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[1],
+                               latency_device_pair[0],
+                               trial_result))
+
+          if trial_params['loss_granularity'] == 'device' and trial_params['negative_packet_loss_mode'] == 'quit':
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+                    if trial_stats['latency']['Forward']['Loss Ratio'] < 0:
+                         trial_result = 'abort'
+                         bs_logger("\t(critical requirement failure, negative device packet loss, forward latency device pair: %d -> %d, trial result: %s)" %
+                                   (latency_device_pair[0],
+                                    latency_device_pair[1],
+                                    trial_result))
+
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+                    if trial_stats['latency']['Reverse']['Loss Ratio'] < 0:
+                         trial_result = 'abort'
+                         bs_logger("\t(critical requirement failure, negative device packet loss, reverse latency device pair: %d -> %d, trial result: %s)" %
+                                   (latency_device_pair[1],
+                                    latency_device_pair[0],
+                                    trial_result))
+
+
      if trial_result == 'abort':
           trial_result = 'quit'
           bs_logger(error("(binary search aborting due to critical error, trial result: %s)" %
@@ -1836,6 +1906,28 @@ def evaluate_trial(trial_params, trial_stats):
                                result_msg,
                                trial_result))
      else:
+          if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+               # for the latency device pair, trial_params['loss_granularity'] == 'segment' == 'device'
+               latency_device_pair = trial_params['latency_device_pair'].split(':')
+               latency_device_pair[0] = int(latency_device_pair[0])
+               latency_device_pair[1] = int(latency_device_pair[1])
+
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+                    if trial_stats['latency']['Forward']['Loss Ratio'] > trial_params["max_loss_pct"]:
+                         trial_result = 'fail'
+                         bs_logger("\t(trial failed requirement, latency RX packet loss, forward latency device pair: %d -> %d, trial result status: modified, trial result: %s)" %
+                                   (latency_device_pair[0],
+                                    latency_device_pair[1],
+                                    trial_result))
+
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+                    if trial_stats['latency']['Reverse']['Loss Ratio'] > trial_params["max_loss_pct"]:
+                         trial_result = 'fail'
+                         bs_logger("\t(trial failed requirement, latency RX packet loss, reverse latency device pair: %d -> %d, trial result status: modified, trial result: %s)" %
+                                   (latency_device_pair[1],
+                                    latency_device_pair[0],
+                                    trial_result))
+
           for dev_pair in trial_params['test_dev_pairs']:
                if trial_params['loss_granularity'] == 'segment':
                     if 'rx_loss_error' in trial_stats[dev_pair['rx']]:
