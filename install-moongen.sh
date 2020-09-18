@@ -71,6 +71,12 @@ if pushd ${tg_dir} > /dev/null; then
 	    chmod +x libmoon/foo
 	    mv libmoon/foo libmoon/build.sh
 
+	    # modify timestamper:measureLatency to only return a nil
+	    # latency when the packet is actually thought to be lost;
+	    # return -1 for other error cases; this allows lost
+	    # packets and error cases to be handled differently
+	    sed -i -e 's/return nil/return -1/' -e "/looks like our packet got lost/{n;s/return -1/return nil/}" libmoon/lua/timestamping.lua
+
 	    # build MoonGen
 	    ./build.sh
 

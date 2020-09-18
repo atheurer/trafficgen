@@ -13,18 +13,16 @@ local sem    = require "ipc.sem"
 local FWD_ETH_DST = "24:6E:96:19:DE:DA"
 local REV_ETH_DST = "24:6E:96:19:DE:D8"
 
-function binary_search_log(args, msg)
-	if args.binarysearch == 1 then
-		io.stderr:write("[BS] "..msg.."\n")
-	end
-end
-
 function dual_log(args, msg)
 	if args.binarysearch == 1 then
 		io.stderr:write("[BS] "..msg.."\n")
 	end
 
-	io.stdout:write(msg.."\n")
+	log:info(msg)
+end
+
+function get_ts()
+	return os.date('%H:%M:%S on %Y-%m-%d')
 end
 
 function configure(parser)
@@ -37,6 +35,7 @@ function configure(parser)
 	parser:option("--output", "Directory to write results to."):default("./")
 	parser:option("--binarysearch", "binary-search.py is invoking this script so handle output accordingly."):convert(tonumber):default(0)
 	parser:option("--traffic-direction", "Control traffic direction.  One of: bi, uni, revuni"):default("bi"):target("traffic_direction")
+	parser:option("--warmup-packets", "How many packets to send from each device to warmup the environment when being invoked from binary-search.py."):default(10):target("warmup_packets"):convert(tonumber)
 end
 
 function validate_traffic_direction(direction)
@@ -48,7 +47,9 @@ function validate_traffic_direction(direction)
 end
 
 function master(args)
-	binary_search_log("Invoked by binary-search.py")
+	if args.binarysearch == 1 then
+		dual_log(args, "Invoked by binary-search.py")
+	end
 
 	if validate_traffic_direction(args.traffic_direction) == 1 then
 		dual_log(args, string.format("Invalid traffic direction = %s", args.traffic_direction))
@@ -61,44 +62,60 @@ function master(args)
 	local dev2 = device.config({port = args.revdev, rxQueues = 1, txQueues = 1})
 
 	device.waitForLinks()
+	dual_log(args, "Devices online")
+
+	mg.sleepMillis(2000)
+
 	if args.binarysearch == 1 then
-		binary_search_log("Devices online")
+		if args.warmup_packets > 0 then
+			dual_log(args, string.format("Warming up with %d packets per active direction at %s", args.warmup_packets, get_ts()))
+			mg.startTask("warmup", dev1, dev2, args)
+			mg.waitForTasks()
+			dual_log(args, string.format("Warmup complete at %s", get_ts()))
+		else
+			dual_log(args, "Skipping warmup")
+		end
 
 		parent_launch_sem = sem.open("trafficgen_child_launch")
 		parent_go_sem = sem.open("trafficgen_child_go")
 
-		binary_search_log("Signaling binary-search.py that I am ready")
+		dual_log(args, string.format("Signaling binary-search.py that I am ready at %s", get_ts()))
 		parent_launch_sem:inc()
 
-		binary_search_log("Waiting for binary-search.py to tell me to go")
+		dual_log(args, string.format("Waiting for binary-search.py to tell me to go at %s", get_ts()))
 		parent_go_sem:dec()
-		binary_search_log("Received go from binary-search.py")
+		dual_log(args, string.format("Received go from binary-search.py at %s", get_ts()))
 
 		parent_launch_sem:close()
 		parent_go_sem:close()
 
-		binary_search_log("Synchronization services complete")
+		dual_log(args, string.format("Synchronization services complete at %s", get_ts()))
+	else
+		dual_log(args, "Regular run")
 	end
+
+	dual_log(args, string.format("Starting at %s", get_ts()))
 
 	stats.startStatsTask({ devices = { dev1, dev2 } })
 	mg.startTask("timerSlave", dev1, dev2, args)
 
-	binary_search_log("Running")
+	dual_log(args, string.format("Running at %s", get_ts()))
 
 	mg.waitForTasks()
 
-	binary_search_log("Finished")
+	dual_log(args, string.format("Finished at %s", get_ts()))
 end
 
 function dump_histogram(args, direction, dev1, dev2, histogram, tx_samples)
 	rx_samples, sum, avg = histogram:totals()
 	dual_log(args, string.format("[%s Latency: %d->%d] TX Samples:            %d", direction, dev1, dev2, tx_samples))
 	dual_log(args, string.format("[%s Latency: %d->%d] RX Samples:            %d", direction, dev1, dev2, rx_samples))
-	dual_log(args, string.format("[%s Latency: %d->%d] Average:               %f", direction, dev1, dev2, avg))
-	dual_log(args, string.format("[%s Latency: %d->%d] Median:                %f", direction, dev1, dev2, histogram:median()))
-	dual_log(args, string.format("[%s Latency: %d->%d] Minimum:               %f", direction, dev1, dev2, histogram:min()))
-	dual_log(args, string.format("[%s Latency: %d->%d] Maximum:               %f", direction, dev1, dev2, histogram:max()))
-	dual_log(args, string.format("[%s Latency: %d->%d] Std. Dev:              %f", direction, dev1, dev2, histogram:standardDeviation()))
+	dual_log(args, string.format("[%s Latency: %d->%d] Loss Ratio:            %f", direction, dev1, dev2, (1-(rx_samples/tx_samples))*100.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] Average:               %f", direction, dev1, dev2, avg or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] Median:                %f", direction, dev1, dev2, histogram:median() or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] Minimum:               %f", direction, dev1, dev2, histogram:min() or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] Maximum:               %f", direction, dev1, dev2, histogram:max() or 0.0))
+	dual_log(args, string.format("[%s Latency: %d->%d] Std. Dev:              %f", direction, dev1, dev2, histogram:standardDeviation() or 0.0))
 	dual_log(args, string.format("[%s Latency: %d->%d] 95th Percentile:       %f", direction, dev1, dev2, histogram:percentile(95) or 0.0))
 	dual_log(args, string.format("[%s Latency: %d->%d] 99th Percentile:       %f", direction, dev1, dev2, histogram:percentile(99) or 0.0))
 	dual_log(args, string.format("[%s Latency: %d->%d] 99.9th Percentile:     %f", direction, dev1, dev2, histogram:percentile(99.9) or 0.0))
@@ -125,24 +142,59 @@ function timerSlave(dev1, dev2, args)
 		mode = 1
 	end
 
+	local latency = nil
+	local num_packets = nil
 	while (args.time == 0 or ts_runtimer:running()) and mg.running() do
 		if mode == 0 then
-			fwd_hist:update(fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end))
 			if args.traffic_direction == "bi" then
 				mode = 1
 			end
+
 			fwd_samples = fwd_samples + 1
+
+			latency, num_packets = fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end)
+
+			if latency == nil then
+				log:warn("%s | Lost Packet | Fwd Sample #: %d | Num Packets: %d", get_ts(), fwd_samples, num_packets)
+			elseif latency == -1 then
+				log:warn("%s | Ignoring Packet | Fwd Sample #: %d | Num Packets: %d", get_ts(), fwd_samples, num_packets)
+				fwd_samples = fwd_samples - 1
+				mode = 0
+			else
+				if num_packets > 1 then
+					log:warn("%s | Multi-packet RX | Fwd Sample #: %d | Num Packets: %d | Latency: %f", get_ts(), fwd_samples, num_packets, latency)
+				end
+
+				fwd_hist:update(latency)
+			end
 		else
-			rev_hist:update(rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end))
 			if args.traffic_direction == "bi" then
 				mode = 0
 			end
+
 			rev_samples = rev_samples + 1
+
+			latency, num_packets = rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end)
+
+			if latency == nil then
+				log:warn("%s | Lost Packet | Rev Sample #: %d | Num Packets: %d", get_ts(), rev_samples, num_packets)
+			elseif latency == -1 then
+				log:warn("%s | Ignoring Packet | Rev Sample #: %d | Num Packets: %d", get_ts(), rev_samples, num_packets)
+				rev_samples = rev_samples - 1
+				mode = 1
+			else
+				if num_packets > 1 then
+					log:warn("%s | Multi-packet RX | Rev Sample #: %d | Num Packets: %d | Latency: %f", get_ts(), rev_samples, num_packets, latency)
+				end
+
+				rev_hist:update(latency)
+			end
 		end
 	end
 
 	mg.stop()
 
+	-- let MG settle before dumping results
 	mg.sleepMillis(2000)
 
 	if args.traffic_direction == "bi" or args.traffic_direction == "uni" then
@@ -156,3 +208,42 @@ function timerSlave(dev1, dev2, args)
 	end
 end
 
+function warmup(dev1, dev2, args)
+	local fwd_timestamper = ts:newTimestamper(dev1:getTxQueue(0), dev2:getRxQueue(0))
+	local fwd_samples = 0
+
+	local rev_timestamper = ts:newTimestamper(dev2:getTxQueue(0), dev1:getRxQueue(0))
+	local rev_samples = 0
+
+	local mode = 0
+	if args.traffic_direction == "revuni" then
+		mode = 1
+	end
+
+	local do_warmup = 1
+	while do_warmup == 1 do
+		if mode == 0 then
+			fwd_samples = fwd_samples + 1
+
+			fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end)
+
+			if args.traffic_direction == "bi" then
+				mode = 1
+			end
+		else
+			rev_samples = rev_samples + 1
+
+			rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end)
+
+			if args.traffic_direction == "bi" then
+				mode = 0
+			end
+		end
+
+		if fwd_samples == args.warmup_packets and rev_samples == args.warmup_packets then
+			do_warmup = 0
+		end
+	end
+
+	mg.sleepMillis(2000)
+end
