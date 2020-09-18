@@ -1062,8 +1062,24 @@ def handle_trial_process_latency_stdout(process, trial_params, stats, exit_event
 
               print(line.rstrip('\n'), file = latency_output_file)
 
+    if latency_close_file:
+         latency_output_file.close()
+
+    return(0)
+
 def handle_trial_process_latency_stderr(process, trial_params, stats, exit_event):
     prefix = "LAT"
+
+    latency_debug_file = None
+    latency_close_file = False
+    trial_params['trial_latency_debug_file'] = "binary-search.trial-%03d.latency.debug.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_latency_debug_file'])
+    try:
+         latency_debug_file = open(filename, 'w')
+         latency_close_file = True
+    except IOError:
+         bs_logger(error("Could not open %s for writing" % (filename)))
+         latency_debug_file = sys.stdout
 
     capture_output = True
     do_loop = True
@@ -1075,6 +1091,9 @@ def handle_trial_process_latency_stderr(process, trial_params, stats, exit_event
                    exit_event.set()
                    do_loop = False
                    continue
+
+              if latency_close_file:
+                   print(line.rstrip('\n'), file = latency_debug_file)
 
               m = re.search(r"^\[BS\]\s(.*)$", line)
               if m:
@@ -1093,6 +1112,13 @@ def handle_trial_process_latency_stderr(process, trial_params, stats, exit_event
                              stats['latency'][r.group(1)]['percentiles'][f.group(1)] = float(r.group(5))
                         else:
                              stats['latency'][r.group(1)][r.group(4)] = float(r.group(5))
+              elif not latency_close_file:
+                   bs_logger(line.rstrip('\n'), bso = False, prefix = prefix + 'DBG')
+
+    if latency_close_file:
+         latency_debug_file.close()
+
+    return(0)
 
 def handle_trial_process_stdout(process, trial_params, stats, exit_event):
     prefix = "%03d" % trial_params['trial']
