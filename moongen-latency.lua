@@ -36,6 +36,8 @@ function configure(parser)
 	parser:option("--binarysearch", "binary-search.py is invoking this script so handle output accordingly."):convert(tonumber):default(0)
 	parser:option("--traffic-direction", "Control traffic direction.  One of: bi, uni, revuni"):default("bi"):target("traffic_direction")
 	parser:option("--warmup-packets", "How many packets to send from each device to warmup the environment when being invoked from binary-search.py."):default(10):target("warmup_packets"):convert(tonumber)
+	parser:option("--max-latency", "How long to wait for a packet before declaring it lost (in milliseconds)."):default(5):target("max_latency"):convert(tonumber)
+	parser:option("--packet-size", "How big should the packet be."):default(76):target("packet_size"):convert(tonumber)
 end
 
 function validate_traffic_direction(direction)
@@ -124,12 +126,20 @@ function dump_histogram(args, direction, dev1, dev2, histogram, tx_samples)
 	dual_log(args, string.format("[%s Latency: %d->%d] 99.9999th Percentile:  %f", direction, dev1, dev2, histogram:percentile(99.9999) or 0.0))
 end
 
+function update_fwd_packet(buf)
+	buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST)
+end
+
+function update_rev_packet(buf)
+	buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST)
+end
+
 function timerSlave(dev1, dev2, args)
-	local fwd_timestamper = ts:newTimestamper(dev1:getTxQueue(0), dev2:getRxQueue(0))
+	local fwd_timestamper = ts:newUdpTimestamper(dev1:getTxQueue(0), dev2:getRxQueue(0))
 	local fwd_hist = hist:new()
 	local fwd_samples = 0
 
-	local rev_timestamper = ts:newTimestamper(dev2:getTxQueue(0), dev1:getRxQueue(0))
+	local rev_timestamper = ts:newUdpTimestamper(dev2:getTxQueue(0), dev1:getRxQueue(0))
 	local rev_hist = hist:new()
 	local rev_samples = 0
 
@@ -152,7 +162,7 @@ function timerSlave(dev1, dev2, args)
 
 			fwd_samples = fwd_samples + 1
 
-			latency, num_packets = fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end)
+			latency, num_packets = fwd_timestamper:measureLatency(args.packet_size, update_fwd_packet, args.max_latency)
 
 			if latency == nil then
 				log:warn("%s | Lost Packet | Fwd Sample #: %d | Num Packets: %d", get_ts(), fwd_samples, num_packets)
@@ -174,7 +184,7 @@ function timerSlave(dev1, dev2, args)
 
 			rev_samples = rev_samples + 1
 
-			latency, num_packets = rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end)
+			latency, num_packets = rev_timestamper:measureLatency(args.packet_size, update_rev_packet, args.max_latency)
 
 			if latency == nil then
 				log:warn("%s | Lost Packet | Rev Sample #: %d | Num Packets: %d", get_ts(), rev_samples, num_packets)
@@ -209,10 +219,10 @@ function timerSlave(dev1, dev2, args)
 end
 
 function warmup(dev1, dev2, args)
-	local fwd_timestamper = ts:newTimestamper(dev1:getTxQueue(0), dev2:getRxQueue(0))
+	local fwd_timestamper = ts:newUdpTimestamper(dev1:getTxQueue(0), dev2:getRxQueue(0))
 	local fwd_samples = 0
 
-	local rev_timestamper = ts:newTimestamper(dev2:getTxQueue(0), dev1:getRxQueue(0))
+	local rev_timestamper = ts:newUdpTimestamper(dev2:getTxQueue(0), dev1:getRxQueue(0))
 	local rev_samples = 0
 
 	local mode = 0
@@ -225,7 +235,7 @@ function warmup(dev1, dev2, args)
 		if mode == 0 then
 			fwd_samples = fwd_samples + 1
 
-			fwd_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(FWD_ETH_DST) end)
+			fwd_timestamper:measureLatency(args.packet_size, update_fwd_packet, args.max_latency)
 
 			if args.traffic_direction == "bi" then
 				mode = 1
@@ -233,7 +243,7 @@ function warmup(dev1, dev2, args)
 		else
 			rev_samples = rev_samples + 1
 
-			rev_timestamper:measureLatency(function(buf) buf:getEthernetPacket().eth.dst:setString(REV_ETH_DST) end)
+			rev_timestamper:measureLatency(args.packet_size, update_rev_packet, args.max_latency)
 
 			if args.traffic_direction == "bi" then
 				mode = 0
