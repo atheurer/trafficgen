@@ -342,7 +342,10 @@ def create_traffic_profile (direction, device_pair, rate_multiplier, port_speed)
 
                     substream_self_start = stream_self_start
                     for loop_idx in range(1, stream_loops+1):
-                         substream_name = "%s_sub_%d" % (stream_name, loop_idx)
+                         if loop_idx == 1:
+                              substream_name = stream_name
+                         else:
+                              substream_name = "%s_sub_%d" % (stream_name, loop_idx)
                          substream_next_name = "%s_sub_%d" % (stream_name, loop_idx+1)
                          myprint("Creating substream %d with name %s" % (loop_idx, substream_name))
 
