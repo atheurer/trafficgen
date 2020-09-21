@@ -63,8 +63,12 @@ function master(args)
 	local dev1 = device.config({port = args.fwddev, rxQueues = 1, txQueues = 1})
 	local dev2 = device.config({port = args.revdev, rxQueues = 1, txQueues = 1})
 
-	device.waitForLinks()
-	dual_log(args, "Devices online")
+	local devices_online = device.waitForLinks()
+	dual_log(args, string.format("Devices online: %d", devices_online))
+	if devices_online ~= 2 then
+		dual_log(args, "Failed to online 2 devices")
+		return ""
+	end
 
 	mg.sleepMillis(2000)
 
@@ -203,6 +207,8 @@ function timerSlave(dev1, dev2, args)
 	end
 
 	mg.stop()
+
+	dual_log(args, string.format("Stopped at %s", get_ts()))
 
 	-- let MG settle before dumping results
 	mg.sleepMillis(2000)
