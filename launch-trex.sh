@@ -12,7 +12,7 @@ devices=""
 yaml_file=""
 mem_limit=2048
 
-opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,yaml-file:,mem-limit:" -n "getopt.sh" -- "$@")
+opts=$(getopt -q -o c: --longoptions "tmp-dir:,trex-dir:,use-ht:,use-l2:,use-vlan:,devices:,cpu-list:,yaml-file:,mem-limit:" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
     printf -- "$*\n"
     printf -- "\n"
@@ -41,6 +41,9 @@ if [ $? -ne 0 ]; then
     printf -- "--devices=str\n"
     printf -- "  Comma separated list of PCI devices to use.  Should already be bound to vfio-pci.\n"
     printf -- "  There is no default\n"
+    printf -- "\n"
+    printf -- "--cpu-list=str\n"
+    printf -- "  Comma separated list of CPUs or CPU-ranges to use.\n"
     printf -- "\n"
     printf -- "--yaml-file=str\n"
     printf -- "  Optional parameter to specify a manually created TRex YAML file.\n"
@@ -93,6 +96,13 @@ while true; do
 	    shift
 	    if [ -n "${1}" ]; then
 		devices=${1}
+		shift
+	    fi
+	    ;;
+	--cpu-list)
+	    shift
+	    if [ -n "${1}" ]; then
+		cpu_list=${1}
 		shift
 	    fi
 	    ;;
@@ -160,8 +170,16 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 	tmp_yaml_file="${yaml_file}.tmp"
 	/bin/rm -fv ${yaml_file}
 
-	isolated_cpus=$(cat /sys/devices/system/cpu/nohz_full)
-	cpu_list=$(convert_number_range "${isolated_cpus}" | sed -e "s/,/ /g")
+        if [ -z "$cpu_list" ]; then
+            echo "--cpu-list was not provided, so searching for nohz_full CPUs"
+	    isolated_cpus=$(cat /sys/devices/system/cpu/nohz_full)
+	    cpu_list=$(convert_number_range "${isolated_cpus}" | sed -e "s/,/ /g")
+        else
+            echo "Since --cpu-list was provided, using these cpus: $cpu_list"
+	    cpu_list=$(convert_number_range "${cpu_list}" | sed -e "s/,/ /g")
+	fi
+	echo "cpu_list: $cpu_list"
+
 	trex_config_args=""
 	if [ "${use_ht}" == "n" ]; then
             trex_config_args+="--no-ht "
