@@ -184,6 +184,11 @@ def process_options ():
                         default = 'trex-profiler.log',
                         type = str
                         )
+    parser.add_argument('--no-promisc',
+                        dest='no_promisc',
+                        help='Do not use promiscuous mode for network interfaces (usually needed for virtual-functions)',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args()
 
@@ -1289,8 +1294,10 @@ def main():
         # prepare our ports
         c.acquire(ports = claimed_device_pairs, force=True)
         c.reset(ports = claimed_device_pairs)
-        c.set_port_attr(ports = all_ports, promiscuous = True)
-
+        if t_global.args.no_promisc:
+             c.set_port_attr(ports = all_ports)
+        else:
+             c.set_port_attr(ports = all_ports, promiscuous = True)
         port_info = c.get_port_info(ports = claimed_device_pairs)
         myprint("READABLE PORT INFO:", stderr_only = True)
         myprint(dump_json_readable(port_info), stderr_only = True)
@@ -1438,7 +1445,10 @@ def main():
                        return return_value
 
                   c.reset(ports = warmup_ports)
-                  c.set_port_attr(ports = warmup_ports, promiscuous = True)
+                  if t_global.args.no_promisc:
+                       c.set_port_attr(ports = warmup_ports)
+                  else:
+                       c.set_port_attr(ports = warmup_ports, promiscuous = True)
              else:
                   myprint("\tNo streams configured")
 

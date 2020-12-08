@@ -479,6 +479,11 @@ def process_options ():
                         default = 'localhost',
                         type = str
                         )
+    parser.add_argument('--no-promisc',
+                        dest='no_promisc',
+                        help='Do not use promiscuous mode for interfaces (usually needed for virtual functions)',
+                        action = 'store_true',
+                        )
 
     t_global.args = parser.parse_args();
     if t_global.args.frame_size == "IMIX":
@@ -810,6 +815,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --traffic-profile=' + trial_params['warmup_traffic_profile']
         else:
              cmd = cmd + ' --traffic-profile=' + trial_params['traffic_profile']
+        if trial_params['no_promisc']:
+             cmd = cmd + ' --no-promisc'
 
     elif trial_params['traffic_generator'] == 'trex-txrx':
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
@@ -883,6 +890,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --teaching-warmup-packet-type=' + str(trial_params['teaching_warmup_packet_type'])
         if trial_params['teaching_measurement_packet_type']:
              cmd = cmd + ' --teaching-measurement-packet-type=' + str(trial_params['teaching_measurement_packet_type'])
+        if trial_params['no_promisc']:
+             cmd = cmd + ' --no-promisc'
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
@@ -1888,6 +1897,7 @@ def main():
          setup_config_var('teaching_measurement_interval', t_global.args.teaching_measurement_interval, trial_params)
          setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
          setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
+         setup_config_var('no_promisc', t_global.args.no_promisc, trial_params)
 
     if t_global.args.traffic_generator == "null-txrx":
          # empty for now
