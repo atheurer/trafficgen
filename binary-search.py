@@ -817,8 +817,6 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --traffic-profile=' + trial_params['traffic_profile']
         if trial_params['no_promisc']:
              cmd = cmd + ' --no-promisc'
-        else:
-             print("--no-promisc is not set")
 
     elif trial_params['traffic_generator'] == 'trex-txrx':
         for tmp_stats_index, tmp_stats_id in enumerate(tmp_stats):
@@ -894,8 +892,6 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              cmd = cmd + ' --teaching-measurement-packet-type=' + str(trial_params['teaching_measurement_packet_type'])
         if trial_params['no_promisc']:
              cmd = cmd + ' --no-promisc'
-        else:
-             print("--no-promisc is not set")
 
     previous_sig_handler = signal.signal(signal.SIGINT, sigint_handler)
 
