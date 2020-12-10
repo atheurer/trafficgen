@@ -251,7 +251,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     cat ${yaml_file}
     echo "-------------------------------------------------------------------"
     rm -fv /tmp/trex.server.out
-    tmux new-session -d -n server -s trex "bash -c '${trex_server_cmd} | tee /tmp/trex.server.out'"
+    ${trex_server_cmd} 2>&1 >/tmp/trex.server.out &
 
     # wait for trex server to be ready                                                                                                                                                                                                    
     count=60
