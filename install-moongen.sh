@@ -31,17 +31,32 @@ while true; do
     esac
 done
 
-tg_dir=$(dirname $0)
+tg_dir=`readlink -f $(dirname $0)`
 
 # private MoonGen repo
 moongen_url="https://github.com/perftool-incubator/MoonGen.git"
 
+# private lua-luaipc repo
+luaipc_url="https://github.com/perftool-incubator/lua-luaipc.git"
+
 moongen_dir="MoonGen"
+luaipc_dir="lua-luaipc"
 
 if pushd ${tg_dir} > /dev/null; then
     if [ -d ${moongen_dir} -a "${force_install}" == "0" ]; then
 	echo "MoonGen already installed"
     else
+	# install distro moongen dependencies
+	if which pip3 > /dev/null; then
+	    if ! pip3 install posix_ipc; then
+		echo "ERROR: Failed to install posix_ipc via pip3"
+		exit 1
+	    fi
+	else
+	    echo "ERROR: Please install pip3.  It is required to install a moongen dependency."
+	    exit 1
+	fi
+
 	if [ -d ${moongen_dir} ]; then
 	    /bin/rm -Rf ${moongen_dir}
 	fi
@@ -85,7 +100,27 @@ if pushd ${tg_dir} > /dev/null; then
 	    echo "ERROR: Could not find MoonGen directory"
 	    exit 1
 	fi
-    fi	
+
+	# install a custom moongen-latency.lua dependency
+	if [ -d ${luaipc_dir} ]; then
+	    /bin/rm -Rf ${luaipc_dir}
+	fi
+
+	git clone ${luaipc_url}
+
+	if pushd ${luaipc_dir} > /dev/null; then
+	    sed -i -e "s|\(LUA_INCDIR =\).*|\1 ${tg_dir}/${moongen_dir}/libmoon/deps/luajit/src|" Makefile
+
+	    if ! make; then
+		echo "ERROR: Failed to build ${luaipc_dir}"
+		exit 1
+	    fi
+
+	    popd > /dev/null
+	else
+	    echo "ERROR: Failed to clone ${luaipc_url}"
+	fi
+    fi
 
     popd > /dev/null
 else
@@ -94,8 +129,3 @@ else
 fi
 
 exit 0
-
-# pip3 install posix_ipc
-
-# git clone https://github.com/siffiejoe/lua-luaipc.git
-# make
