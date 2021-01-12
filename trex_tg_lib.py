@@ -197,8 +197,8 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
 
     tmp_num_flows = num_flows - 1
 
-    ip_src = { "start": ip_to_int(ip_src) + flow_offset, "end": ip_to_int(ip_src) + tmp_num_flows + flow_offset }
-    ip_dst = { "start": ip_to_int(ip_dst) + flow_offset, "end": ip_to_int(ip_dst) + tmp_num_flows + flow_offset }
+    ip_src = { "start": int_to_ip(ip_to_int(ip_src) + flow_offset), "end": int_to_ip(ip_to_int(ip_src) + tmp_num_flows + flow_offset) }
+    ip_dst = { "start": int_to_ip(ip_to_int(ip_dst) + flow_offset), "end": int_to_ip(ip_to_int(ip_dst) + tmp_num_flows + flow_offset) }
 
     vm = []
     if flow_mods['ip']['src'] and tmp_num_flows:
