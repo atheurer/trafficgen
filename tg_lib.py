@@ -50,6 +50,25 @@ def ip_to_int (ip):
     return ip_int
 
 
+def int_to_ip (_int):
+    octet = int(_int / (256**3))
+    _int = _int - (octet * 256**3)
+    ip = str(octet)
+
+    octet = int(_int / (256**2))
+    _int = _int - (octet * 256**2)
+    ip = ip + "." + str(octet)
+
+    octet = int(_int / (256**1))
+    _int = _int - (octet * 256**1)
+    ip = ip + "." + str(octet)
+
+    _int = _int - (octet * 256**1)
+    ip = ip + "." + str(octet)
+    print("int_to_ip(), ip is " + ip)
+    return ip
+
+
 def calculate_latency_pps (dividend, divisor, total_rate, protocols):
      return int((float(dividend) / float(divisor) * total_rate / protocols))
 

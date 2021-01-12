@@ -163,6 +163,8 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
     size = int(size)
     size -= 4
 
+    print("ip_src: " + ip_src);
+    print("ip_dst: " + ip_dst);
     port_range = { "start": 0, "end": 65535 }
     if num_flows > 1 and (flow_mods['port']['src'] or flow_mods['port']['dst']):
          if num_flows < 1000:
@@ -197,8 +199,8 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
 
     tmp_num_flows = num_flows - 1
 
-    ip_src = { "start": ip_to_int(ip_src) + flow_offset, "end": ip_to_int(ip_src) + tmp_num_flows + flow_offset }
-    ip_dst = { "start": ip_to_int(ip_dst) + flow_offset, "end": ip_to_int(ip_dst) + tmp_num_flows + flow_offset }
+    ip_src = { "start": int_to_ip(ip_to_int(ip_src) + flow_offset), "end": int_to_ip(ip_to_int(ip_src) + tmp_num_flows + flow_offset) }
+    ip_dst = { "start": int_to_ip(ip_to_int(ip_dst) + flow_offset), "end": int_to_ip(ip_to_int(ip_dst) + tmp_num_flows + flow_offset) }
 
     vm = []
     if flow_mods['ip']['src'] and tmp_num_flows:
@@ -252,18 +254,23 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
         ]
 
     base = Ether(src = mac_src, dst = mac_dst)
+    print("initial base with mac:" + dump_json_readable(base))
 
     if vlan_id is not None:
         base = base/Dot1Q(vlan = vlan_id)
         # with vlan tag, minimum 64 L2 frame size is required, otherwise trex will fail
         size = max(64, size) 
 
+    print("str(ip_src[start]): " + str(ip_src['start']))
+    print("str(ip_dst[start]): " + str(ip_dst['start']))
     base = base/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
+    print("base with IP:" + dump_json_readable(base))
 
     if packet_protocol == "UDP":
          base = base/UDP(sport = port_src['init'], dport = port_dst['init'] )
     elif packet_protocol == "TCP":
          base = base/TCP(sport = port_src['init'], dport = port_dst['init'] )
+    print("base: " + dump_json_readable(base))
     pad = max(0, size-len(base)) * 'x'
 
     the_packet = base/pad
