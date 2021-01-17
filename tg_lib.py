@@ -65,7 +65,6 @@ def int_to_ip (_int):
 
     _int = _int - (octet * 256**1)
     ip = ip + "." + str(octet)
-    print("int_to_ip(), ip is " + ip)
     return ip
 
 

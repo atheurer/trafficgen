@@ -85,8 +85,6 @@ def create_icmp_pkt (size, mac_src, mac_dst, ip_src, ip_dst, vlan_id, flow_mods,
     pad = max(0, size - len(the_packet)) * 'x'
     the_packet = the_packet/pad
 
-    #print("create_icmp_pkt: scapy:%s\n" % (the_packet.command()))
-
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst']):
          vm = vm + [STLVmFixIpv4(offset = "IP")]
 
@@ -145,8 +143,6 @@ def create_garp_pkt (mac_src, ip_src, vlan_id, arp_op, flow_mods, num_flows, ena
 
     the_packet = the_packet/ARP(op = arp_op, hwsrc = mac_src, psrc = str(ip_src['start']), hwdst = arp_mac_target, pdst = str(ip_src['start']))
 
-    #print("create_garp_pkt: scapy:%s\n" % (the_packet.command()))
-
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['mac']['src']):
          if enable_flow_cache:
               vm = STLScVmRaw(list_of_commands = vm,
@@ -163,8 +159,6 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
     size = int(size)
     size -= 4
 
-    print("ip_src: " + ip_src);
-    print("ip_dst: " + ip_dst);
     port_range = { "start": 0, "end": 65535 }
     if num_flows > 1 and (flow_mods['port']['src'] or flow_mods['port']['dst']):
          if num_flows < 1000:
@@ -254,27 +248,21 @@ def create_generic_pkt (size, mac_src, mac_dst, ip_src, ip_dst, port_src, port_d
         ]
 
     base = Ether(src = mac_src, dst = mac_dst)
-    print("initial base with mac:" + dump_json_readable(base))
 
     if vlan_id is not None:
         base = base/Dot1Q(vlan = vlan_id)
         # with vlan tag, minimum 64 L2 frame size is required, otherwise trex will fail
         size = max(64, size) 
 
-    print("str(ip_src[start]): " + str(ip_src['start']))
-    print("str(ip_dst[start]): " + str(ip_dst['start']))
     base = base/IP(src = str(ip_src['start']), dst = str(ip_dst['start']))
-    print("base with IP:" + dump_json_readable(base))
 
     if packet_protocol == "UDP":
          base = base/UDP(sport = port_src['init'], dport = port_dst['init'] )
     elif packet_protocol == "TCP":
          base = base/TCP(sport = port_src['init'], dport = port_dst['init'] )
-    print("base: " + dump_json_readable(base))
     pad = max(0, size-len(base)) * 'x'
 
     the_packet = base/pad
-    #print("create_generic_pkt: scapy:%s\n" % (the_packet.command()))
 
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
          if packet_protocol == "UDP":
@@ -303,8 +291,6 @@ def load_user_pkt (the_packet, size, mac_src, mac_dst, ip_src, ip_dst, port_src,
     while True:
         layer = the_packet.getlayer(layer_counter)
         if not layer is None:
-            #print("Layer %d is '%s'" % (layer_counter, layer.name))
-            #print(dump_json_readable(layer))
 
             if layer.name == "TCP" or layer.name == "UDP":
                 packet_protocol = layer.name
@@ -318,7 +304,6 @@ def load_user_pkt (the_packet, size, mac_src, mac_dst, ip_src, ip_dst, port_src,
                 layer.src = mac_src
                 layer.dst = mac_dst
 
-            #print(dump_json_readable(layer))
         else:
             break
         layer_counter += 1
@@ -415,8 +400,6 @@ def load_user_pkt (the_packet, size, mac_src, mac_dst, ip_src, ip_dst, port_src,
         pad = max(0, size-len(the_packet)) * 'x'
         the_packet = the_packet/pad
 
-    #print("load_user_pkt: scapy:%s\n" % (the_packet.command()))
-
     if tmp_num_flows and (flow_mods['ip']['src'] or flow_mods['ip']['dst'] or flow_mods['mac']['src'] or flow_mods['mac']['dst'] or flow_mods['port']['src'] or flow_mods['port']['dst']):
         if packet_protocol == "UDP":
             vm = vm + [ STLVmFixChecksumHw(l3_offset = "IP", l4_offset = "UDP", l4_type = CTRexVmInsFixHwCs.L4_TYPE_UDP) ]
@@ -509,7 +492,6 @@ def validate_profile_stream(stream, rate_modifier):
                 elif (key == 'the_packet') and (fields[0] == 'scapy'):
                     try:
                         stream[key] = eval(fields[1])
-                        #print("validate_profile_stream:the_packet: scapy:%s\n" % (stream[key].command()))
                     except:
                         raise ValueError("Failed to eval '%s' for '%s'" % (fields[1], key))
 
@@ -705,8 +687,6 @@ def sanitize_profiler_value(value):
 def trex_profiler_process_sample(sample, stats, prev_sample):
     sample = json.loads(sample)
     prev_sample = json.loads(prev_sample)
-    #print(dump_json_readable(sample))
-    #print(dump_json_readable(prev_sample))
 
     stats[sample['timestamp']]['tsdelta'] = sample['timestamp_delta']
 
