@@ -1,0 +1,6 @@
+---
+- hosts: trafficgen
+  tasks:
+    - name: Install trex
+      include_role:
+        name: install-trex

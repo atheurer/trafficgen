@@ -1,0 +1,6 @@
+base_dir: "/opt/trex"
+trex_ver: "v2.82"
+trex_url: "https://trex-tgn.cisco.com/trex/release"
+force_install: False
+enable_ssl: no
+

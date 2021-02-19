@@ -1,0 +1,29 @@
+---
+- name: TRex installation
+  block:
+    - name: Ensure trex base dir exists
+      file:
+        path: "{{ base_dir }}"
+        state: directory
+
+    - name: Remove trex dir
+      file:
+        path: "{{ base_dir }}/{{ trex_ver }}"
+        state: absent
+      when: force_install
+
+    - name: Unarchive trex file
+      unarchive:
+        src: "{{ trex_url }}/{{ trex_ver }}.tar.gz"
+        dest: "{{ base_dir }}"
+        remote_src: yes
+        validate_certs: "{{ enable_ssl }}"
+
+    - name: Create symlink for trex installation
+      file:
+        src: "{{ base_dir }}/{{ trex_ver }}"
+        dest: "{{ base_dir }}/current"
+        state: link
+        force: yes
+
+  become: true
