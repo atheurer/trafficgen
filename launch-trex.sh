@@ -244,7 +244,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     else
         vlan_opt=""
     fi
-    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 --prefix trafficgen_trex_ ${vlan_opt}"
+    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --no-ofed-check --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 --prefix trafficgen_trex_ ${vlan_opt}"
     echo "about to run: ${trex_server_cmd}"
     echo "trex yaml:"
     echo "-------------------------------------------------------------------"
