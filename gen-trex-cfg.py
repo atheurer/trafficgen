@@ -32,6 +32,7 @@ class t_global(object):
             'interfaces': [],
             'limit_memory': None,
             'port_info': [],
+            'port_bandwidth_gb': None,
             'platform': {
                 'master_thread_id': None,
                 'latency_thread_id': None,
@@ -135,6 +136,29 @@ def main():
     pair = None
     pair_idx = 1
     for dev in t_global.args.devices:
+        # verify that the device exists (use lspci because we need some information from it anyway)
+        result = subprocess.run(['lspci', '-s', dev], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode == 0:
+            if len(result.stdout.rstrip()) == 0:
+                t_global.log.error("You specified an invalid device [%s]" % (dev))
+                return(15)
+
+            t_global.log.debug("Device %s is a valid PCI device: %s" % (dev, result.stdout.decode('utf-8').rstrip()))
+
+            # figure out the speed of interface, if possible -- logic derived from TRex dpdk_setup_ports.py
+            #
+            #81:00.0 Ethernet controller: Intel Corporation Ethernet Controller XXV710 for 25GbE SFP28 (rev 02)
+            m = re.search(r"([0-9]+)Gb", result.stdout.decode('utf-8'))
+            if m:
+                speed = int(m.group(1))
+                t_global.log.debug("Device %s has speed %dGb" % (dev, speed))
+                if t_global.cfg[0]['port_bandwidth_gb'] is None or speed < t_global.cfg[0]['port_bandwidth_gb']:
+                    t_global.cfg[0]['port_bandwidth_gb'] = speed
+                    t_global.log.debug("Setting global config port_bandwidth_gb to %dGb" % (speed))
+        else:
+            t_global.log.error("You specified an invalid device [%s]" % (dev))
+            return(14)
+
         if pair_started:
             pair.append(dev)
             port_info = None
@@ -166,6 +190,10 @@ def main():
         else:
             pair = [ dev ]
             pair_started = True
+
+    # default case if port speed could not be resolved for the devices
+    if t_global.cfg[0]['port_bandwidth_gb'] is None:
+        t_global.cfg[0]['port_bandwidth_gb'] = 10
 
     t_global.log.debug("device pairs: %s" % (t_global.device_pairs))
 
