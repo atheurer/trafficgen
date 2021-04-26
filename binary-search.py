@@ -367,6 +367,11 @@ def process_options ():
                         help='List of active device pairs in the form A:B[,C:D][,E:F][,...]',
                         default='--',
                         )
+    parser.add_argument('--latency-device-pair',
+                        dest='latency_device_pair',
+                        help='Latency device pair in the form A:B',
+                        default='--',
+                        )
     parser.add_argument('--disable-flow-cache',
                         dest='enable_flow_cache',
                         help='Force disablement of the TRex flow cache',
@@ -744,6 +749,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
     tmp_stats = dict()
     streams = dict()
 
+    stats['latency'] = dict()
+
     if trial_params['traffic_generator'] == 'null-txrx':
          stats[0] = dict()
          stats[0]['tx_packets'] = 0
@@ -774,8 +781,36 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
                         streams[dev_pair[port]] = {}
 
     cmd = ""
+    latency_cmd = ""
 
     trial_params['trial_profiler_file'] = "N/A"
+    trial_params['trial_fwd_latency_histogram_file'] = "N/A"
+    trial_params['trial_rev_latency_histogram_file'] = "N/A"
+    trial_params['trial_latency_output_file'] = "N/A"
+    trial_params['trial_latency_debug_file'] = "N/A"
+
+    if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+         latency_device_pair = trial_params['latency_device_pair'].split(':')
+
+         trial_params['trial_fwd_latency_histogram_file'] = "binary-search.trial-%03d.latency.histogram.fwd.csv" % (trial_params['trial'])
+         trial_params['trial_rev_latency_histogram_file'] = "binary-search.trial-%03d.latency.histogram.rev.csv" % (trial_params['trial'])
+
+         latency_cmd = t_global.trafficgen_dir + '/MoonGen/build/MoonGen'
+         latency_cmd = latency_cmd + ' ' + t_global.trafficgen_dir + '/moongen-latency.lua'
+         latency_cmd = latency_cmd + ' --binarysearch 1'
+         latency_cmd = latency_cmd + ' --time ' + str(trial_params['runtime'])
+         latency_cmd = latency_cmd + ' --output ' + trial_params['output_dir']
+         latency_cmd = latency_cmd + ' --fwdfile ' + trial_params['trial_fwd_latency_histogram_file']
+         latency_cmd = latency_cmd + ' --revfile ' + trial_params['trial_rev_latency_histogram_file']
+         latency_cmd = latency_cmd + ' --fwddev ' + latency_device_pair[0]
+         latency_cmd = latency_cmd + ' --revdev ' + latency_device_pair[1]
+
+         if trial_params['latency_traffic_direction'] == 'bidirectional':
+              latency_cmd = latency_cmd + ' --traffic-direction bi'
+         elif trial_params['latency_traffic_direction'] == 'unidirectional':
+              latency_cmd = latency_cmd + ' --traffic-direction uni'
+         elif trial_params['latency_traffic_direction'] == 'revunidirectional':
+              latency_cmd = latency_cmd + ' --traffic-direction revuni'
 
     if trial_params['traffic_generator'] == 'null-txrx':
          cmd = 'python -u ' + t_global.trafficgen_dir + '/null-txrx.py'
@@ -786,6 +821,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
         cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx-profile.py'
+        if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+             cmd = cmd + ' --binary-search-synchronize'
         cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
         cmd = cmd + ' --mirrored-log'
         cmd = cmd + ' --random-seed=' + str(trial_params['random_seed'])
@@ -823,6 +860,8 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
              tmp_stats[tmp_stats_id]['tx_available_bandwidth'] = port_info[tmp_stats_id]['speed'] * 1000 * 1000 * 1000
 
         cmd = 'python -u ' + t_global.trafficgen_dir + '/trex-txrx.py'
+        if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+             cmd = cmd + ' --binary-search-synchronize'
         cmd = cmd + ' --trex-host=' + str(trial_params['trex_host'])
         cmd = cmd + ' --device-pairs=' + str(trial_params['device_pairs'])
         cmd = cmd + ' --active-device-pairs=' + str(trial_params['active_device_pairs'])
@@ -897,28 +936,104 @@ def run_trial (trial_params, port_info, stream_info, detailed_stats):
 
     bs_logger('cmd: %s' % (cmd))
     tg_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout_exit_event = threading.Event()
-    stderr_exit_event = threading.Event()
 
-    stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, stdout_exit_event))
-    stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, stderr_exit_event))
+    child_launch_sem = None
+    child_go_sem = None
+
+    if latency_cmd != '':
+         bs_logger('latency cmd: %s' % (latency_cmd))
+         latency_process = subprocess.Popen(latency_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+         child_launch_sem = posix_ipc.Semaphore("trafficgen_child_launch", flags = posix_ipc.O_CREX, initial_value = 0)
+         child_go_sem = posix_ipc.Semaphore("trafficgen_child_go", flags = posix_ipc.O_CREX, initial_value = 0)
+
+    tg_stdout_exit_event = threading.Event()
+    tg_stderr_exit_event = threading.Event()
+
+    if latency_cmd != '':
+         latency_stdout_exit_event = threading.Event()
+         latency_stderr_exit_event = threading.Event()
+
+    tg_stdout_thread = threading.Thread(target = handle_trial_process_stdout, args = (tg_process, trial_params, stats, tg_stdout_exit_event))
+    tg_stderr_thread = threading.Thread(target = handle_trial_process_stderr, args = (tg_process, trial_params, stats, tmp_stats, streams, detailed_stats, tg_stderr_exit_event))
+
+    if latency_cmd != '':
+         latency_stdout_thread = threading.Thread(target = handle_trial_process_latency_stdout, args = (latency_process, trial_params, stats, latency_stdout_exit_event))
+         latency_stderr_thread = threading.Thread(target = handle_trial_process_latency_stderr, args = (latency_process, trial_params, stats, latency_stderr_exit_event))
 
     stats['trial_start'] = time.time() * 1000
-    stdout_thread.start()
-    stderr_thread.start()
 
-    stdout_exit_event.wait()
-    stderr_exit_event.wait()
-    retval = tg_process.wait()
+    tg_stdout_thread.start()
+    tg_stderr_thread.start()
 
-    stdout_thread.join()
-    stderr_thread.join()
+    if latency_cmd != '':
+         latency_stdout_thread.start()
+         latency_stderr_thread.start()
+
+    if latency_cmd != '':
+         # sychronization stuff happens here
+         bs_logger("Waiting for children to launch")
+         child_launch_sem.acquire()
+         child_launch_sem.acquire()
+         bs_logger("Children have launched")
+
+         bs_logger("Telling children to go")
+         child_go_sem.release()
+         child_go_sem.release()
+
+         bs_logger("Synchronization services complete")
+
+    tg_stdout_exit_event.wait()
+    tg_stderr_exit_event.wait()
+
+    if latency_cmd != '':
+         latency_stdout_exit_event.wait()
+         latency_stderr_exit_event.wait()
+
+    tg_retval = tg_process.wait()
+    if latency_cmd != '':
+         latency_retval = latency_process.wait()
+
+    tg_stdout_thread.join()
+    tg_stderr_thread.join()
+
+    if latency_cmd != '':
+         latency_stdout_thread.join()
+         latency_stderr_thread.join()
+
     stats['trial_stop'] = time.time() * 1000
 
     signal.signal(signal.SIGINT, previous_sig_handler)
 
-    bs_logger('return code: %s' % (retval))
-    stats['retval'] = retval
+    bs_logger('tg return code: %s' % (tg_retval))
+    if latency_cmd != '':
+         bs_logger('latency return code: %s' % (latency_retval))
+         stats['retval'] = tg_retval + latency_retval
+
+         child_launch_sem.unlink()
+         child_go_sem.unlink()
+
+         child_launch_sem.close()
+         child_go_sem.close()
+    else:
+         stats['retval'] = tg_retval
+
+    if latency_cmd != '':
+         # fixup the directional stats to include the latency stats since they come from different places
+
+         if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+              stats['directional']['->']['active'] = True
+              stats['directional']['->']['tx_packets'] += stats['latency']['Forward']['TX Samples']
+              stats['directional']['->']['rx_packets'] += stats['latency']['Forward']['RX Samples']
+              stats['directional']['->']['rx_lost_packets'] += (stats['latency']['Forward']['TX Samples'] - stats['latency']['Forward']['RX Samples'])
+              stats['directional']['->']['rx_lost_packets_pct'] = 100.0 * stats['directional']['->']['rx_lost_packets'] / stats['directional']['->']['tx_packets']
+
+         if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+              stats['directional']['<-']['active'] = True
+              stats['directional']['<-']['tx_packets'] += stats['latency']['Reverse']['TX Samples']
+              stats['directional']['<-']['rx_packets'] += stats['latency']['Reverse']['RX Samples']
+              stats['directional']['<-']['rx_lost_packets'] += (stats['latency']['Reverse']['TX Samples'] - stats['latency']['Reverse']['RX Samples'])
+              stats['directional']['<-']['rx_lost_packets_pct'] = 100.0 * stats['directional']['<-']['rx_lost_packets'] / stats['directional']['<-']['tx_packets']
 
     stream_info['streams'] = streams
     return stats
@@ -938,6 +1053,89 @@ def handle_process_output(process, process_stream, capture):
                     lines.append(line.decode())
           lines.append("--END--")
      return lines
+
+def handle_trial_process_latency_stdout(process, trial_params, stats, exit_event):
+    latency_output_file = None
+    latency_close_file = False
+    trial_params['trial_latency_output_file'] = "binary-search.trial-%03d.latency.output.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_latency_output_file'])
+    try:
+         latency_output_file = open(filename, 'w')
+         latency_close_file = True
+    except IOError:
+         bs_logger(error("Could not open %s for writing" % (filename)))
+         latency_output_file = sys.stdout
+
+    capture_output = True
+    do_loop = True
+    while do_loop:
+         stdout_lines = handle_process_output(process, process.stdout, capture_output)
+
+         for line in stdout_lines:
+              if line == "--END--":
+                   exit_event.set()
+                   do_loop = False
+                   continue
+
+              print(line.rstrip('\n'), file = latency_output_file)
+
+    if latency_close_file:
+         latency_output_file.close()
+
+    return(0)
+
+def handle_trial_process_latency_stderr(process, trial_params, stats, exit_event):
+    prefix = "LAT"
+
+    latency_debug_file = None
+    latency_close_file = False
+    trial_params['trial_latency_debug_file'] = "binary-search.trial-%03d.latency.debug.txt" % (trial_params['trial'])
+    filename = "%s/%s" % (trial_params['output_dir'], trial_params['trial_latency_debug_file'])
+    try:
+         latency_debug_file = open(filename, 'w')
+         latency_close_file = True
+    except IOError:
+         bs_logger(error("Could not open %s for writing" % (filename)))
+         latency_debug_file = sys.stdout
+
+    capture_output = True
+    do_loop = True
+    while do_loop:
+         stdout_lines = handle_process_output(process, process.stderr, capture_output)
+
+         for line in stdout_lines:
+              if line == "--END--":
+                   exit_event.set()
+                   do_loop = False
+                   continue
+
+              if latency_close_file:
+                   print(line.rstrip('\n'), file = latency_debug_file)
+
+              m = re.search(r"^\[BS\]\s(.*)$", line)
+              if m:
+                   bs_logger(m.group(1), bso = False, prefix = prefix)
+
+                   r = re.search(r"\[([a-zA-Z]+) Latency: ([0-9]+)->([0-9]+)\]\s+(.*):\s+(.*)", m.group(1))
+                   if r:
+                        if not r.group(1) in stats['latency']:
+                             stats['latency'][r.group(1)] = dict()
+                             stats['latency'][r.group(1)]['tx_device'] = int(r.group(2))
+                             stats['latency'][r.group(1)]['rx_device'] = int(r.group(3))
+                             stats['latency'][r.group(1)]['percentiles'] = dict()
+
+                        f = re.search(r"(.*)th Percentile", r.group(4))
+                        if f:
+                             stats['latency'][r.group(1)]['percentiles'][f.group(1)] = float(r.group(5))
+                        else:
+                             stats['latency'][r.group(1)][r.group(4)] = float(r.group(5))
+              elif not latency_close_file:
+                   bs_logger(line.rstrip('\n'), bso = False, prefix = prefix + 'DBG')
+
+    if latency_close_file:
+         latency_debug_file.close()
+
+    return(0)
 
 def handle_trial_process_stdout(process, trial_params, stats, exit_event):
     prefix = "%03d" % trial_params['trial']
@@ -1556,6 +1754,59 @@ def evaluate_trial(trial_params, trial_stats):
                                         (direction,
                                          trial_result))
 
+     if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+          latency_device_pair = trial_params['latency_device_pair'].split(':')
+          latency_device_pair[0] = int(latency_device_pair[0])
+          latency_device_pair[1] = int(latency_device_pair[1])
+
+          if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+               if trial_stats['latency']['Forward']['TX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no forward packets were transmitted between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[0],
+                               latency_device_pair[1],
+                               trial_result))
+
+               if trial_stats['latency']['Forward']['RX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no forward packets were received between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[0],
+                               latency_device_pair[1],
+                               trial_result))
+
+          if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+               if trial_stats['latency']['Reverse']['TX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no reverse packets were transmitted between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[1],
+                               latency_device_pair[0],
+                               trial_result))
+
+               if trial_stats['latency']['Reverse']['RX Samples'] == 0:
+                    trial_result = 'abort'
+                    bs_logger("\t(critical requirement failure, no reverse packets were received between latency device pair: %d -> %d, trial result: %s)" %
+                              (latency_device_pair[1],
+                               latency_device_pair[0],
+                               trial_result))
+
+          if trial_params['loss_granularity'] == 'device' and trial_params['negative_packet_loss_mode'] == 'quit':
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+                    if trial_stats['latency']['Forward']['Loss Ratio'] < 0:
+                         trial_result = 'abort'
+                         bs_logger("\t(critical requirement failure, negative device packet loss, forward latency device pair: %d -> %d, trial result: %s)" %
+                                   (latency_device_pair[0],
+                                    latency_device_pair[1],
+                                    trial_result))
+
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+                    if trial_stats['latency']['Reverse']['Loss Ratio'] < 0:
+                         trial_result = 'abort'
+                         bs_logger("\t(critical requirement failure, negative device packet loss, reverse latency device pair: %d -> %d, trial result: %s)" %
+                                   (latency_device_pair[1],
+                                    latency_device_pair[0],
+                                    trial_result))
+
+
      if trial_result == 'abort':
           trial_result = 'quit'
           bs_logger(error("(binary search aborting due to critical error, trial result: %s)" %
@@ -1655,6 +1906,28 @@ def evaluate_trial(trial_params, trial_stats):
                                result_msg,
                                trial_result))
      else:
+          if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
+               # for the latency device pair, trial_params['loss_granularity'] == 'segment' == 'device'
+               latency_device_pair = trial_params['latency_device_pair'].split(':')
+               latency_device_pair[0] = int(latency_device_pair[0])
+               latency_device_pair[1] = int(latency_device_pair[1])
+
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'unidirectional':
+                    if trial_stats['latency']['Forward']['Loss Ratio'] > trial_params["max_loss_pct"]:
+                         trial_result = 'fail'
+                         bs_logger("\t(trial failed requirement, latency RX packet loss, forward latency device pair: %d -> %d, trial result status: modified, trial result: %s)" %
+                                   (latency_device_pair[0],
+                                    latency_device_pair[1],
+                                    trial_result))
+
+               if trial_params['latency_traffic_direction'] == 'bidirectional' or trial_params['latency_traffic_direction'] == 'revunidirectional':
+                    if trial_stats['latency']['Reverse']['Loss Ratio'] > trial_params["max_loss_pct"]:
+                         trial_result = 'fail'
+                         bs_logger("\t(trial failed requirement, latency RX packet loss, reverse latency device pair: %d -> %d, trial result status: modified, trial result: %s)" %
+                                   (latency_device_pair[1],
+                                    latency_device_pair[0],
+                                    trial_result))
+
           for dev_pair in trial_params['test_dev_pairs']:
                if trial_params['loss_granularity'] == 'segment':
                     if 'rx_loss_error' in trial_stats[dev_pair['rx']]:
@@ -1756,12 +2029,9 @@ def main():
     trial_results = { 'trials': [],
                       'log':    [] }
 
-    process_options()
-
     bs_logger_exit = threading.Event()
     bs_logger_thread = threading.Thread(target = bs_logger_worker, args = (trial_results['log'], bs_logger_exit))
     bs_logger_thread.start()
-    bs_logger(str(t_global.args))
 
     final_validation = t_global.args.one_shot == 1
     rate = t_global.args.rate
@@ -1854,13 +2124,10 @@ def main():
     setup_config_var('warmup_trial_runtime', t_global.args.warmup_trial_runtime, trial_params)
     setup_config_var('disable_upward_search', t_global.args.disable_upward_search, trial_params)
 
-    if t_global.args.traffic_generator == "trex-txrx" or t_global.args.traffic_generator == "trex-txrx-profile":
-         # empty for now
-         foo = None
-
     # set configuration from the argument parser
     if t_global.args.traffic_generator == "trex-txrx":
          setup_config_var("traffic_direction", t_global.args.traffic_direction, trial_params)
+         setup_config_var("latency_traffic_direction", t_global.args.traffic_direction, trial_params)
          setup_config_var("num_flows", t_global.args.num_flows, trial_params)
          setup_config_var("frame_size", t_global.args.frame_size, trial_params)
          setup_config_var("use_src_mac_flows", t_global.args.use_src_mac_flows, trial_params)
@@ -1898,6 +2165,7 @@ def main():
          setup_config_var('teaching_warmup_packet_rate', t_global.args.teaching_warmup_packet_rate, trial_params)
          setup_config_var('teaching_measurement_packet_rate', t_global.args.teaching_measurement_packet_rate, trial_params)
          setup_config_var('no_promisc', t_global.args.no_promisc, trial_params)
+         setup_config_var('latency_device_pair', t_global.args.latency_device_pair, trial_params)
 
     if t_global.args.traffic_generator == "null-txrx":
          # empty for now
@@ -1924,6 +2192,15 @@ def main():
          if trial_params['loaded_traffic_profile'] == 1:
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
               return(1)
+
+         tmp_latency_traffic_direction = trial_params["loaded_traffic_profile"]["streams"][0]["traffic_direction"]
+         if tmp_latency_traffic_direction != "bidirectional":
+              for stream in trial_params['loaded_traffic_profile']['streams']:
+                   if stream["traffic_direction"] != tmp_latency_traffic_direction:
+                        tmp_latency_traffic_direction = "bidirectional"
+                        break
+         bs_logger("Configured via traffic profile introspection:")
+         setup_config_var("latency_traffic_direction", tmp_latency_traffic_direction, trial_params)
 
          trial_params['loaded_warmup_traffic_profile'] = None
          if t_global.args.warmup_trial and len(t_global.args.warmup_traffic_profile):
@@ -2385,5 +2662,16 @@ def main():
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
 if __name__ == "__main__":
+    process_options()
+    bs_logger(str(t_global.args))
+
+    # only import the posix_ipc library if traffic generator
+    # synchronization needs to be managed.
+    # imports must be done at the module level which is why this is
+    # done here instead of in main()
+    if t_global.args.latency_device_pair != '--':
+         bs_logger("Enabling traffic generator synchronization")
+         import posix_ipc
+
     exit(main())
 
