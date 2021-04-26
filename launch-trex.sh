@@ -6,6 +6,14 @@
 full_script_path=$(readlink -e ${0})
 tgen_dir=$(dirname ${full_script_path})
 
+export TOOLBOX_HOME=${tgen_dir}/toolbox
+if pushd ${TOOLBOX_HOME} > /dev/null; then
+    git fetch --all
+    git pull --ff-only
+
+    popd > /dev/null
+fi
+
 tmp_dir="/tmp"
 trex_dir="/opt/trex/current"
 use_ht="n"
