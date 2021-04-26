@@ -3,6 +3,9 @@
 # This script is intended to optimally configure TRex and launch it in
 # a tmux session for the user.
 
+full_script_path=$(readlink -e ${0})
+tgen_dir=$(dirname ${full_script_path})
+
 tmp_dir="/tmp"
 trex_dir="/opt/trex/current"
 use_ht="n"
@@ -167,7 +170,6 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 
     if [ -z "${yaml_file}" ]; then
 	yaml_file="${tmp_dir}/trex_cfg.yaml"
-	tmp_yaml_file="${yaml_file}.tmp"
 	/bin/rm -fv ${yaml_file}
 
         if [ -z "$cpu_list" ]; then
@@ -180,78 +182,57 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
 	fi
 	echo "cpu_list: $cpu_list"
 
-	trex_config_args=""
-	if [ "${use_ht}" == "n" ]; then
-            trex_config_args+="--no-ht "
-	fi
+        trex_config_args=""
 
-	l2_args=""
-	if [ "${use_l2}" == "y" ]; then
-            trex_config_args+="--force-macs --cfg ${tmp_yaml_file}"
+        for cpu in ${cpu_list}; do
+            trex_config_args+=" --cpu ${cpu}"
+        done
 
-            # generate a temporary yaml which is required for MAC discovery
-            echo "- version       : 2" >${tmp_yaml_file}
-            yaml_devices=$(echo ${devices} | sed -e "s/^/\"/" -e "s/,/\",\"/g" -e "s/$/\"/")
-            echo "  interfaces    : [${yaml_devices}]" >>${tmp_yaml_file}
-            echo "  port_limit    : 2" >>${tmp_yaml_file}
-	fi
+        trex_config_args+=" --use-smt "
+        if [ "${use_ht}" == "n" ]; then
+            trex_config_args+="no"
+        elif [ "${use_ht}" == "y" ]; then
+            trex_config_args+="yes"
+        fi
 
-	interface_state_cmd="./dpdk_setup_ports.py -t"
-	echo "interface status: ${interface_state_cmd}"
-	${interface_state_cmd}
+        trex_config_args+=" --use-l2 "
+        if [ "${use_l2}" == "n" ]; then
+            trex_config_args+="no"
+        elif [ "${use_l2}" == "y" ]; then
+            trex_config_args+="yes"
+        fi
 
-	if [ "${use_l2}" == "y" ]; then
-	    # newer versions of trex require the interface to be bound
-	    # to a Linux driver in order to determine it's MAC address
-	    # which is required for L2 mode
+        for device in $(echo ${devices} | sed -e 's/,/ /g'); do
+            trex_config_args+=" --device ${device}"
+        done
 
-	    driver_reset_cmd="./dpdk_setup_ports.py -L"
-	    echo "resetting interface driver state with: ${driver_reset_cmd}"
-	    # use a loop that keeps trying until there are no more vfio-pci references
-	    # the script claims to reset all devices but it really only does 2 at a time
-	    vfio_in_use="vfio-pci"
-	    while echo -e "${vfio_in_use}" | grep -q "vfio-pci"; do
-		${driver_reset_cmd}
-		vfio_in_use=$(${interface_state_cmd})
-	    done
+        interface_state_cmd="./dpdk_setup_ports.py -t"
+        echo "interface status: ${interface_state_cmd}"
+        ${interface_state_cmd}
 
-	    echo "interface status: ${interface_state_cmd}"
-	    ${interface_state_cmd}
-	fi
-
-	trex_config_cmd="./dpdk_setup_ports.py -c `echo ${devices} | sed -e s/,/" "/g` --cores-include ${cpu_list} -o ${yaml_file} ${trex_config_args}"
-	echo "configuring trex with: ${trex_config_cmd}"
-	${trex_config_cmd}
-
-	# set the memory limit so that trex doesn't consume all available hugepages
-	sed -i -e '/interfaces.*/a\' -e "  limit_memory: ${mem_limit}" ${yaml_file}
-
-	if [ "${use_l2}" == "y" ]; then
-	    /bin/rm -fv ${tmp_yaml_file}
-	fi
+        trex_config_cmd="${tgen_dir}/gen-trex-cfg.py --output-file ${yaml_file} --memory-limit ${mem_limit} ${trex_config_args}"
+        echo "configuring trex with: ${trex_config_cmd}"
+        ${trex_config_cmd}
     fi
 
-    trex_cpus=14
-    for cpu_block in $(cat ${yaml_file} | grep threads | sed -e "s/\s//g" -e "s/threads://"); do
-        yaml_cpus=$(echo "${cpu_block}" | sed -e 's/.*\[\(.*\)\]/\1/' -e 's/,/ /g' | wc -w)
-        if [ ${yaml_cpus} -lt ${trex_cpus} ]; then
-	    trex_cpus=${yaml_cpus}
-        fi
-    done
+    if [ ! -f ${yaml_file} ]; then
+        echo "ERROR: TRex YAML configuration file '${yaml_file}' not found!"
+        exit 1
+    fi
 
     if [ ${use_vlan} == "y" ]; then
         vlan_opt="--vlan"
     else
         vlan_opt=""
     fi
-    trex_server_cmd="./t-rex-64 -i -c ${trex_cpus} --no-ofed-check --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 --prefix trafficgen_trex_ ${vlan_opt}"
+    trex_server_cmd="./t-rex-64 -i --no-ofed-check --checksum-offload --cfg ${yaml_file} --iom 0 -v 4 --prefix trafficgen_trex_ ${vlan_opt}"
     echo "about to run: ${trex_server_cmd}"
     echo "trex yaml:"
     echo "-------------------------------------------------------------------"
     cat ${yaml_file}
     echo "-------------------------------------------------------------------"
-    rm -fv /tmp/trex.server.out
-    tmux new-session -d -n server -s trex "bash -c '${trex_server_cmd} | tee /tmp/trex.server.out'"
+    rm -fv ${tmp_dir}/trex.server.out
+    tmux new-session -d -n server -s trex "bash -c '${trex_server_cmd} | tee ${tmp_dir}/trex.server.out'"
 
     # wait for trex server to be ready                                                                                                                                                                                                    
     count=60
@@ -264,7 +245,7 @@ if [ -d ${trex_dir} -a -d ${tmp_dir} ]; then
     if [ ${num_ports} -eq 2 ]; then
         echo "trex-server is ready"
     else
-        echo "ERROR: trex-server could not start properly.  Check \'tmux attach -t trex\' and/or \'cat /tmp/trex.server.out\'"
+        echo "ERROR: trex-server could not start properly.  Check \'tmux attach -t trex\' and/or \'cat ${tmp_dir}/trex.server.out\'"
         exit 1
     fi
 else
