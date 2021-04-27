@@ -1,10 +1,14 @@
 #!/bin/bash
 
+full_script_path=$(readlink -e ${0})
+tgen_dir=$(dirname ${full_script_path})
+
 base_dir="/opt/trex"
 tmp_dir="/tmp"
-trex_ver="v2.82"
+trex_ver="v2.87"
 insecure_curl=0
 force_install=0
+toolbox_url=https://github.com/perftool-incubator/toolbox.git
 
 opts=$(getopt -q -o c: --longoptions "tmp-dir:,base-dir:,version:,insecure,force" -n "getopt.sh" -- "$@")
 if [ $? -ne 0 ]; then
@@ -130,3 +134,19 @@ if pushd ${base_dir} >/dev/null; then
     popd >/dev/null
 fi
 
+if [ ! -d ${tgen_dir}/toolbox ]; then
+    if pushd ${tgen_dir} > /dev/null; then
+        echo "Installing toolbox..."
+        git clone ${toolbox_url}
+
+        popd > /dev/null
+    fi
+else
+    if pushd ${tgen_dir}/toolbox > /dev/null; then
+        echo "Updating toolbox..."
+        git fetch --all
+        git pull --ff-only
+
+        popd > /dev/null
+    fi
+fi
