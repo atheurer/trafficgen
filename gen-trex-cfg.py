@@ -214,6 +214,12 @@ def main():
                                 return(3)
                         else:
                             pair['node'] = int(fh.readline().rstrip())
+                else:
+                    t_global.log.error("Could not determine NUMA node for device %s" % (dev))
+                    return(16)
+            else:
+                t_global.log.error("Could not find /sys/bus/pci/devices/%s" % (dev))
+                return(17)
 
     t_global.log.debug("device pairs: %s" % (t_global.device_pairs))
 
