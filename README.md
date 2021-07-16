@@ -1,3 +1,10 @@
+# **WARNING: Repository Deprecated**
+The original trafficgen repository has been deprecated in favor of a new repository where trafficgen will continue to undergo active development and maintenance.  This repository is available at https://github.com/perftool-incubator/bench-trafficgen.
+
+At the time of this deprecation, the entirety of the original trafficgen repository is located in the trafficgen [subfolder](https://github.com/perftool-incubator/bench-trafficgen/tree/main/trafficgen) of the new repository.  As development continues on the new repository the contents of the new and original repositories may, and likely will, diverge.
+
+Additionally, this new repository contains additional tooling to assist in running trafficgen from "end-to-end".  An example of where this is consumed is [Crucible](https://github.com/perftool-incubator/crucible).
+
 # trafficgen
 This is a collection of traffic generator scripts for use with TRex (https://trex-tgn.cisco.com/).  Please see the respective README files depending on your needs.
 

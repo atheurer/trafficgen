@@ -2662,6 +2662,10 @@ def main():
               bs_logger_cleanup(bs_logger_exit, bs_logger_thread)
 
 if __name__ == "__main__":
+    print("##########################################################################")
+    print("WARNING: This repository is deprecated!  Please see README.md for details.")
+    print("##########################################################################\n\n")
+
     process_options()
     bs_logger(str(t_global.args))
 
