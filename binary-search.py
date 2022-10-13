@@ -230,8 +230,8 @@ def process_options ():
     parser.add_argument('--negative-packet-loss',
                         dest='negative_packet_loss_mode',
                         help='What to do when negative packet loss is encountered',
-                        default = 'quit',
-                        choices = [ 'fail', 'quit', 'retry-to-fail', 'retry-to-quit' ]
+                        default = 'pass',
+                        choices = [ 'pass', 'fail', 'quit', 'retry-to-fail', 'retry-to-quit' ]
                         )
     parser.add_argument('--search-granularity',
                         dest='search_granularity',
@@ -1887,9 +1887,10 @@ def evaluate_trial(trial_params, trial_stats):
                if trial_stats['directional'][direction]['active']:
                     if trial_stats['directional'][direction]['rx_lost_packets_pct'] < 0:
                          trial_result = trial_params['negative_packet_loss_mode']
-                         bs_logger("\t(trial failed requirement, negative direction packet loss, direction: %s, trial result status: modified, trial result: %s)" %
-                                   (direction,
-                                    trial_result))
+                         if trial_result != 'pass':
+                              bs_logger("\t(trial failed requirement, negative direction packet loss, direction: %s, trial result status: modified, trial result: %s)" %
+                                        (direction,
+                                        trial_result))
 
                     requirement_msg = "passed"
                     result_msg = "unmodified"
@@ -1905,6 +1906,8 @@ def evaluate_trial(trial_params, trial_stats):
                                commify(trial_stats['directional'][direction]['rx_lost_packets']),
                                result_msg,
                                trial_result))
+                    if trial_result == 'fail':
+                         return trial_result
      else:
           if 'latency_device_pair' in trial_params and trial_params['latency_device_pair'] != '--':
                # for the latency device pair, trial_params['loss_granularity'] == 'segment' == 'device'

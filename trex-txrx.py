@@ -846,7 +846,7 @@ def main():
                                'max_latency_pg_ids': 0,
                                'device_pair': device_pair })
 
-    c = STLClient(server = t_global.args.trex_host)
+    c = STLClient(server = t_global.args.trex_host,sync_timeout=30,async_timeout=30)
     passed = True
 
     stats = 0
